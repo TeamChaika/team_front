@@ -3,6 +3,7 @@ dist/
 .vite/
 .env
 .env.*
+!.env.production
 !.env.example
 *.log
 .DS_Store

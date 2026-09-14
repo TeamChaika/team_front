@@ -6,22 +6,26 @@ export class ApiError extends Error {
     super(message);
   }
 }
+const apiBase = (import.meta.env.VITE_API_BASE_URL?.trim() || "/api").replace(
+  /\/+$/,
+  "",
+);
 let refresh: Promise<Response> | null = null;
 export async function api<T>(
   path: string,
   init: RequestInit = {},
   retry = true,
 ): Promise<T> {
-  const r = await fetch("/api" + path, {
+  const r = await fetch(apiBase + path, {
     ...init,
-    credentials: "same-origin",
+    credentials: "include",
     headers: { "Content-Type": "application/json", ...init.headers },
   });
   if (r.status === 401 && retry && !path.startsWith("/auth/")) {
     if (!refresh)
-      refresh = fetch("/api/auth/refresh", {
+      refresh = fetch(apiBase + "/auth/refresh", {
         method: "POST",
-        credentials: "same-origin",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
       }).finally(() => {
         refresh = null;
