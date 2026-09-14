@@ -1,0 +1,186 @@
+.price-household-filter {
+  display: grid;
+  gap: 18px;
+  padding: 22px 22px 0;
+}
+.price-filters {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  padding: 22px;
+}
+.price-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  margin: 22px 0;
+}
+.price-summary > div {
+  padding: 20px;
+  background: var(--surface, #121e30);
+  border: 1px solid #28384c;
+  border-radius: 12px;
+}
+.price-summary span,
+.price-subtext {
+  display: block;
+  color: #8da6bb;
+}
+.price-summary strong {
+  display: block;
+  margin-top: 10px;
+  font-size: 28px;
+}
+.price-rise {
+  color: #ff9e9e;
+  font-weight: 600;
+}
+.price-fall {
+  color: #65d7b6;
+  font-weight: 600;
+}
+.price-subtext {
+  margin-top: 6px;
+  font-size: 12px;
+}
+.price-method {
+  padding: 20px;
+  margin-top: 20px;
+  color: #9bb1c4;
+}
+.price-method summary {
+  cursor: pointer;
+  color: #a9cddc;
+}
+.price-method p {
+  line-height: 1.65;
+}
+.price-comparison {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px;
+}
+.price-comparison-total {
+  font-size: 22px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: center;
+}
+.price-source {
+  border-top: 1px solid #2d3c50;
+  margin-top: 20px;
+  padding-top: 16px;
+  overflow-wrap: anywhere;
+}
+.price-history {
+  margin-top: 28px;
+}
+.price-chart svg {
+  display: block;
+  width: 100%;
+  min-width: 620px;
+}
+.price-chart text {
+  fill: #9bb1c4;
+  font-size: 12px;
+}
+.price-history-link {
+  display: block;
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+.price-sort-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.price-sort-button:hover {
+  color: #65d7e5;
+}
+.price-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.price-weekly {
+  min-width: 145px;
+}
+.price-impact-link {
+  border: 0;
+  padding: 4px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: right;
+  cursor: pointer;
+}
+.price-impact-link:hover > span {
+  text-decoration: underline;
+}
+.price-impact-link:focus-visible {
+  outline: 2px solid #65d7e5;
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+.impact-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.impact-dish {
+  min-width: 220px;
+  max-width: 460px;
+  white-space: normal;
+}
+.impact-dish > summary,
+.impact-sources > summary {
+  cursor: pointer;
+  color: #65d7e5;
+}
+.impact-path {
+  margin-top: 16px;
+}
+.impact-path ol {
+  padding-left: 20px;
+}
+.impact-path li {
+  margin: 10px 0;
+}
+.impact-sources {
+  margin-top: 14px;
+  overflow-wrap: anywhere;
+}
+.impact-exclusions {
+  border: 1px solid #28384c;
+  border-radius: 12px;
+}
+.impact-totals th,
+.impact-totals td {
+  border-top: 2px solid #39727f;
+  background: #172b3c;
+  font-weight: 700;
+  padding-top: 20px;
+  padding-bottom: 20px;
+}
+.impact-totals .price-subtext {
+  font-weight: 400;
+}
+@media (max-width: 900px) {
+  .price-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 600px) {
+  .price-filters,
+  .price-summary,
+  .price-comparison {
+    grid-template-columns: 1fr;
+  }
+}
