@@ -6,6 +6,7 @@ import {
   Loader,
   Modal,
   MultiSelect,
+  PasswordInput,
   Select,
   SimpleGrid,
   Stack,
@@ -27,6 +28,7 @@ type Fields = {
   phone: string;
   cell_phone: string;
   email: string;
+  card_number: string;
   main_role_code: string;
   role_codes: string[] | null;
   department_codes: string[] | null;
@@ -40,7 +42,7 @@ type Card = { id: string; version: string; fields: Fields };
 type Command = {
   request_id: string;
   version?: string;
-  fields: Partial<Fields>;
+  fields: Partial<Fields> & { pin_code?: string };
 };
 const empty: Fields = {
   name: "",
@@ -51,6 +53,7 @@ const empty: Fields = {
   phone: "",
   cell_phone: "",
   email: "",
+  card_number: "",
   main_role_code: "",
   role_codes: [],
   department_codes: [],
@@ -75,6 +78,7 @@ export function EmployeeEditor({
     [values, setValues] = useState<Fields>(empty);
   const [submitted, setSubmitted] = useState<Command | null>(null),
     [saved, setSaved] = useState(false);
+  const [pin, setPin] = useState("");
   if (w.meta.user.role !== "owner") return null;
   async function open() {
     setOpened(true);
@@ -82,6 +86,7 @@ export function EmployeeEditor({
     setError("");
     setSaved(false);
     setSubmitted(null);
+    setPin("");
     setOptions(null);
     try {
       const data = await api<Options>("/employees/options");
@@ -112,7 +117,7 @@ export function EmployeeEditor({
   async function save(event: React.FormEvent) {
     event.preventDefault();
     setError("");
-    const changed: Partial<Fields> = {};
+    const changed: Command["fields"] = {};
     for (const key of Object.keys(empty) as (keyof Fields)[]) {
       const old = card?.fields[key] ?? (Array.isArray(values[key]) ? [] : "");
       if (!id || JSON.stringify(values[key]) !== JSON.stringify(old)) {
@@ -120,6 +125,7 @@ export function EmployeeEditor({
           (changed as Record<string, unknown>)[key] = values[key];
       }
     }
+    if (pin) changed.pin_code = pin;
     if (!submitted && Object.keys(changed).length === 0) {
       setError("Изменений нет.");
       return;
@@ -137,6 +143,7 @@ export function EmployeeEditor({
         { method: "POST", body: JSON.stringify(command) },
       );
       setSubmitted(null);
+      setPin("");
       setSaved(true);
       setOpened(false);
       w.setDepartment("");
@@ -186,7 +193,11 @@ export function EmployeeEditor({
       <Modal
         opened={opened}
         onClose={() => {
-          if (!saving) setOpened(false);
+          if (!saving) {
+            setOpened(false);
+            setPin("");
+            setSubmitted(null);
+          }
         }}
         closeOnClickOutside={!saving && !submitted}
         closeOnEscape={!saving}
@@ -264,6 +275,28 @@ export function EmployeeEditor({
                           onChange={(e) => set("email", e.currentTarget.value)}
                         />
                       </SimpleGrid>
+                      <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+                        <TextInput
+                          label="Номер карты"
+                          description="Карта сотрудника для входа в iikoFront"
+                          autoComplete="off"
+                          maxLength={200}
+                          value={values.card_number}
+                          onChange={(e) =>
+                            set("card_number", e.currentTarget.value)
+                          }
+                        />
+                        <PasswordInput
+                          label="Новый PIN-код"
+                          description="Оставьте пустым, чтобы не менять"
+                          autoComplete="new-password"
+                          inputMode="numeric"
+                          pattern="[0-9]{1,32}"
+                          maxLength={32}
+                          value={pin}
+                          onChange={(e) => setPin(e.currentTarget.value)}
+                        />
+                      </SimpleGrid>
                       <MultiSelect
                         label="Должности"
                         required
@@ -332,7 +365,11 @@ export function EmployeeEditor({
                   <Group justify="flex-end">
                     <Button
                       variant="subtle"
-                      onClick={() => setOpened(false)}
+                      onClick={() => {
+                        setOpened(false);
+                        setPin("");
+                        setSubmitted(null);
+                      }}
                       disabled={saving}
                     >
                       Закрыть
@@ -373,15 +410,18 @@ export function EmployeePending() {
     setBusy(id);
     setMessage("");
     try {
-      const result = await api<{ id: string; status: string }>(
-        `/employees/changes/${id}/refresh`,
-        { method: "POST" },
-      );
+      const result = await api<{
+        id: string;
+        status: string;
+        pin_unknown?: boolean;
+      }>(`/employees/changes/${id}/refresh`, { method: "POST" });
       w.setDepartment("");
       pending.reload();
       if (result.status === "reconciled")
         setMessage(
-          "Загружены текущие данные iiko. Часть ранее отправленных изменений не подтвердилась.",
+          result.pin_unknown
+            ? "Карточка обновлена. Сохранение PIN не подтверждено. Проверьте вход в iikoFront или задайте новый PIN."
+            : "Загружены текущие данные iiko. Часть ранее отправленных изменений не подтвердилась.",
         );
       else navigate(`/employees/${result.id}`);
     } catch (e) {
