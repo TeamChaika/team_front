@@ -287,74 +287,49 @@
     display: none;
   }
   .price-receipt-list {
-    display: grid;
-    gap: 12px;
-    margin: 16px 0 0;
+    display: block;
+    margin: 12px 0 0;
     padding: 0;
     list-style: none;
   }
   .price-receipt-card {
     min-width: 0;
-    padding: 16px;
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border);
   }
-  .price-receipt-card > time {
-    display: block;
-    color: var(--text);
-    font-size: 14px;
-    font-weight: 600;
+  .price-receipt-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    font-variant-numeric: tabular-nums;
   }
-  .price-receipt-values {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px;
-    margin: 18px 0;
-  }
-  .price-receipt-values > div {
-    min-width: 0;
-  }
-  .price-receipt-values .price-receipt-price {
-    grid-column: 1 / -1;
-  }
-  .price-receipt-values dt {
+  .price-receipt-heading time {
     color: var(--muted);
     font-size: 12px;
-    line-height: 1.4;
   }
-  .price-receipt-values dd {
-    margin: 5px 0 0;
+  .price-receipt-heading strong {
     font-size: 16px;
-    font-variant-numeric: tabular-nums;
-    overflow-wrap: anywhere;
+    white-space: nowrap;
   }
-  .price-receipt-price dd {
-    font-size: 23px;
-    font-weight: 600;
-  }
-  .price-receipt-documents {
-    padding-top: 14px;
-    border-top: 1px solid var(--border);
-  }
-  .price-receipt-documents > span {
+  .price-receipt-meta {
+    margin: 2px 0 0;
+    color: var(--muted);
     font-size: 12px;
+    font-variant-numeric: tabular-nums;
   }
   .price-receipt-links {
     flex-direction: row;
     flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 8px;
+    gap: 0 14px;
+    margin: 0;
   }
   .price-receipt-links .price-history-link {
     margin: 0;
     min-height: 44px;
     max-width: 100%;
-    padding: 10px;
-    border: 1px solid #294556;
-    border-radius: 8px;
-    background: #152c3d;
-    font-size: 13px;
+    font-size: 12px;
   }
   .price-history > .price-method {
     padding: 16px 0;

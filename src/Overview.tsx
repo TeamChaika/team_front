@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { LiveDataNotice } from "./LiveDataNotice";
 import { PartialDayNotice, type PartialDay } from "./PartialDayNotice";
 import { Link, useNavigate } from "react-router-dom";
 import { Alert, SegmentedControl, Select, Button } from "@mantine/core";
@@ -70,6 +71,7 @@ type Dish = {
   change: Change;
 };
 export type OverviewData = {
+  live?: Sales["live"];
   current: Period;
   previous: Period;
   changes: Record<Metric, Change>;
@@ -807,6 +809,7 @@ export function Overview() {
       >
         {data && (
           <>
+            <LiveDataNotice source={data.live} onRefresh={state.reload} />
             {(!data.current.complete ||
               data.current.partial_days.length > 0 ||
               data.current.reconciliation_issues.length > 0 ||

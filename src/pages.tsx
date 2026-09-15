@@ -36,6 +36,7 @@ import {
 import { useData } from "./useData";
 import { useWorkspace } from "./App";
 import { DiscountDrilldown } from "./DiscountDrilldown";
+import { LiveDataNotice } from "./LiveDataNotice";
 export function PageTitle({
   title,
   subtitle,
@@ -157,7 +158,10 @@ function cell(key: string, value: unknown): ReactNode {
     // iiko supplies local wall time without a timezone; never convert using the viewer's zone.
     const [day, time] = String(value).split(/[ T]/);
     return (
-      day.split("-").reverse().join(".") + (time ? " " + time.slice(0, 8) : "")
+      <span className="table-date">
+        {day.split("-").reverse().join(".") +
+          (time ? " " + time.slice(0, 8) : "")}
+      </span>
     );
   }
   if (currencyKeys.has(key))
@@ -175,9 +179,10 @@ function cell(key: string, value: unknown): ReactNode {
       "started_at",
       "finished_at",
       "accounting_timestamp",
+      "next_retry_at",
     ].includes(key)
   )
-    return dateText(value);
+    return <span className="table-date">{dateText(value)}</span>;
   if (key === "status")
     return (
       <Badge
@@ -211,7 +216,7 @@ export function DataTable({
   if (!rows.length) return <Empty />;
   return (
     <div className="table-scroll">
-      <table>
+      <table className="data-table">
         <thead>
           <tr>
             {columns.map((c) => (
@@ -685,7 +690,14 @@ export function SalesPage() {
         {state.data && (
           <>
             <ReviewNotice data={state.data} />
-            <PartialDayNotice days={state.data.partial_days} />
+            {state.data.live ? (
+              <LiveDataNotice
+                source={state.data.live}
+                onRefresh={state.reload}
+              />
+            ) : (
+              <PartialDayNotice days={state.data.partial_days} />
+            )}
             <Modal
               opened={Boolean(selectedRow)}
               onClose={() => {
@@ -707,11 +719,17 @@ export function SalesPage() {
                     columns={table.columns}
                     rows={salesTable(kind, [selectedRow]).rows}
                   />
-                  {kind === "discounts" && (
+                  {kind === "discounts" && !selectedRow.live && (
                     <DiscountDrilldown
                       key={`${selectedRow.report_id}:${selectedRow.ordinal}`}
                       anchor={selectedRow}
                     />
+                  )}
+                  {kind === "discounts" && selectedRow.live && (
+                    <p className="section-note">
+                      Сегодняшний срез получен напрямую из iiko. Детализация до
+                      заказов будет доступна после сохранения дневного отчёта.
+                    </p>
                   )}
                   <p className="section-note">
                     Получено: {dateText(selectedRow.observed_at)}. Отчёт:{" "}
@@ -1265,6 +1283,7 @@ export function StatusPage() {
     runs: Row[];
     observations: Row[];
     cash_shift_days: Row[];
+    scheduled?: Row[];
   }>("/status?" + w.query());
   return (
     <>
@@ -1284,6 +1303,30 @@ export function StatusPage() {
       <Feedback state={state}>
         {state.data && (
           <>
+            {!!state.data.scheduled?.length && (
+              <section className="panel">
+                <div className="panel-heading">
+                  <div>
+                    <h2>Автоматическая синхронизация</h2>
+                    <p>
+                      Время расписания: Крым, UTC+3. При ошибке — повтор через 5
+                      минут.
+                    </p>
+                  </div>
+                </div>
+                <DataTable
+                  columns={[
+                    { key: "label", label: "Задача" },
+                    { key: "schedule", label: "Расписание" },
+                    { key: "status", label: "Статус" },
+                    { key: "finished_at", label: "Завершено" },
+                    { key: "error_code", label: "Ошибка" },
+                    { key: "next_retry_at", label: "Повтор" },
+                  ]}
+                  rows={state.data.scheduled}
+                />
+              </section>
+            )}
             <section className="panel">
               <div className="panel-heading">
                 <h2>События ресторанов</h2>

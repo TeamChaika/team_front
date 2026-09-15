@@ -403,6 +403,29 @@ small {
   overflow-x: auto;
   scrollbar-width: thin;
 }
+.table-date {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.data-table td {
+  overflow-wrap: normal;
+}
+.data-table td.numeric {
+  white-space: nowrap;
+}
+.live-data-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.live-data-notice strong {
+  color: #65d7b6;
+}
 table {
   width: 100%;
   border-collapse: collapse;

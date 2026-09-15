@@ -60,12 +60,15 @@ export type PageData = {
   limit: number;
 };
 export type Meta = {
+  today?: string;
+  live_sales_enabled?: boolean;
   user: { id: string; display_name: string; role: string };
   departments: { id: string; name: string; code: string }[];
   sales_dates: string[];
   balance_dates: string[];
 };
 export type SalesRow = {
+  live?: boolean;
   ordinal: number;
   request: Row;
   business_date: string;
@@ -84,6 +87,7 @@ export type SalesRow = {
   reviewed: boolean;
 };
 export type Sales = {
+  live?: LiveSource;
   partial_days?: { date: string; observed_at: string }[];
   reconciliation_issues?: {
     date: string;
@@ -114,6 +118,13 @@ export type Sales = {
   complete: boolean;
   start: string;
   end: string;
+};
+export type LiveSource = {
+  source: "iiko_api";
+  date: string;
+  observed_at: string;
+  stale: boolean;
+  cache_seconds: number;
 };
 export const money = (v: unknown) =>
   v === null || v === undefined

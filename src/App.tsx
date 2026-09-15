@@ -201,7 +201,8 @@ export default function App() {
         if (live) {
           setMeta(x);
           const date =
-            x.sales_dates[0] ?? new Date().toISOString().slice(0, 10);
+            (x.live_sales_enabled ? x.today : x.sales_dates[0]) ??
+            new Date().toISOString().slice(0, 10);
           setStart((v) => v || date);
           setEnd((v) => v || date);
           setError("");
@@ -450,6 +451,21 @@ export default function App() {
                   >
                     Последний день OLAP
                   </button>
+                  {meta.live_sales_enabled &&
+                    (location.pathname === "/" ||
+                      location.pathname === "/sales") && (
+                      <button
+                        className="reset-date"
+                        onClick={() => {
+                          if (meta.today) {
+                            setStart(meta.today);
+                            setEnd(meta.today);
+                          }
+                        }}
+                      >
+                        Сегодня · iiko
+                      </button>
+                    )}
                 </>
               )}
               {location.pathname === "/" && <div id="overview-toolbar" />}

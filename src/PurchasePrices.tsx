@@ -70,7 +70,19 @@ type Report = {
   history_size: number;
   recent_only: boolean;
   recent_since: string;
-  impact_period?: { start: string; end: string; recipe_day: string | null };
+  impact_period?: {
+    start: string;
+    end: string;
+    recipe_day: string | null;
+    coverage?: {
+      complete: boolean;
+      loaded_days: number;
+      days: number;
+      missing_dates: string[];
+      partial_dates: string[];
+      mismatch_dates: string[];
+    };
+  };
   stats: {
     observations: number;
     no_previous: number;
@@ -465,6 +477,30 @@ function PriceWorkspace({ scope }: { scope: string }) {
                       Рассчитываем влияние на неделю… Цены уже доступны.
                     </p>
                   )}
+                  {report?.impact_period?.coverage &&
+                    !report.impact_period.coverage.complete && (
+                      <p role="status" className="price-rise">
+                        Недельный расчёт пока недоступен: проверено{" "}
+                        {report.impact_period.coverage.loaded_days} из{" "}
+                        {report.impact_period.coverage.days} дней продаж.
+                        {report.impact_period.coverage.missing_dates.length >
+                          0 && (
+                          <>
+                            {" "}
+                            Не загружены:{" "}
+                            {report.impact_period.coverage.missing_dates
+                              .map(dateText)
+                              .join(", ")}
+                            .
+                          </>
+                        )}
+                        {report.impact_period.coverage.partial_dates.length >
+                          0 && " Есть незавершённые дни."}
+                        {report.impact_period.coverage.mismatch_dates.length >
+                          0 && " Есть расхождения при сверке."}{" "}
+                        <Link to="/status">Статус загрузок</Link>
+                      </p>
+                    )}
                   {weekly.error && (
                     <p role="alert">
                       Не удалось рассчитать влияние на неделю. {weekly.error}{" "}
@@ -903,27 +939,22 @@ export function PriceDetails({
             >
               {selected.previous.receipts.map((receipt) => (
                 <li className="price-receipt-card" key={receipt.date}>
-                  <time className="price-receipt-date" dateTime={receipt.date}>
-                    {dateText(receipt.date)}
-                  </time>
-                  <dl className="price-receipt-values">
-                    <div className="price-receipt-price">
-                      <dt>Цена за {selected.unit}</dt>
-                      <dd>{price(receipt.price)} ₽</dd>
-                    </div>
-                    <div>
-                      <dt>Количество, {selected.unit}</dt>
-                      <dd>{number(receipt.amount)}</dd>
-                    </div>
-                    <div>
-                      <dt>Сумма, ₽</dt>
-                      <dd>{price(receipt.sum)}</dd>
-                    </div>
-                  </dl>
-                  <div className="price-receipt-documents">
-                    <span className="muted">Накладные</span>
-                    <ReceiptLinks receipt={receipt} />
+                  <div className="price-receipt-heading">
+                    <time
+                      className="price-receipt-date"
+                      dateTime={receipt.date}
+                    >
+                      {dateText(receipt.date)}
+                    </time>
+                    <strong>
+                      {price(receipt.price)} ₽/{selected.unit}
+                    </strong>
                   </div>
+                  <p className="price-receipt-meta">
+                    {number(receipt.amount)} {selected.unit} ·{" "}
+                    {price(receipt.sum)} ₽
+                  </p>
+                  <ReceiptLinks receipt={receipt} />
                 </li>
               ))}
             </ol>
