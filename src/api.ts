@@ -2,6 +2,7 @@ export class ApiError extends Error {
   constructor(
     message: string,
     public status: number,
+    public employeePending = false,
   ) {
     super(message);
   }
@@ -45,8 +46,11 @@ export async function api<T>(
     throw new ApiError(
       typeof body.detail === "string"
         ? body.detail
-        : "Не удалось получить данные.",
+        : typeof body.detail?.message === "string"
+          ? body.detail.message
+          : "Не удалось получить данные.",
       r.status,
+      body.detail?.employee_pending === true,
     );
   return body;
 }

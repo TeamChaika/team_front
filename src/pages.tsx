@@ -37,6 +37,7 @@ import { useData } from "./useData";
 import { useWorkspace } from "./App";
 import { DiscountDrilldown } from "./DiscountDrilldown";
 import { LiveDataNotice } from "./LiveDataNotice";
+import { EmployeeEditor, EmployeePending } from "./EmployeeEditor";
 export function PageTitle({
   title,
   subtitle,
@@ -1063,7 +1064,16 @@ export function ResourcePage({
   }
   return (
     <>
-      <PageTitle title={title} subtitle={descriptions[resource]} />
+      <PageTitle
+        title={title}
+        subtitle={descriptions[resource]}
+        action={
+          resource === "employees" ? (
+            <EmployeeEditor onSaved={state.reload} />
+          ) : undefined
+        }
+      />
+      {resource === "employees" && <EmployeePending />}
       {dateResources.has(resource) && (
         <p className="section-note">
           Запрошен период: {dateText(w.start)} — {dateText(w.end)}
@@ -1105,7 +1115,9 @@ export function ResourcePage({
               placeholder={
                 resource === "events"
                   ? "Номер заказа…"
-                  : "Номер, название, контрагент…"
+                  : resource === "employees"
+                    ? "Имя, табельный номер, должность…"
+                    : "Номер, название, контрагент…"
               }
               value={search}
               onChange={(e) => setSearch(e.currentTarget.value)}
@@ -1202,6 +1214,9 @@ const headerNames: Record<string, string> = {
   date_to: "Действует до",
   amount: "Выход",
   role: "Основная должность",
+  phone: "Телефон",
+  cell_phone: "Мобильный телефон",
+  email: "Email",
   restaurant: "Ресторан",
   point_of_sale_name: "Точка продаж",
   open_date: "Открыта (время iiko)",
@@ -1240,6 +1255,9 @@ export function DetailPage({ resource }: { resource: string }) {
       <Link className="back-link" to={"/" + resource}>
         <IconArrowLeft size={16} /> Назад к списку
       </Link>
+      {resource === "employees" && id && (
+        <EmployeeEditor id={id} onSaved={state.reload} />
+      )}
       <Feedback state={state}>
         {state.data && (
           <>
