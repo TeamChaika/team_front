@@ -208,10 +208,19 @@ export function DataTable({
   columns,
   rows,
   firstLink,
+  sort,
+  footer,
 }: {
   columns: Column[];
   rows: Row[];
   firstLink?: (r: Row) => string | null;
+  sort?: {
+    key: string;
+    direction: "asc" | "desc";
+    keys: string[];
+    onChange: (key: string) => void;
+  };
+  footer?: Row;
 }) {
   if (!rows.length) return <Empty />;
   return (
@@ -222,13 +231,41 @@ export function DataTable({
             {columns.map((c) => (
               <th
                 key={c.key}
+                scope="col"
+                aria-sort={
+                  sort?.keys.includes(c.key)
+                    ? sort.key === c.key
+                      ? sort.direction === "asc"
+                        ? "ascending"
+                        : "descending"
+                      : "none"
+                    : undefined
+                }
                 className={
                   currencyKeys.has(c.key) || numberKeys.has(c.key)
                     ? "numeric"
                     : ""
                 }
               >
-                {c.label}
+                {sort?.keys.includes(c.key) ? (
+                  <button
+                    type="button"
+                    className="table-sort-button"
+                    onClick={() => sort.onChange(c.key)}
+                    aria-label={`${c.label}: ${sort.key === c.key && sort.direction === "desc" ? "по возрастанию" : "по убыванию"}`}
+                  >
+                    {c.label}
+                    <span aria-hidden="true">
+                      {sort.key === c.key
+                        ? sort.direction === "desc"
+                          ? "↓"
+                          : "↑"
+                        : "↕"}
+                    </span>
+                  </button>
+                ) : (
+                  c.label
+                )}
               </th>
             ))}
           </tr>
@@ -258,6 +295,30 @@ export function DataTable({
             </tr>
           ))}
         </tbody>
+        {footer && (
+          <tfoot>
+            <tr>
+              {columns.map((c, index) =>
+                index === 0 ? (
+                  <th key={c.key} scope="row">
+                    {cell(c.key, footer[c.key])}
+                  </th>
+                ) : (
+                  <td
+                    key={c.key}
+                    className={
+                      currencyKeys.has(c.key) || numberKeys.has(c.key)
+                        ? "numeric"
+                        : ""
+                    }
+                  >
+                    {cell(c.key, footer[c.key])}
+                  </td>
+                ),
+              )}
+            </tr>
+          </tfoot>
+        )}
       </table>
     </div>
   );

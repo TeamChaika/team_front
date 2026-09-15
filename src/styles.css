@@ -413,6 +413,40 @@ small {
 .data-table td.numeric {
   white-space: nowrap;
 }
+.table-sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.table-sort-button:hover {
+  color: var(--accent);
+}
+.table-sort-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+  border-radius: 3px;
+}
+.data-table tfoot th,
+.data-table tfoot td {
+  border-top: 2px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font-weight: 700;
+}
+.balance-sync-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 16px;
+}
 .live-data-notice {
   display: flex;
   align-items: center;

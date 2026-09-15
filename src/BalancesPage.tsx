@@ -17,7 +17,10 @@ type Warehouse = {
 type BalanceData = PageData & {
   stores: Warehouse[];
   accounting_timestamp: string | null;
+  last_synced_at: string | null;
   filtered_value: string | null;
+  filtered_amount: string | null;
+  filtered_unit: string | null;
 };
 export function BalancesPage() {
   const w = useWorkspace();
@@ -32,12 +35,20 @@ function BalanceWorkspace({ scope }: { scope: string }) {
     product: null as string | null,
   });
   const [offset, setOffset] = useState(0);
+  const [sort, setSort] = useState<{ key: string; direction: "asc" | "desc" }>({
+    key: "sum",
+    direction: "desc",
+  });
   const storeScope = scope + (store ? "&store_id=" + store : "");
   const state = useData<BalanceData>(
     "/resources/balances?" +
       storeScope +
       "&offset=" +
       offset +
+      "&sort=" +
+      sort.key +
+      "&direction=" +
+      sort.direction +
       (filter.product
         ? "&product_id=" + filter.product
         : "&q=" + encodeURIComponent(filter.q)),
@@ -45,11 +56,13 @@ function BalanceWorkspace({ scope }: { scope: string }) {
   // Keep warehouse controls in place while searching or paging; reset on restaurant change.
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [stamp, setStamp] = useState<string | null>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [seen, setSeen] = useState<BalanceData | null>(null);
   if (state.data && state.data !== seen) {
     setSeen(state.data);
     setWarehouses(state.data.stores);
     setStamp(state.data.accounting_timestamp);
+    setLastSyncedAt(state.data.last_synced_at);
   }
   const selected = warehouses.find((row) => row.id === store);
   function chooseStore(id: string | null) {
@@ -70,9 +83,16 @@ function BalanceWorkspace({ scope }: { scope: string }) {
         title="Остатки на складах"
         subtitle="Выберите склад, чтобы увидеть его товары. Подсказки помогут найти точную позицию номенклатуры."
       />
-      <div className="data-notice">
-        {stamp ? "Снимок: " + dateText(stamp) + ". " : ""}Остатки на момент
-        снимка; фильтр периода не применяется.
+      <div className="data-notice balance-sync-notice">
+        <strong>
+          Последняя синхронизация остатков: {dateText(lastSyncedAt)}
+        </strong>
+        <span>
+          {stamp && dateText(stamp) !== dateText(lastSyncedAt)
+            ? "Остатки на " + dateText(stamp) + ". "
+            : ""}
+          Фильтр периода не применяется.
+        </span>
       </div>
       {warehouses.length > 0 && (
         <details
@@ -203,7 +223,34 @@ function BalanceWorkspace({ scope }: { scope: string }) {
                 columns={state.data.columns}
                 rows={state.data.rows}
                 firstLink={(row) => "/products/" + row.id}
+                sort={{
+                  ...sort,
+                  keys: ["amount", "sum"],
+                  onChange: (key) => {
+                    setSort({
+                      key,
+                      direction:
+                        sort.key === key && sort.direction === "desc"
+                          ? "asc"
+                          : "desc",
+                    });
+                    setOffset(0);
+                  },
+                }}
+                footer={{
+                  title: "Итого по выборке",
+                  store: "",
+                  unit: state.data.filtered_unit ?? "",
+                  amount: state.data.filtered_amount,
+                  sum: state.data.filtered_value,
+                }}
               />
+              {state.data.total > 0 && state.data.filtered_amount == null && (
+                <p className="section-note balance-filter-note">
+                  Общее количество не рассчитано: единицы измерения различаются
+                  или не указаны.
+                </p>
+              )}
               <div className="table-footer">
                 <span>
                   {number(state.data.total)} записей ·{" "}
