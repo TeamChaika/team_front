@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
-import { Modal } from "@mantine/core";
+import { PurchaseModal } from "./PurchaseModal";
 import {
   IconArrowRight,
   IconBell,
@@ -267,7 +267,7 @@ export function OverviewPriceModal({
   onClose: () => void;
 }) {
   return (
-    <Modal
+    <PurchaseModal
       opened={!!row}
       onClose={onClose}
       size="xl"
@@ -281,6 +281,6 @@ export function OverviewPriceModal({
           scope={scope}
         />
       )}
-    </Modal>
+    </PurchaseModal>
   );
 }

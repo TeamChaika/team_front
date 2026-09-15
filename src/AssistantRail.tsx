@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
-import { Button, FocusTrap, Modal } from "@mantine/core";
+import { Button, FocusTrap } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { IconMessageCircle } from "@tabler/icons-react";
 import { api } from "./api";
@@ -8,6 +8,7 @@ import { useAssistant } from "./AssistantContext";
 import { PurchaseAssistant, type AssistantSource } from "./PurchaseAssistant";
 import { PriceDetails, type PriceChange } from "./PurchasePrices";
 import { PurchaseImpact } from "./PurchaseImpact";
+import { PurchaseModal } from "./PurchaseModal";
 
 export function AssistantToggle() {
   const assistant = useAssistant();
@@ -162,7 +163,7 @@ export function AssistantRail() {
           )}
         </aside>
       </FocusTrap>
-      <Modal
+      <PurchaseModal
         opened={!!preview}
         onClose={() => setPreview(null)}
         size={preview?.kind === "impact" ? "70rem" : "xl"}
@@ -180,7 +181,7 @@ export function AssistantRail() {
         ) : (
           preview && <PriceDetails row={preview.row} scope="" />
         )}
-      </Modal>
+      </PurchaseModal>
     </>
   );
 }

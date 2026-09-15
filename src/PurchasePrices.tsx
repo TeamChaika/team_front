@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Button, Checkbox, Modal, Select } from "@mantine/core";
+import { Button, Checkbox, Select } from "@mantine/core";
+import { useElementSize } from "@mantine/hooks";
 import { IconArrowUpRight, IconDownload } from "@tabler/icons-react";
 import { useWorkspace } from "./App";
 import { useData } from "./useData";
 import { csv, dateText, number } from "./api";
 import { Feedback, PageTitle } from "./pages";
 import { PurchaseImpact } from "./PurchaseImpact";
+import { PurchaseModal } from "./PurchaseModal";
 import { useAssistant } from "./AssistantContext";
 import "./purchase-prices.css";
 
@@ -753,7 +755,7 @@ function PriceWorkspace({ scope }: { scope: string }) {
           старым.
         </p>
       </details>
-      <Modal
+      <PurchaseModal
         opened={Boolean(impact)}
         onClose={() => setImpact(null)}
         closeButtonProps={{ "aria-label": "Закрыть влияние цены" }}
@@ -767,8 +769,8 @@ function PriceWorkspace({ scope }: { scope: string }) {
         {impact && (
           <PurchaseImpact key={identity(impact)} row={impact} scope={scope} />
         )}
-      </Modal>
-      <Modal
+      </PurchaseModal>
+      <PurchaseModal
         opened={Boolean(selected)}
         onClose={() => setSelected(null)}
         closeButtonProps={{ "aria-label": "Закрыть сравнение накладных" }}
@@ -780,7 +782,7 @@ function PriceWorkspace({ scope }: { scope: string }) {
         {selected && (
           <PriceDetails key={identity(selected)} row={selected} scope={scope} />
         )}
-      </Modal>
+      </PurchaseModal>
     </>
   );
 }
@@ -867,8 +869,8 @@ export function PriceDetails({
               От раннего к последнему. Текущее поступление в расчёт средней не
               включено.
             </p>
-            <div className="table-scroll">
-              <table>
+            <div className="table-scroll price-history-desktop">
+              <table className="price-history-table">
                 <thead>
                   <tr>
                     <th>Дата</th>
@@ -881,34 +883,50 @@ export function PriceDetails({
                 <tbody>
                   {selected.previous.receipts.map((receipt) => (
                     <tr key={receipt.date}>
-                      <td>{dateText(receipt.date)}</td>
+                      <td className="price-receipt-date">
+                        {dateText(receipt.date)}
+                      </td>
                       <td className="numeric">{price(receipt.price)}</td>
                       <td className="numeric">{number(receipt.amount)}</td>
                       <td className="numeric">{price(receipt.sum)}</td>
                       <td>
-                        {[
-                          ...new Map(
-                            receipt.lines.map((line) => [
-                              line.document_id,
-                              line,
-                            ]),
-                          ).values(),
-                        ].map((line) => (
-                          <Link
-                            key={line.document_id}
-                            className="text-link price-history-link"
-                            to={"/invoices/" + line.document_id}
-                          >
-                            №{line.document_number ?? line.document_id}{" "}
-                            <IconArrowUpRight size={14} />
-                          </Link>
-                        ))}
+                        <ReceiptLinks receipt={receipt} />
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
+            <ol
+              className="price-receipt-list"
+              aria-label="Предыдущие поступления"
+            >
+              {selected.previous.receipts.map((receipt) => (
+                <li className="price-receipt-card" key={receipt.date}>
+                  <time className="price-receipt-date" dateTime={receipt.date}>
+                    {dateText(receipt.date)}
+                  </time>
+                  <dl className="price-receipt-values">
+                    <div className="price-receipt-price">
+                      <dt>Цена за {selected.unit}</dt>
+                      <dd>{price(receipt.price)} ₽</dd>
+                    </div>
+                    <div>
+                      <dt>Количество, {selected.unit}</dt>
+                      <dd>{number(receipt.amount)}</dd>
+                    </div>
+                    <div>
+                      <dt>Сумма, ₽</dt>
+                      <dd>{price(receipt.sum)}</dd>
+                    </div>
+                  </dl>
+                  <div className="price-receipt-documents">
+                    <span className="muted">Накладные</span>
+                    <ReceiptLinks receipt={receipt} />
+                  </div>
+                </li>
+              ))}
+            </ol>
             <details className="price-method">
               <summary>Строки предыдущих накладных и поставщики</summary>
               {selected.previous.receipts.map((receipt, index) => (
@@ -924,6 +942,30 @@ export function PriceDetails({
         </>
       )}
     </Feedback>
+  );
+}
+
+function ReceiptLinks({ receipt }: { receipt: Observation }) {
+  const documents = [
+    ...new Map(receipt.lines.map((line) => [line.document_id, line])).values(),
+  ];
+  return (
+    <div className="price-receipt-links">
+      {documents.map((line) => (
+        <Link
+          key={line.document_id}
+          className="text-link price-history-link"
+          to={"/invoices/" + line.document_id}
+        >
+          <span>
+            {line.document_number
+              ? "№" + line.document_number
+              : "Накладная без номера"}
+          </span>
+          <IconArrowUpRight size={14} aria-hidden="true" />
+        </Link>
+      ))}
+    </div>
   );
 }
 
@@ -969,6 +1011,11 @@ function exportHistory(row: PriceChange) {
 }
 
 function PriceChart({ row }: { row: PriceChange }) {
+  const { ref, width } = useElementSize<HTMLDivElement>();
+  const chartWidth = Math.max(280, Math.round(width || 740));
+  const compact = chartWidth < 520;
+  const left = compact ? 70 : 85;
+  const right = chartWidth - (compact ? 18 : 85);
   const observations = [...row.previous.receipts, row.current];
   const values = observations.map((o) => Number(o.price));
   const min = Math.min(...values),
@@ -978,8 +1025,8 @@ function PriceChart({ row }: { row: PriceChange }) {
     high = max + padding;
   const x = (i: number) =>
     observations.length === 1
-      ? 375
-      : 85 + (i * 570) / (observations.length - 1);
+      ? (left + right) / 2
+      : left + (i * (right - left)) / (observations.length - 1);
   const y = (v: number) => 200 - ((v - low) / (high - low)) * 150;
   return (
     <section className="price-chart">
@@ -987,9 +1034,9 @@ function PriceChart({ row }: { row: PriceChange }) {
       <p className="muted">
         До 6 предыдущих поступлений и последнее · ₽/{row.unit}
       </p>
-      <div className="table-scroll">
+      <div className="price-chart-canvas" ref={ref}>
         <svg
-          viewBox="0 0 740 260"
+          viewBox={`0 0 ${chartWidth} 260`}
           role="img"
           aria-label={"Динамика закупочной цены: " + row.product}
         >
@@ -1002,8 +1049,8 @@ function PriceChart({ row }: { row: PriceChange }) {
           </title>
           {[low, (low + high) / 2, high].map((v) => (
             <g key={v}>
-              <line x1="85" x2="655" y1={y(v)} y2={y(v)} stroke="#2d3c50" />
-              <text x="75" y={y(v) + 4} textAnchor="end">
+              <line x1={left} x2={right} y1={y(v)} y2={y(v)} stroke="#2d3c50" />
+              <text x={left - 10} y={y(v) + 4} textAnchor="end">
                 {price(v)}
               </text>
             </g>
@@ -1022,15 +1069,48 @@ function PriceChart({ row }: { row: PriceChange }) {
                 r={i === observations.length - 1 ? 6 : 4}
                 fill={i === observations.length - 1 ? "#65d7b6" : "#65d7e5"}
               />
-              <text x={x(i)} y={y(Number(o.price)) - 13} textAnchor="middle">
-                {price(o.price)}
-              </text>
-              <text x={x(i)} y="231" textAnchor="middle">
-                {o.date.slice(8, 10)}.{o.date.slice(5, 7)}
-              </text>
-              <text x={x(i)} y="248" textAnchor="middle">
-                {o.date.slice(0, 4)}
-              </text>
+              {(!compact || i === 0 || i === observations.length - 1) && (
+                <text
+                  x={x(i)}
+                  y={y(Number(o.price)) - 13}
+                  textAnchor={compact ? (i === 0 ? "start" : "end") : "middle"}
+                >
+                  {price(o.price)}
+                </text>
+              )}
+              {(!compact ||
+                i === 0 ||
+                i === observations.length - 1 ||
+                i === Math.floor(observations.length / 2)) && (
+                <g>
+                  <text
+                    x={x(i)}
+                    y="231"
+                    textAnchor={
+                      compact && i === 0
+                        ? "start"
+                        : compact && i === observations.length - 1
+                          ? "end"
+                          : "middle"
+                    }
+                  >
+                    {o.date.slice(8, 10)}.{o.date.slice(5, 7)}
+                  </text>
+                  <text
+                    x={x(i)}
+                    y="248"
+                    textAnchor={
+                      compact && i === 0
+                        ? "start"
+                        : compact && i === observations.length - 1
+                          ? "end"
+                          : "middle"
+                    }
+                  >
+                    {o.date.slice(0, 4)}
+                  </text>
+                </g>
+              )}
             </g>
           ))}
         </svg>
