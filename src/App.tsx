@@ -10,7 +10,6 @@ import {
   Button,
   TextInput,
   PasswordInput,
-  Select,
   Alert,
   Loader,
   Badge,
@@ -48,6 +47,7 @@ import { Overview } from "./Overview";
 import { PurchasePrices } from "./PurchasePrices";
 import { AssistantProvider } from "./AssistantContext";
 import { AssistantLayout, AssistantToggle } from "./AssistantRail";
+import { RestaurantPicker } from "./RestaurantPicker";
 export const sections = [
   { path: "/", title: "Обзор", icon: IconLayoutDashboard },
   { path: "/sales", title: "Продажи", icon: IconChartBar },
@@ -70,7 +70,7 @@ export const sections = [
 ];
 type Workspace = {
   meta: Meta;
-  department: string;
+  departments: string[];
   setDepartment: (v: string) => void;
   start: string;
   end: string;
@@ -188,8 +188,9 @@ export default function App() {
     [checking, setChecking] = useState(true),
     [error, setError] = useState(""),
     [revision, setRevision] = useState(0);
-  const [department, setDepartment] = useState(""),
-    [start, setStart] = useState(""),
+  const [departments, setDepartments] = useState<string[]>([]);
+  const setDepartment = (id: string) => setDepartments(id ? [id] : []);
+  const [start, setStart] = useState(""),
     [end, setEnd] = useState(""),
     [mobile, setMobile] = useState(false);
   const location = useLocation();
@@ -224,7 +225,7 @@ export default function App() {
   useEffect(() => {
     const lost = () => {
       setMeta(null);
-      setDepartment("");
+      setDepartments([]);
     };
     window.addEventListener("session-lost", lost);
     return () => window.removeEventListener("session-lost", lost);
@@ -273,7 +274,7 @@ export default function App() {
   ].includes(location.pathname);
   const query = (dates = false) => {
     const p = new URLSearchParams();
-    if (department) p.set("department_id", department);
+    for (const id of departments) p.append("department_id", id);
     if (dates) {
       p.set("start", start);
       p.set("end", end);
@@ -287,13 +288,13 @@ export default function App() {
       setError((e as Error).message);
     }
     setMeta(null);
-    setDepartment("");
+    setDepartments([]);
   }
   return (
     <WorkspaceContext.Provider
       value={{
         meta,
-        department,
+        departments,
         setDepartment,
         start,
         end,
@@ -400,19 +401,10 @@ export default function App() {
                   Закупочные цены по сети · все доступные заведения
                 </span>
               ) : (
-                <Select
-                  aria-label="Ресторан"
-                  placeholder={`Все рестораны (${meta.departments.length})`}
-                  value={department || null}
-                  onChange={(v) => setDepartment(v ?? "")}
-                  clearable
-                  searchable
-                  data={meta.departments.map((d) => ({
-                    value: d.id,
-                    label: d.name,
-                  }))}
-                  className="restaurant-select"
-                  leftSection={<IconBuildingStore size={16} />}
+                <RestaurantPicker
+                  restaurants={meta.departments}
+                  value={departments}
+                  onChange={setDepartments}
                 />
               )}
               {location.pathname !== "/purchase-prices" && (
@@ -473,7 +465,10 @@ export default function App() {
             <AssistantLayout>
               <main className="content">
                 <Routes>
-                  <Route path="/" element={<Overview key={department} />} />
+                  <Route
+                    path="/"
+                    element={<Overview key={departments.join(",")} />}
+                  />
                   <Route path="/sales" element={<SalesPage />} />
                   <Route path="/purchase-prices" element={<PurchasePrices />} />
                   <Route path="/balances" element={<BalancesPage />} />

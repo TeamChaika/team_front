@@ -602,56 +602,6 @@ function TrendChart({
           </g>
         ))}
       </svg>
-      <details className="overview-chart-table">
-        <summary>Расшифровка и метод расчёта</summary>
-        <p className="chart-note">
-          {grain === "day"
-            ? "Нажмите на день для расшифровки."
-            : "Недели начинаются в понедельник, месяцы — с первого числа. Крайние интервалы ограничены выбранными датами."}{" "}
-          {compare &&
-            "Сравнение — с такими же по длительности интервалами предыдущего периода."}{" "}
-          Пробел в линии означает отсутствие данных. Средний чек рассчитывается
-          из выручки и числа чеков.
-        </p>
-
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>Период</th>
-                <th>{trendLabels[metric]}</th>
-                {compare && (
-                  <>
-                    <th>Период сравнения</th>
-                    <th>{trendLabels[metric]}</th>
-                  </>
-                )}
-              </tr>
-            </thead>
-            <tbody>
-              {data.trend.map((p) => (
-                <tr key={p.current.start}>
-                  <td>
-                    <button
-                      className="inline-link"
-                      onClick={() => onOpen(p.current)}
-                    >
-                      {range(p.current)}
-                    </button>
-                  </td>
-                  <td>{display(p.current)}</td>
-                  {compare && (
-                    <>
-                      <td>{range(p.previous)}</td>
-                      <td>{display(p.previous)}</td>
-                    </>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </details>
     </section>
   );
 }
@@ -810,29 +760,20 @@ export function Overview() {
           <>
             <LiveDataNotice source={data.live} onRefresh={state.reload} />
             {(!data.current.complete ||
-              data.current.partial_days.length > 0 ||
               data.current.reconciliation_issues.length > 0 ||
               (compare &&
                 (!data.previous.complete ||
-                  data.previous.partial_days.length > 0 ||
                   data.previous.reconciliation_issues.length > 0))) && (
               <details className="overview-quality">
                 <summary>
                   <span className="status-dot amber" />
                   {!data.current.complete
                     ? `Продажи: загружено ${data.current.loaded_dates.length} из ${data.current.days} дней. Итоги недоступны.`
-                    : data.current.partial_days.length
-                      ? "Итоги предварительные."
-                      : data.current.reconciliation_issues.length
-                        ? "В продажах есть расхождения контрольной сверки."
-                        : "В периоде сравнения есть пропуски, предварительные данные или расхождения."}{" "}
-                  <span>Подробнее</span>
+                    : data.current.reconciliation_issues.length
+                      ? "В продажах есть расхождения контрольной сверки."
+                      : "В периоде сравнения есть пропуски или расхождения."}
                 </summary>
                 <PeriodNotice period={data.current} />
-                <PartialDayNotice days={data.current.partial_days} />
-                {compare && (
-                  <PartialDayNotice days={data.previous.partial_days} />
-                )}
                 {compare && <PeriodNotice period={data.previous} previous />}
               </details>
             )}
@@ -949,15 +890,6 @@ export function Overview() {
                 <p className="overview-top-note">
                   Статус относится к полноте данных и контрольной сверке продаж.
                 </p>
-                <details className="overview-top-note">
-                  <summary>Как считается наценка</summary>
-                  <p>
-                    (Выручка после скидок − себестоимость) ÷ себестоимость ×
-                    100. Например: продажа за 300 ₽ при себестоимости 100 ₽ —
-                    наценка 200%. Если себестоимость неизвестна или не больше
-                    нуля, показываем «—».
-                  </p>
-                </details>
               </section>
               <div className="overview-leaders">
                 <section className="panel overview-dish-leaders">
@@ -1028,13 +960,12 @@ export function Overview() {
                       Нет продаж для выбранных условий.
                     </p>
                   )}
-                  <p className="overview-top-note">
-                    Позиции iiko, включая напитки и услуги. Выручка после
-                    скидок.
-                    {compare && !data.dish_previous.complete
-                      ? " Сравнение недоступно: предыдущий период загружен не полностью."
-                      : ""}
-                  </p>
+                  {compare && !data.dish_previous.complete && (
+                    <p className="overview-top-note">
+                      Сравнение недоступно: предыдущий период загружен не
+                      полностью.
+                    </p>
+                  )}
                 </section>
                 <PriceLeaders prices={prices} onOpen={setSelectedPrice} />
               </div>

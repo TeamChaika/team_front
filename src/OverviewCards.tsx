@@ -96,11 +96,6 @@ export function PriceLeaders({
           <p className="section-note">Рост закупочных цен не найден.</p>
         )}
       </Feedback>
-      <details className="overview-top-note overview-method">
-        <summary>Как сравниваем цены</summary>
-        Последняя цена к средней до 6 предыдущих поступлений. Закупки за
-        последние 60 дней, без группы ХОЗНУЖДЫ и связанных перемещений.
-      </details>
     </section>
   );
 }

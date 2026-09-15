@@ -1086,8 +1086,8 @@ export function ResourcePage({
       {["products", "charts", "employees"].includes(resource) && (
         <p className="section-note">
           Фильтр периода не применяется к справочнику.
-          {resource === "employees" && w.department
-            ? " Сотрудники без подтверждённой привязки к этому ресторану скрыты."
+          {resource === "employees" && w.departments.length > 0
+            ? " Сотрудники без подтверждённой привязки к выбранным ресторанам скрыты."
             : ""}
         </p>
       )}
