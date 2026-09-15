@@ -39,6 +39,7 @@ type Metric =
   | "guests"
   | "cost_share"
   | "margin"
+  | "markup"
   | "guests_per_day";
 type Totals = Record<Metric, string | null>;
 type Change = { absolute: string | null; percent: string | null };
@@ -715,9 +716,7 @@ export function Overview() {
         { key: "period", label: "Период" },
         { key: "complete", label: "Период загружен полностью" },
         { key: "revenue", label: "Выручка, ₽" },
-        { key: "cost", label: "Себестоимость, ₽" },
-        { key: "gross_profit", label: "Валовая прибыль, ₽" },
-        { key: "margin", label: "Маржа, %" },
+        { key: "markup", label: "Наценка, %" },
         { key: "guests", label: "Гости" },
         { key: "checks", label: "Чеки" },
         { key: "average_check", label: "Средний чек, ₽" },
@@ -872,10 +871,7 @@ export function Overview() {
                       <tr>
                         <th>Ресторан</th>
                         <th className="numeric">Выручка, ₽</th>
-                        <th className="numeric">
-                          {compare ? "Себест., Δ" : "Себест., ₽"}
-                        </th>
-                        <th className="numeric">Маржа</th>
+                        <th className="numeric">Наценка, %</th>
                         <th className="numeric">Гости</th>
                         <th>Данные</th>
                       </tr>
@@ -915,18 +911,7 @@ export function Overview() {
                               {money(r.totals.revenue)}
                             </td>
                             <td className="numeric">
-                              {compare ? (
-                                <Delta
-                                  value={r.changes.cost}
-                                  previous={r.previous_totals.cost}
-                                  inverse
-                                />
-                              ) : (
-                                money(r.totals.cost)
-                              )}
-                            </td>
-                            <td className="numeric">
-                              {percent(r.totals.margin)}
+                              {percent(r.totals.markup ?? null)}
                             </td>
                             <td className="numeric">
                               {number(r.totals.guests)}
@@ -964,6 +949,15 @@ export function Overview() {
                 <p className="overview-top-note">
                   Статус относится к полноте данных и контрольной сверке продаж.
                 </p>
+                <details className="overview-top-note">
+                  <summary>Как считается наценка</summary>
+                  <p>
+                    (Выручка после скидок − себестоимость) ÷ себестоимость ×
+                    100. Например: продажа за 300 ₽ при себестоимости 100 ₽ —
+                    наценка 200%. Если себестоимость неизвестна или не больше
+                    нуля, показываем «—».
+                  </p>
+                </details>
               </section>
               <div className="overview-leaders">
                 <section className="panel overview-dish-leaders">
