@@ -430,7 +430,9 @@ export function PurchaseAssistant({
             Вопрос и выборка для ответа передаются{" "}
             {status?.provider === "openrouter"
               ? "OpenRouter и выбранной модели"
-              : "провайдеру ИИ"}
+              : status?.provider === "timeweb"
+                ? "Timeweb Cloud и выбранной модели агента"
+                : "провайдеру ИИ"}
             .{status && ` Лимит: ${status.requests_per_hour} запросов в час.`}{" "}
             Оценка за неделю — сценарий затрат.
           </p>
