@@ -484,7 +484,7 @@ export function Indicators() {
         <span>
           iiko · кеш 5 мин
           {observed
-            ? ` · ${new Date(observed).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Simferopol" })}`
+            ? ` · ${new Date(observed.replace(" ", "T")).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Simferopol" })}`
             : ""}
         </span>
         {period.end === today && <span>Сегодня — на текущий момент</span>}
@@ -732,10 +732,22 @@ export function Indicators() {
                 <IconChevronRight size={18} />
               </button>
             ))}
-            {!catalog.length && (
-              <Alert color="yellow">
-                Не удалось загрузить список дополнительных фильтров. Обновите
-                страницу.
+            {dictionaryBusy && (
+              <div className="indicators-loading" role="status">
+                <Loader size="sm" />
+                Загружаем справочник…
+              </div>
+            )}
+            {dictionaryError && (
+              <Alert color="red">
+                {dictionaryError}
+                <Button
+                  size="xs"
+                  variant="subtle"
+                  onClick={() => setDictionaryRevision((v) => v + 1)}
+                >
+                  Повторить
+                </Button>
               </Alert>
             )}
           </div>
