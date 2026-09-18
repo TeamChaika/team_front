@@ -48,8 +48,10 @@ import { PurchasePrices } from "./PurchasePrices";
 import { AssistantProvider } from "./AssistantContext";
 import { AssistantLayout, AssistantToggle } from "./AssistantRail";
 import { RestaurantPicker } from "./RestaurantPicker";
+import { Indicators } from "./Indicators";
 export const sections = [
   { path: "/", title: "Обзор", icon: IconLayoutDashboard },
+  { path: "/indicators", title: "Показатели", icon: IconActivity },
   { path: "/sales", title: "Продажи", icon: IconChartBar },
   { path: "/cash-shifts", title: "Кассовые смены", icon: IconReceipt },
   { path: "/invoices", title: "Приходные накладные", icon: IconReceipt },
@@ -72,6 +74,7 @@ type Workspace = {
   meta: Meta;
   departments: string[];
   setDepartment: (v: string) => void;
+  setDepartments: (ids: string[]) => void;
   start: string;
   end: string;
   setPeriod: (start: string, end: string) => void;
@@ -296,6 +299,7 @@ export default function App() {
         meta,
         departments,
         setDepartment,
+        setDepartments,
         start,
         end,
         query,
@@ -308,7 +312,9 @@ export default function App() {
       <AssistantProvider key={meta.user.id}>
         <div
           className={
-            "app-shell" + (location.pathname === "/" ? " is-overview" : "")
+            "app-shell" +
+            (location.pathname === "/" ? " is-overview" : "") +
+            (location.pathname === "/indicators" ? " is-indicators" : "")
           }
         >
           {mobile && (
@@ -327,13 +333,14 @@ export default function App() {
             </div>
             <span className="nav-label">РАБОЧЕЕ ПРОСТРАНСТВО</span>
             <nav>
-              {sections.map((s, i) => (
+              {sections.map((s) => (
                 <NavLink
                   key={s.path}
                   to={s.path}
                   end={s.path === "/"}
                   className={({ isActive }) =>
-                    (isActive ? "active " : "") + (i === 11 ? "nav-bottom" : "")
+                    (isActive ? "active " : "") +
+                    (s.path === "/employees" ? "nav-bottom" : "")
                   }
                 >
                   <s.icon size={18} stroke={1.6} />
@@ -470,6 +477,10 @@ export default function App() {
                     element={<Overview key={departments.join(",")} />}
                   />
                   <Route path="/sales" element={<SalesPage />} />
+                  <Route
+                    path="/indicators"
+                    element={<Indicators key={meta.user.id} />}
+                  />
                   <Route path="/purchase-prices" element={<PurchasePrices />} />
                   <Route path="/balances" element={<BalancesPage />} />
                   <Route path="/status" element={<StatusPage />} />
@@ -480,6 +491,7 @@ export default function App() {
                         ![
                           "/",
                           "/sales",
+                          "/indicators",
                           "/status",
                           "/balances",
                           "/purchase-prices",

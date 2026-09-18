@@ -1,0 +1,378 @@
+:where(.indicators-page, .indicators-drawer, .indicators-settings)
+  button:not([class*="mantine-"]) {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+}
+
+.is-indicators .filterbar {
+  display: none;
+}
+.is-indicators .assistant-floating {
+  display: none;
+}
+.indicators-page {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+.indicators-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.indicators-heading h1 {
+  margin: 0 0 4px;
+  font-size: 26px;
+}
+.indicators-heading > div:first-child {
+  min-width: 0;
+}
+.indicators-scope {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted, #8ca2b9);
+  max-width: 100%;
+  text-align: left;
+  overflow: hidden;
+}
+.indicators-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.indicators-actions button,
+.indicators-datebar > button,
+.indicators-settings button {
+  min-width: 40px;
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+}
+.indicators-actions button:hover,
+.indicators-actions .active {
+  background: #173746;
+  color: #6bdee3;
+}
+.indicators-datebar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  border: 1px solid #23354a;
+  border-radius: 14px;
+  padding: 8px;
+  background: #111e30;
+}
+.indicators-datebar > div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.indicators-datebar input {
+  background: transparent;
+  color: #a0e1f0;
+  border: 0;
+  font: inherit;
+  font-weight: 600;
+  font-size: 20px;
+  width: 170px;
+  text-align: center;
+  padding: 3px;
+  color-scheme: dark;
+}
+.indicators-datebar span {
+  font-size: 12px;
+  color: #75bcac;
+}
+.indicators-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 10px 0;
+}
+.indicators-chips button {
+  background: #17333e;
+  border-radius: 8px;
+  padding: 6px 9px;
+  color: #a4e1db;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.indicators-freshness {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 5px;
+  margin: 12px 0;
+  font-size: 12px;
+  color: #8ca2b9;
+}
+.indicators-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.indicator-card {
+  position: relative;
+  min-width: 0;
+  border: 1px solid #24374b;
+  background: linear-gradient(145deg, #132638, #111c2d);
+  border-radius: 15px;
+  overflow: hidden;
+}
+.indicator-values {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 155px;
+  width: 100%;
+  padding: 20px 8px 18px;
+  gap: 10px;
+}
+.indicator-label {
+  color: #cbd6e5;
+  font-size: 14px;
+  padding: 0 14px;
+  text-align: center;
+  min-height: 35px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.indicator-current {
+  color: #93ddeb;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.5px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.indicator-previous {
+  color: #71b9a6;
+  font-size: 21px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.indicator-menu {
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  width: 32px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+  color: #9aafc5;
+}
+.indicators-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 14px 0;
+  font-size: 12px;
+  color: #93ddeb;
+}
+.indicators-legend span + span {
+  color: #71b9a6;
+}
+.indicators-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 120px;
+  color: #94a9bf;
+}
+.indicators-back {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+}
+.indicators-filter-list > button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  padding: 14px 3px;
+  border-bottom: 1px solid #27384a;
+  gap: 10px;
+}
+.indicators-filter-list span {
+  min-width: 0;
+}
+.indicators-filter-list small {
+  display: block;
+  font-size: 12px;
+  color: #8ea6bc;
+  margin-top: 5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.indicators-options {
+  padding: 8px 0 70px;
+}
+.indicators-options .mantine-Checkbox-root {
+  padding: 13px 0;
+  border-bottom: 1px solid #27384a;
+}
+.indicators-options .mantine-Checkbox-label {
+  overflow-wrap: anywhere;
+}
+.indicators-filter-reset {
+  color: #75d4e2;
+  padding: 14px 0;
+  text-align: left;
+  font-size: 13px;
+}
+.indicators-drawer .mantine-Drawer-body {
+  padding-bottom: 90px;
+}
+.indicators-drawer-footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: space-between;
+  padding: 14px 0 max(14px, env(safe-area-inset-bottom));
+  background: #111c2d;
+  border-top: 1px solid #27384a;
+  margin-top: 16px;
+}
+.indicators-settings > div {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 9px 0;
+  border-bottom: 1px solid #27384a;
+}
+.indicators-settings .mantine-Switch-root {
+  flex: 1;
+}
+.indicator-detail > div {
+  padding: 14px 0;
+}
+.indicator-detail span {
+  color: #93a8bf;
+  display: block;
+}
+.indicator-detail strong {
+  display: block;
+  font-size: 28px;
+  color: #93ddeb;
+  margin: 6px 0;
+}
+.indicator-detail .previous strong {
+  color: #71b9a6;
+}
+.indicator-bar-track {
+  height: 8px;
+  background: #1c2d41;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.indicator-bar-track i {
+  display: block;
+  height: 100%;
+  background: #75d4e2;
+  border-radius: 6px;
+}
+.indicator-detail .previous i {
+  background: #71b9a6;
+}
+.indicators-page button:focus-visible {
+  outline: 2px solid #72d6e2;
+  outline-offset: 2px;
+}
+.indicators-page button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+@media (max-width: 1100px) {
+  .indicators-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (max-width: 650px) {
+  .is-indicators .content {
+    padding: 14px 12px 70px;
+  }
+  .indicators-heading {
+    margin-bottom: 10px;
+  }
+  .indicators-heading h1 {
+    font-size: 21px;
+  }
+  .indicators-scope {
+    font-size: 12px;
+    max-width: 190px;
+    display: block;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .indicators-scope svg {
+    display: none;
+  }
+  .indicators-datebar {
+    gap: 2px;
+    padding: 5px 2px;
+    border-radius: 11px;
+  }
+  .indicators-datebar input {
+    font-size: 18px;
+    width: 155px;
+  }
+  .indicators-datebar span {
+    font-size: 11px;
+  }
+  .indicators-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .indicator-card {
+    border-radius: 12px;
+  }
+  .indicator-values {
+    min-height: 138px;
+    gap: 9px;
+    padding: 15px 5px;
+  }
+  .indicator-label {
+    font-size: 12px;
+    padding: 0 16px;
+    min-height: 30px;
+  }
+  .indicator-current {
+    font-size: clamp(17px, 4.7vw, 23px);
+    letter-spacing: -0.5px;
+  }
+  .indicator-previous {
+    font-size: clamp(15px, 4.1vw, 20px);
+  }
+  .indicators-freshness {
+    font-size: 10px;
+    margin: 9px 0;
+  }
+  .indicators-drawer .mantine-Drawer-content {
+    width: 100%;
+    max-width: 100%;
+  }
+  .indicators-drawer .mantine-Drawer-header {
+    padding-top: max(16px, env(safe-area-inset-top));
+  }
+}
