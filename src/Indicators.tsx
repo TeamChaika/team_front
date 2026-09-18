@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Button,
@@ -8,6 +8,7 @@ import {
   Menu,
   Modal,
   Switch,
+  Select,
   TextInput,
 } from "@mantine/core";
 import {
@@ -23,9 +24,10 @@ import {
   IconSearch,
   IconX,
 } from "@tabler/icons-react";
-import { api, dateText, type LiveSource } from "./api";
+import { api, dateText } from "./api";
 import { useWorkspace } from "./App";
 import "./indicators.css";
+import { periods, presets, type Preset } from "./indicatorPeriods";
 
 type Metric = { key: string; label: string; unit?: string; duration?: boolean };
 const metrics: Metric[] = [
@@ -47,19 +49,25 @@ const metrics: Metric[] = [
 type Filter = { key: string; label: string; default: string[] };
 type Filters = Record<string, string[]>;
 type Period = {
-  date: string;
-  totals: Record<string, string | number | null>;
-  available: boolean;
+  start: string;
+  end: string;
+  value: string | number | null;
   partial: boolean;
   observed_at: string | null;
 };
 type Report = {
+  status: "ready";
   current: Period;
   previous: Period;
   source: string;
-  live?: LiveSource | null;
-  warning?: string | null;
-  cache_seconds?: number;
+  observed_at: string;
+};
+type Pending = { status: "loading"; retry_after: number };
+type CardState = { report?: Report; error?: string };
+type Dictionary = {
+  filters: Filter[];
+  options: Record<string, string[]>;
+  sync: Record<string, { synced_at: string }>;
 };
 type Preferences = { order: string[]; hidden: string[] };
 const defaultOrder = metrics.map((m) => m.key);
@@ -85,10 +93,24 @@ const labels: Record<string, string> = {
   MODIFIER: "Модификатор",
   SERVICE: "Услуга",
 };
-function shift(day: string, count: number) {
-  const date = new Date(day + "T12:00:00Z");
-  date.setUTCDate(date.getUTCDate() + count);
-  return date.toISOString().slice(0, 10);
+function rangeLabel(start: string, end: string) {
+  return start === end
+    ? dateText(start)
+    : `${dateText(start)} — ${dateText(end)}`;
+}
+function pause(ms: number, signal: AbortSignal) {
+  return new Promise<void>((resolve, reject) => {
+    const cancel = () => {
+      clearTimeout(timer);
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", cancel);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", cancel, { once: true });
+    if (signal.aborted) cancel();
+  });
 }
 function display(value: unknown, metric: Metric) {
   if (value === null || value === undefined || !Number.isFinite(Number(value)))
@@ -125,7 +147,7 @@ function loadPreferences(key: string): Preferences {
   } catch {
     /* Storage is optional; the dashboard still works in private browsing. */
   }
-  return { order: defaultOrder, hidden: ["precheck_minutes"] };
+  return { order: defaultOrder, hidden: [] };
 }
 
 export function Indicators() {
@@ -134,29 +156,37 @@ export function Indicators() {
   const [preferences, setPreferences] = useState(() =>
     loadPreferences(storageKey),
   );
-  const [day, setDay] = useState(meta.today || meta.sales_dates[0]);
+  const today = meta.today || meta.sales_dates[0];
+  const [preset, setPreset] = useState<Preset>("today");
+  const [custom, setCustom] = useState({ start: today, end: today });
+  const [draftRange, setDraftRange] = useState(custom);
   const [filters, setFilters] = useState<Filters>({});
-  const [direct, setDirect] = useState(false);
   const [revision, setRevision] = useState(0);
-  const [report, setReport] = useState<Report | null>(null),
-    [busy, setBusy] = useState(true),
-    [error, setError] = useState("");
-  const [catalog, setCatalog] = useState<Filter[]>([]);
+  const [cards, setCards] = useState<Record<string, CardState>>({});
+  const retryCard = useRef<(key: string) => void>(() => {});
+  const [dictionary, setDictionary] = useState<Dictionary | null>(null);
+  const [dictionaryBusy, setDictionaryBusy] = useState(false);
+  const [dictionaryError, setDictionaryError] = useState("");
+  const [dictionaryRevision, setDictionaryRevision] = useState(0);
+  const catalog = dictionary?.filters || [];
   const [filterOpen, setFilterOpen] = useState(false),
     [settingsOpen, setSettingsOpen] = useState(false);
   const [draft, setDraft] = useState<Filters>({}),
     [draftDepartments, setDraftDepartments] = useState<string[]>([]);
   const [field, setField] = useState<string | null>(null),
     [search, setSearch] = useState("");
-  const [options, setOptions] = useState<string[]>([]),
-    [optionBusy, setOptionBusy] = useState(false),
-    [optionError, setOptionError] = useState("");
-  const [optionRevision, setOptionRevision] = useState(0);
   const [detail, setDetail] = useState<Metric | null>(null);
-  const query = parameters(departments),
-    draftQuery = parameters(draftDepartments);
-  const filterJson = JSON.stringify(filters),
-    draftJson = JSON.stringify(draft);
+  const query = parameters(departments);
+  const dictionaryQuery = parameters(
+    filterOpen ? draftDepartments : departments,
+  );
+  const filterJson = JSON.stringify(filters);
+  const period = periods(preset, today, custom);
+  const periodJson = JSON.stringify(period);
+  const visibleKeys = metrics
+    .filter((m) => !preferences.hidden.includes(m.key))
+    .map((m) => m.key)
+    .join(",");
   useEffect(() => {
     try {
       localStorage.setItem(storageKey, JSON.stringify(preferences));
@@ -166,57 +196,85 @@ export function Indicators() {
   }, [storageKey, preferences]);
   useEffect(() => {
     const controller = new AbortController();
-    api<{ filters: Filter[] }>("/indicators/filters", {
+    setDictionaryBusy(true);
+    setDictionaryError("");
+    setDictionary(null);
+    api<Dictionary>(`/indicators/filters?${dictionaryQuery}`, {
       signal: controller.signal,
     })
-      .then((r) => setCatalog(r.filters))
-      .catch(() => {});
+      .then((r) => {
+        if (!controller.signal.aborted) setDictionary(r);
+      })
+      .catch((e) => {
+        if (!controller.signal.aborted) setDictionaryError(e.message);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setDictionaryBusy(false);
+      });
     return () => controller.abort();
-  }, []);
+  }, [dictionaryQuery, dictionaryRevision]);
   useEffect(() => {
-    const controller = new AbortController();
-    setBusy(true);
-    setError("");
-    setReport(null);
+    const controller = new AbortController(),
+      signal = controller.signal;
+    setCards({});
     setDetail(null);
-    api<Report>(`/indicators/query?${query}`, {
-      method: "POST",
-      signal: controller.signal,
-      body: JSON.stringify({ day, filters: JSON.parse(filterJson), direct }),
-    })
-      .then((r) => {
-        if (!controller.signal.aborted) setReport(r);
-      })
-      .catch((e) => {
-        if (!controller.signal.aborted) setError(e.message);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setBusy(false);
-      });
-    return () => controller.abort();
-  }, [day, query, filterJson, direct, revision]);
-  useEffect(() => {
-    if (!filterOpen || !field || field === "restaurants") return;
-    const controller = new AbortController();
-    setOptions([]);
-    setOptionError("");
-    setOptionBusy(true);
-    api<{ values: string[] }>(`/indicators/options/${field}?${draftQuery}`, {
-      method: "POST",
-      signal: controller.signal,
-      body: JSON.stringify({ day, filters: JSON.parse(draftJson) }),
-    })
-      .then((r) => {
-        if (!controller.signal.aborted) setOptions(r.values);
-      })
-      .catch((e) => {
-        if (!controller.signal.aborted) setOptionError(e.message);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setOptionBusy(false);
-      });
-    return () => controller.abort();
-  }, [field, filterOpen, day, draftQuery, optionRevision]); // Draft selections apply on the next filter or explicit retry.
+    const body = JSON.stringify({
+      ...JSON.parse(periodJson),
+      filters: JSON.parse(filterJson),
+    });
+    const inFlight = new Set<string>();
+    async function load(key: string) {
+      if (inFlight.has(key)) return;
+      inFlight.add(key);
+      setCards((c) => ({ ...c, [key]: {} }));
+      try {
+        const deadline = Date.now() + 15 * 60_000;
+        while (!signal.aborted) {
+          const result = await api<Report | Pending>(
+            `/indicators/metric/${key}?${query}`,
+            { method: "POST", body, signal },
+          );
+          if (signal.aborted) return;
+          if (result.status === "ready") {
+            setCards((c) => ({ ...c, [key]: { report: result } }));
+            return;
+          }
+          if (Date.now() >= deadline)
+            throw new Error("iiko долго формирует отчёт. Повторите загрузку.");
+          await pause(
+            Math.min(10, Math.max(1, result.retry_after)) * 1000,
+            signal,
+          );
+        }
+      } catch (e) {
+        if (!signal.aborted)
+          setCards((c) => ({
+            ...c,
+            [key]: {
+              error:
+                e instanceof Error
+                  ? e.message
+                  : "Не удалось загрузить показатель",
+            },
+          }));
+      } finally {
+        inFlight.delete(key);
+      }
+    }
+    retryCard.current = (key) => {
+      void load(key);
+    };
+    const queue = visibleKeys.split(",").filter(Boolean);
+    async function worker() {
+      while (queue.length && !signal.aborted) await load(queue.shift()!);
+    }
+    void worker();
+    void worker();
+    return () => {
+      controller.abort();
+      retryCard.current = () => {};
+    };
+  }, [periodJson, query, filterJson, visibleKeys, revision]);
   const activeFilters = Object.entries(filters).filter(
     ([key, values]) =>
       JSON.stringify(values) !== JSON.stringify(defaults[key] || []),
@@ -251,7 +309,18 @@ export function Indicators() {
     setSearch("");
     setFilterOpen(true);
   }
-  const observed = report?.live?.observed_at || report?.current.observed_at;
+  const ready = Object.values(cards).flatMap((c) =>
+    c.report ? [c.report] : [],
+  );
+  const observed = ready
+    .map((r) => r.observed_at)
+    .sort()
+    .at(-1);
+  const detailReport = detail ? cards[detail.key]?.report : null;
+  const options = field ? dictionary?.options[field] || [] : [];
+  const optionBusy = dictionaryBusy;
+  const optionError = dictionaryError;
+  const syncTime = field ? dictionary?.sync[field]?.synced_at : undefined;
   const selectedValues =
     field === "restaurants"
       ? draftDepartments
@@ -291,7 +360,7 @@ export function Indicators() {
           <button
             aria-label="Обновить показатели"
             onClick={() => setRevision((v) => v + 1)}
-            disabled={busy}
+            disabled={!ready.length}
           >
             <IconRefresh size={20} />
           </button>
@@ -313,41 +382,82 @@ export function Indicators() {
           </button>
         </div>
       </div>
-      <div className="indicators-datebar">
-        <button
-          aria-label="Предыдущий день"
-          disabled={day <= "2000-01-02"}
-          onClick={() => setDay(shift(day, -1))}
+      <div className="indicators-periodbar">
+        <Select
+          aria-label="Период показателей"
+          data={presets}
+          value={preset}
+          allowDeselect={false}
+          size="sm"
+          onChange={(value) => {
+            if (value) {
+              setDraftRange({ start: period.start, end: period.end });
+              setCustom({ start: period.start, end: period.end });
+              setPreset(value as Preset);
+            }
+          }}
+        />
+        <span>{rangeLabel(period.start, period.end)}</span>
+      </div>
+      {preset === "custom" && (
+        <form
+          className="indicators-range"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (
+              draftRange.start &&
+              draftRange.end &&
+              draftRange.start <= draftRange.end
+            )
+              setCustom(draftRange);
+          }}
         >
-          <IconChevronLeft />
-        </button>
-        <div>
-          <input
-            aria-label="Дата показателей"
-            type="date"
-            value={day}
-            min="2000-01-02"
-            max={meta.today}
-            onChange={(e) => {
-              if (e.target.value) setDay(e.target.value);
-            }}
-          />
-          <span>Сравнение: {dateText(shift(day, -1))}</span>
-        </div>
-        <button
-          aria-label="Следующий день"
-          disabled={!meta.today || day >= meta.today}
-          onClick={() => setDay(shift(day, 1))}
-        >
-          <IconChevronRight />
-        </button>
-        <Button
-          size="xs"
-          variant="subtle"
-          onClick={() => meta.today && setDay(meta.today)}
-        >
-          Сегодня
-        </Button>
+          <label>
+            С
+            <input
+              aria-label="Начало периода"
+              type="date"
+              required
+              min="2001-01-01"
+              max={draftRange.end || today}
+              value={draftRange.start}
+              onChange={(e) =>
+                setDraftRange((r) => ({ ...r, start: e.target.value }))
+              }
+            />
+          </label>
+          <label>
+            По
+            <input
+              aria-label="Конец периода"
+              type="date"
+              required
+              min={draftRange.start}
+              max={today}
+              value={draftRange.end}
+              onChange={(e) =>
+                setDraftRange((r) => ({ ...r, end: e.target.value }))
+              }
+            />
+          </label>
+          <Button
+            size="xs"
+            type="submit"
+            disabled={
+              !draftRange.start ||
+              !draftRange.end ||
+              draftRange.start > draftRange.end ||
+              draftRange.end > today ||
+              Date.parse(draftRange.end) - Date.parse(draftRange.start) >
+                1826 * 86400000
+            }
+          >
+            Показать
+          </Button>
+        </form>
+      )}
+      <div className="indicators-comparison">
+        Сравнение: {rangeLabel(period.previous_start, period.previous_end)}
       </div>
       {activeFilters.length > 0 && (
         <div className="indicators-chips">
@@ -363,7 +473,6 @@ export function Indicators() {
             aria-label="Сбросить дополнительные фильтры"
             onClick={() => {
               setFilters({});
-              setDirect(false);
             }}
           >
             <IconX size={14} />
@@ -371,127 +480,119 @@ export function Indicators() {
           </button>
         </div>
       )}
-      {error && (
-        <Alert color="red" role="alert">
-          {error}
-          <Button
-            size="xs"
-            variant="subtle"
-            onClick={() => setRevision((v) => v + 1)}
-          >
-            Повторить
-          </Button>
-        </Alert>
-      )}
-      {busy && (
-        <div className="indicators-loading" role="status">
-          <Loader size="sm" />
-          Загружаем показатели…
-        </div>
-      )}
-      {report && (
-        <>
-          <div className="indicators-freshness">
-            <span>
-              {report.live || report.source === "iiko_api"
-                ? "iiko · кеш 5 мин"
-                : "Сохранённые данные"}
-              {observed ? ` · ${dateText(observed)}` : ""}
-            </span>
-            {report.current.partial && <span>День ещё не завершён</span>}
-          </div>
-          {(report.warning || report.live?.stale) && (
-            <Alert color="yellow">
-              {report.warning ||
-                "Показана сохранённая копия ответа iiko. Обновление временно недоступно."}
-            </Alert>
-          )}
-          {!report.current.available && (
-            <Alert color="yellow">
-              За {dateText(day)} данные ещё не загружены.
-            </Alert>
-          )}
-          <div className="indicators-grid">
-            {ordered
-              .filter((m) => !preferences.hidden.includes(m.key))
-              .map((metric) => (
-                <article className="indicator-card" key={metric.key}>
-                  <Menu position="bottom-end" withinPortal>
-                    <Menu.Target>
-                      <button
-                        className="indicator-menu"
-                        aria-label={`Настроить: ${metric.label}${metric.unit ? `, ${metric.unit}` : ""}`}
-                      >
-                        <IconDotsVertical size={17} />
-                      </button>
-                    </Menu.Target>
-                    <Menu.Dropdown>
-                      <Menu.Item
-                        leftSection={<IconArrowUp size={14} />}
-                        disabled={preferences.order[0] === metric.key}
-                        onClick={() => move(metric.key, -1)}
-                      >
-                        Выше
-                      </Menu.Item>
-                      <Menu.Item
-                        leftSection={<IconArrowDown size={14} />}
-                        disabled={preferences.order.at(-1) === metric.key}
-                        onClick={() => move(metric.key, 1)}
-                      >
-                        Ниже
-                      </Menu.Item>
-                      <Menu.Item
-                        leftSection={<IconEyeOff size={14} />}
-                        onClick={() => hide(metric.key)}
-                      >
-                        Скрыть
-                      </Menu.Item>
-                    </Menu.Dropdown>
-                  </Menu>
-                  <button
-                    className="indicator-values"
-                    onClick={() => setDetail(metric)}
-                    aria-label={`${metric.label}${metric.unit ? `, ${metric.unit}` : ""}: сравнить дни`}
-                  >
-                    <span className="indicator-label">
-                      {metric.label}
-                      {metric.unit === "%"
-                        ? ", %"
-                        : metric.key === "gross_profit"
-                          ? ", ₽"
-                          : ""}
+      <div className="indicators-freshness">
+        <span>
+          iiko · кеш 5 мин
+          {observed
+            ? ` · ${new Date(observed).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Simferopol" })}`
+            : ""}
+        </span>
+        {period.end === today && <span>Сегодня — на текущий момент</span>}
+      </div>
+      <div className="indicators-grid">
+        {ordered
+          .filter((m) => !preferences.hidden.includes(m.key))
+          .map((metric) => {
+            const card = cards[metric.key],
+              report = card?.report;
+            return (
+              <article
+                className="indicator-card"
+                key={metric.key}
+                data-metric={metric.key}
+                aria-busy={!report && !card?.error}
+              >
+                <Menu position="bottom-end" withinPortal>
+                  <Menu.Target>
+                    <button
+                      className="indicator-menu"
+                      aria-label={`Настроить: ${metric.label}${metric.unit ? `, ${metric.unit}` : ""}`}
+                    >
+                      <IconDotsVertical size={15} />
+                    </button>
+                  </Menu.Target>
+                  <Menu.Dropdown>
+                    <Menu.Item
+                      leftSection={<IconArrowUp size={14} />}
+                      disabled={preferences.order[0] === metric.key}
+                      onClick={() => move(metric.key, -1)}
+                    >
+                      Выше
+                    </Menu.Item>
+                    <Menu.Item
+                      leftSection={<IconArrowDown size={14} />}
+                      disabled={preferences.order.at(-1) === metric.key}
+                      onClick={() => move(metric.key, 1)}
+                    >
+                      Ниже
+                    </Menu.Item>
+                    <Menu.Item
+                      leftSection={<IconEyeOff size={14} />}
+                      onClick={() => hide(metric.key)}
+                    >
+                      Скрыть
+                    </Menu.Item>
+                  </Menu.Dropdown>
+                </Menu>
+                <button
+                  className="indicator-values"
+                  onClick={() =>
+                    card?.error
+                      ? retryCard.current(metric.key)
+                      : setDetail(metric)
+                  }
+                  disabled={!report && !card?.error}
+                  aria-label={`${metric.label}${metric.unit ? `, ${metric.unit}` : ""}: ${card?.error ? "повторить загрузку" : "сравнить периоды"}`}
+                >
+                  <span className="indicator-label">
+                    {metric.label}
+                    {metric.unit ? `, ${metric.unit}` : ""}
+                  </span>
+                  {report ? (
+                    <>
+                      <strong className="indicator-current">
+                        {display(report.current.value, {
+                          ...metric,
+                          unit: undefined,
+                        })}
+                      </strong>
+                      <span className="indicator-previous">
+                        {display(report.previous.value, {
+                          ...metric,
+                          unit: undefined,
+                        })}
+                      </span>
+                    </>
+                  ) : card?.error ? (
+                    <span className="indicator-error">
+                      <IconRefresh size={14} />
+                      Повторить
                     </span>
-                    <strong className="indicator-current">
-                      {display(report.current.totals[metric.key], metric)}
-                    </strong>
-                    <span className="indicator-previous">
-                      {display(report.previous.totals[metric.key], metric)}
+                  ) : (
+                    <span className="indicator-pending">
+                      <Loader size={14} />
+                      <span>Загрузка…</span>
                     </span>
-                  </button>
-                </article>
-              ))}
-          </div>
-          {preferences.hidden.length === metrics.length && (
-            <Button variant="light" onClick={() => setSettingsOpen(true)}>
-              Добавить показатели
-            </Button>
-          )}
-          <div className="indicators-legend">
-            <span>● {dateText(day)}</span>
-            <span>
-              ● {dateText(report.previous.date)} ·{" "}
-              {report.previous.available
-                ? report.previous.partial
-                  ? "неполная выгрузка"
-                  : "полный день"
-                : "нет данных"}
-            </span>
-          </div>
-          {!report.previous.available && (
-            <p className="muted">За день сравнения данные ещё не загружены.</p>
-          )}
-        </>
+                  )}
+                </button>
+                {card?.error && (
+                  <span className="indicator-error-text" title={card.error}>
+                    iiko пока не ответила
+                  </span>
+                )}
+              </article>
+            );
+          })}
+      </div>
+      {preferences.hidden.length === metrics.length && (
+        <Button variant="light" onClick={() => setSettingsOpen(true)}>
+          Добавить показатели
+        </Button>
       )}
+      <div className="indicators-legend">
+        <span>● Выбранный период</span>
+        <span>● Период сравнения</span>
+      </div>
       <Drawer
         opened={filterOpen}
         onClose={() => setFilterOpen(false)}
@@ -543,7 +644,7 @@ export function Indicators() {
             {optionBusy && field !== "restaurants" && (
               <div className="indicators-loading" role="status">
                 <Loader size="sm" />
-                Получаем значения из iiko…
+                Загружаем справочник…
               </div>
             )}
             {optionError && field !== "restaurants" && (
@@ -552,20 +653,34 @@ export function Indicators() {
                 <Button
                   size="xs"
                   variant="subtle"
-                  onClick={() => setOptionRevision((v) => v + 1)}
+                  onClick={() => setDictionaryRevision((v) => v + 1)}
                 >
                   Повторить
                 </Button>
               </Alert>
             )}
+            {syncTime && (
+              <p className="indicators-dictionary-date">
+                Обновлено {dateText(syncTime)}
+              </p>
+            )}
+            {choiceList.filter((v) => match(v.label)).length > 150 && (
+              <p className="muted">Первые 150 значений. Уточните поиск.</p>
+            )}
             <div className="indicators-options">
               {choiceList
                 .filter((v) => match(v.label))
+                .slice(0, 150)
                 .map((v) => (
                   <Checkbox
                     key={v.value}
                     label={v.label}
                     checked={selectedValues.includes(v.value)}
+                    disabled={
+                      field !== "restaurants" &&
+                      selectedValues.length >= 100 &&
+                      !selectedValues.includes(v.value)
+                    }
                     onChange={() => toggle(v.value)}
                   />
                 ))}
@@ -574,7 +689,9 @@ export function Indicators() {
               !optionError &&
               !choiceList.filter((v) => match(v.label)).length && (
                 <p className="muted">
-                  Нет значений за выбранные дни с этими фильтрами.
+                  {syncTime
+                    ? "Нет подходящих значений в справочнике."
+                    : "Справочник ещё синхронизируется."}
                 </p>
               )}
           </>
@@ -638,7 +755,6 @@ export function Indicators() {
             onClick={() => {
               setFilters(draft);
               setDepartments(draftDepartments);
-              setDirect(false);
               setFilterOpen(false);
             }}
           >
@@ -691,7 +807,7 @@ export function Indicators() {
           onClick={() =>
             setPreferences({
               order: defaultOrder,
-              hidden: ["precheck_minutes"],
+              hidden: [],
             })
           }
         >
@@ -705,53 +821,24 @@ export function Indicators() {
         closeButtonProps={{ "aria-label": "Закрыть сравнение" }}
         centered
       >
-        {detail && report && (
+        {detail && detailReport && (
           <div className="indicator-detail">
-            {[report.current, report.previous].map((period, index) => {
-              const value = period.totals[detail.key],
-                max = Math.max(
-                  Math.abs(Number(report.current.totals[detail.key] || 0)),
-                  Math.abs(Number(report.previous.totals[detail.key] || 0)),
-                  1,
-                );
-              return (
-                <div
-                  key={period.date}
-                  className={index ? "previous" : "current"}
-                >
-                  <span>
-                    {dateText(period.date)}
-                    {period.partial ? " · день не завершён" : ""}
-                  </span>
-                  <strong>{display(value, detail)}</strong>
-                  <div className="indicator-bar-track">
-                    <i
-                      style={{
-                        width: `${(Math.abs(Number(value || 0)) / max) * 100}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-              );
-            })}
-            {detail.duration &&
-              report.current.totals.precheck_minutes == null && (
-                <>
-                  <p className="muted">
-                    В сохранённой выгрузке нет времени в пречеке. Его можно
-                    запросить отдельно из iiko.
-                  </p>
-                  <Button
-                    onClick={() => {
-                      setDetail(null);
-                      setDirect(true);
-                      setRevision((v) => v + 1);
+            {[detailReport.current, detailReport.previous].map((p, i) => (
+              <div key={i} className={i ? "previous" : "current"}>
+                <span>
+                  {rangeLabel(p.start, p.end)}
+                  {p.partial ? " · день ещё идёт" : ""}
+                </span>
+                <strong>{display(p.value, detail)}</strong>
+                <div className="indicator-bar-track">
+                  <i
+                    style={{
+                      width: `${(Math.abs(Number(p.value || 0)) / Math.max(Math.abs(Number(detailReport.current.value || 0)), Math.abs(Number(detailReport.previous.value || 0)), 1)) * 100}%`,
                     }}
-                  >
-                    Запросить показатели из iiko
-                  </Button>
-                </>
-              )}
+                  />
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </Modal>
