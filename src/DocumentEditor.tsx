@@ -178,7 +178,8 @@ export function DocumentEditor({
       saved(result);
     } catch (e) {
       setError((e as Error).message);
-      if (e instanceof ApiError && e.status >= 500) setUncertain(true);
+      if (pending.current && (!(e instanceof ApiError) || e.status >= 500))
+        setUncertain(true);
       else {
         pending.current = null;
         nonce.current = crypto.randomUUID();

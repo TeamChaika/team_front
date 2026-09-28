@@ -18,6 +18,7 @@ import {
 } from "@mantine/core";
 import { IconBuildingStore, IconPlus, IconUsers } from "@tabler/icons-react";
 import { api } from "./api";
+import { DocumentAccess } from "./DocumentAccess";
 
 type Grant = { venue: string; can_create: boolean };
 type Account = {
@@ -509,7 +510,7 @@ function TerminalEditor({
 
 export function ManagementPage({
   onChange,
-  documentsEnabled: _documentsEnabled,
+  documentsEnabled,
 }: {
   onChange: () => void;
   documentsEnabled?: boolean;
@@ -570,7 +571,7 @@ export function ManagementPage({
       {!directory || !configuration ? (
         <Loader />
       ) : (
-        <Tabs defaultValue="accounts">
+        <Tabs defaultValue="accounts" keepMounted={false}>
           <Tabs.List>
             <Tabs.Tab value="accounts" leftSection={<IconUsers size={17} />}>
               Сотрудники и доступы
@@ -581,7 +582,15 @@ export function ManagementPage({
             >
               Заведения и терминалы
             </Tabs.Tab>
+            {documentsEnabled && (
+              <Tabs.Tab value="documents">Документы и склады</Tabs.Tab>
+            )}
           </Tabs.List>
+          {documentsEnabled && (
+            <Tabs.Panel value="documents" pt="lg">
+              <DocumentAccess accounts={directory.users} />
+            </Tabs.Panel>
+          )}
           <Tabs.Panel value="accounts" pt="lg">
             <Stack>
               <Group justify="space-between">
