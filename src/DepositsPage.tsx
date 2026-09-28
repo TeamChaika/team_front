@@ -18,10 +18,12 @@ import {
   IconRefresh,
   IconSearch,
   IconUsers,
+  IconPlus,
 } from "@tabler/icons-react";
 import { api, apiBlob, dateText, money } from "./api";
 import { Feedback, PageTitle } from "./pages";
 import { useData } from "./useData";
+import { CreateDeposit } from "./CreateDeposit";
 import "./deposits.css";
 
 type Deposit = {
@@ -42,7 +44,12 @@ type DepositPage = {
   page: number;
   page_size: number;
 };
-type Grant = { user_id: string; venue: string; is_all: boolean };
+type Grant = {
+  user_id: string;
+  venue: string;
+  is_all: boolean;
+  can_create: boolean;
+};
 type Access = { rows: Grant[]; users: { id: string; display_name: string }[] };
 type Filters = {
   query: string;
@@ -167,6 +174,7 @@ function DepositAccess({
   const [userId, setUserId] = useState<string | null>(null),
     [venue, setVenue] = useState<string | null>(null);
   const [all, setAll] = useState(false),
+    [canCreate, setCanCreate] = useState(false),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const [confirm, setConfirm] = useState<Grant | null>(null);
@@ -191,6 +199,7 @@ function DepositAccess({
         setUserId(null);
         setVenue(null);
         setAll(false);
+        setCanCreate(false);
       }
     } catch (e) {
       setError((e as Error).message);
@@ -207,8 +216,9 @@ function DepositAccess({
       centered
     >
       <Text size="sm" c="dimmed" mb="md">
-        Права этого раздела независимы от аналитики iiko. «Все заведения»
-        разрешает просмотр, но не управление правами.
+        Создание разрешается отдельно от просмотра. «Все заведения»
+        распространяет назначенные права на всю сеть. Права аналитики iiko не
+        меняются.
       </Text>
       {error && (
         <Alert color="red" role="alert" mb="md">
@@ -220,7 +230,12 @@ function DepositAccess({
           onSubmit={(e) => {
             e.preventDefault();
             if (userId && venue && !duplicate)
-              void mutate("grant", { user_id: userId, venue, is_all: all });
+              void mutate("grant", {
+                user_id: userId,
+                venue,
+                is_all: all,
+                can_create: canCreate,
+              });
           }}
         >
           <Stack gap="sm">
@@ -247,9 +262,14 @@ function DepositAccess({
               data={venues}
             />
             <Checkbox
-              label="Разрешить просмотр всех заведений"
+              label="Все заведения"
               checked={all}
               onChange={(e) => setAll(e.currentTarget.checked)}
+            />
+            <Checkbox
+              label="Разрешить создание депозитов"
+              checked={canCreate}
+              onChange={(e) => setCanCreate(e.currentTarget.checked)}
             />
             {duplicate && (
               <Text size="sm" c="yellow">
@@ -272,6 +292,7 @@ function DepositAccess({
                 <th>Сотрудник</th>
                 <th>Заведение</th>
                 <th>Все заведения</th>
+                <th>Создание</th>
                 <th>Действие</th>
               </tr>
             </thead>
@@ -289,6 +310,19 @@ function DepositAccess({
                         void mutate("update", {
                           ...r,
                           is_all: e.currentTarget.checked,
+                        })
+                      }
+                    />
+                  </td>
+                  <td>
+                    <Checkbox
+                      aria-label={`Создание депозитов: ${names.get(r.user_id) ?? r.user_id}, ${r.venue}`}
+                      checked={Boolean(r.can_create)}
+                      disabled={busy}
+                      onChange={(e) =>
+                        void mutate("update", {
+                          ...r,
+                          can_create: e.currentTarget.checked,
                         })
                       }
                     />
@@ -356,10 +390,12 @@ export function DepositsPage() {
   const [sort, setSort] = useState("created_at:desc");
   const [selected, setSelected] = useState<string | null>(null),
     [access, setAccess] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [exporting, setExporting] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
   const venues = useData<string[]>("/deposits/venues");
+  const creationVenues = useData<string[]>("/deposits/creation-venues");
   const permissions = useData<{ can_manage_access: boolean }>(
     "/deposits/permissions",
   );
@@ -436,6 +472,14 @@ export function DepositsPage() {
         subtitle="Бронирования, статусы оплаты и ссылки для гостей"
         action={
           <Group gap="xs">
+            {!!creationVenues.data?.length && (
+              <Button
+                leftSection={<IconPlus size={16} />}
+                onClick={() => setCreating(true)}
+              >
+                Создать депозит
+              </Button>
+            )}
             <Button
               variant="light"
               leftSection={<IconRefresh size={16} />}
@@ -445,6 +489,7 @@ export function DepositsPage() {
               Обновить
             </Button>
             <Button
+              variant="light"
               leftSection={<IconDownload size={16} />}
               onClick={exportFile}
               loading={exporting}
@@ -467,9 +512,9 @@ export function DepositsPage() {
         Здесь показаны доступные вам заведения. Гости оплачивают по прежним
         ссылкам на pay.chaika.team.
       </Text>
-      {(error || permissions.error || venues.error) && (
+      {(error || permissions.error || venues.error || creationVenues.error) && (
         <Alert color="red" role="alert" mb="md">
-          {error || permissions.error || venues.error}
+          {error || permissions.error || venues.error || creationVenues.error}
         </Alert>
       )}
       {notice && (
@@ -673,12 +718,20 @@ export function DepositsPage() {
           onClose={() => setSelected(null)}
         />
       )}
+      {creating && (
+        <CreateDeposit
+          venues={creationVenues.data ?? []}
+          onClose={() => setCreating(false)}
+          onCreated={state.reload}
+        />
+      )}
       {access && permissions.data?.can_manage_access && (
         <DepositAccess
           venues={venues.data ?? []}
           onClose={() => {
             setAccess(false);
             state.reload();
+            creationVenues.reload();
           }}
         />
       )}
