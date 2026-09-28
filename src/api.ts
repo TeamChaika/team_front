@@ -12,11 +12,11 @@ const apiBase = (import.meta.env.VITE_API_BASE_URL?.trim() || "/api").replace(
   "",
 );
 let refresh: Promise<Response> | null = null;
-export async function api<T>(
+async function request(
   path: string,
   init: RequestInit = {},
   retry = true,
-): Promise<T> {
+): Promise<Response> {
   const r = await fetch(apiBase + path, {
     ...init,
     credentials: "include",
@@ -32,7 +32,7 @@ export async function api<T>(
         refresh = null;
       });
     const renewed = await refresh;
-    if (renewed.ok) return api<T>(path, init, false);
+    if (renewed.ok) return request(path, init, false);
     if ([401, 403].includes(renewed.status))
       window.dispatchEvent(new Event("session-lost"));
     else
@@ -41,8 +41,8 @@ export async function api<T>(
         renewed.status,
       );
   }
-  const body = await r.json();
-  if (!r.ok)
+  if (!r.ok) {
+    const body = await r.json().catch(() => ({}));
     throw new ApiError(
       typeof body.detail === "string"
         ? body.detail
@@ -52,7 +52,27 @@ export async function api<T>(
       r.status,
       body.detail?.employee_pending === true,
     );
-  return body;
+  }
+  return r;
+}
+export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await request(path, init);
+  return response.status === 204 ? (undefined as T) : response.json();
+}
+export async function apiBlob(
+  path: string,
+  init: RequestInit = {},
+): Promise<Blob> {
+  const response = await request(path, init);
+  if (
+    !response.headers
+      .get("content-type")
+      ?.startsWith(
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      )
+  )
+    throw new ApiError("Сервер не вернул файл Excel.", 502);
+  return response.blob();
 }
 export type Row = Record<string, unknown>;
 export type Column = { key: string; label: string };
@@ -64,6 +84,7 @@ export type PageData = {
   limit: number;
 };
 export type Meta = {
+  modules?: ("iiko" | "deposits")[];
   today?: string;
   live_sales_enabled?: boolean;
   user: { id: string; display_name: string; role: string };

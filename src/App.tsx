@@ -4,8 +4,16 @@ import {
   createContext,
   useContext,
   type FormEvent,
+  Fragment,
 } from "react";
-import { Routes, Route, NavLink, useLocation, Link } from "react-router-dom";
+import {
+  Routes,
+  Route,
+  NavLink,
+  useLocation,
+  Link,
+  Navigate,
+} from "react-router-dom";
 import {
   Button,
   TextInput,
@@ -49,10 +57,12 @@ import { AssistantProvider } from "./AssistantContext";
 import { AssistantLayout, AssistantToggle } from "./AssistantRail";
 import { RestaurantPicker } from "./RestaurantPicker";
 import { Indicators } from "./Indicators";
+import { DepositsPage } from "./DepositsPage";
 export const sections = [
   { path: "/", title: "Обзор", icon: IconLayoutDashboard },
   { path: "/indicators", title: "Показатели", icon: IconActivity },
   { path: "/sales", title: "Продажи", icon: IconChartBar },
+  { path: "/deposits", title: "Депозиты", icon: IconReceipt },
   { path: "/cash-shifts", title: "Кассовые смены", icon: IconReceipt },
   { path: "/invoices", title: "Приходные накладные", icon: IconReceipt },
   { path: "/purchase-prices", title: "Закупочные цены", icon: IconChartBar },
@@ -262,6 +272,14 @@ export default function App() {
         <Login onLogin={() => setRevision((x) => x + 1)} />
       </>
     );
+  const canIiko =
+    meta.user.role !== "deposits" && (meta.modules?.includes("iiko") ?? true);
+  if (!canIiko && location.pathname !== "/deposits")
+    return <Navigate to="/deposits" replace />;
+  const availableSections = sections.filter(
+    (s) => canIiko || s.path === "/deposits",
+  );
+  const ContentLayout = canIiko ? AssistantLayout : Fragment;
   const title =
     sections.find((s) => s.path !== "/" && location.pathname.startsWith(s.path))
       ?.title ?? "Обзор";
@@ -333,7 +351,7 @@ export default function App() {
             </div>
             <span className="nav-label">РАБОЧЕЕ ПРОСТРАНСТВО</span>
             <nav>
-              {sections.map((s) => (
+              {availableSections.map((s) => (
                 <NavLink
                   key={s.path}
                   to={s.path}
@@ -364,7 +382,9 @@ export default function App() {
                       ? "Владелец"
                       : meta.user.role === "manager"
                         ? "Менеджер"
-                        : "Аналитик"}
+                        : meta.user.role === "deposits"
+                          ? "Депозиты"
+                          : "Аналитик"}
                   </small>
                 </div>
                 <button onClick={logout} title="Выйти" aria-label="Выйти">
@@ -387,89 +407,91 @@ export default function App() {
                 <strong>{title}</strong>
               </div>
               <div className="topbar-actions">
-                <AssistantToggle />
+                {canIiko && <AssistantToggle />}
                 <Badge variant="light" color="cyan">
                   Первая версия
                 </Badge>
               </div>
             </header>
-            <div className="filterbar">
-              {location.pathname === "/" && (
-                <button
-                  className="mobile-menu overview-menu"
-                  onClick={() => setMobile(true)}
-                  aria-label="Открыть меню"
-                >
-                  <IconMenu2 />
-                </button>
-              )}
-              {location.pathname === "/purchase-prices" ? (
-                <span className="muted">
-                  Закупочные цены по сети · все доступные заведения
-                </span>
-              ) : (
-                <RestaurantPicker
-                  restaurants={meta.departments}
-                  value={departments}
-                  onChange={setDepartments}
-                />
-              )}
-              {location.pathname !== "/purchase-prices" && (
-                <>
-                  <div className="date-filter">
-                    <label htmlFor="date-start">Период</label>
-                    <input
-                      id="date-start"
-                      aria-label="Начало периода"
-                      type="date"
-                      disabled={!datesEnabled}
-                      value={start}
-                      onChange={(e) => setStart(e.currentTarget.value)}
-                      onInput={(e) => setStart(e.currentTarget.value)}
-                    />
-                    <span>—</span>
-                    <input
-                      aria-label="Конец периода"
-                      type="date"
-                      disabled={!datesEnabled}
-                      min={start}
-                      value={end}
-                      onChange={(e) => setEnd(e.currentTarget.value)}
-                      onInput={(e) => setEnd(e.currentTarget.value)}
-                    />
-                  </div>
+            {location.pathname !== "/deposits" && (
+              <div className="filterbar">
+                {location.pathname === "/" && (
                   <button
-                    className="reset-date"
-                    onClick={() => {
-                      const d = meta.sales_dates[0];
-                      if (d) {
-                        setStart(d);
-                        setEnd(d);
-                      }
-                    }}
+                    className="mobile-menu overview-menu"
+                    onClick={() => setMobile(true)}
+                    aria-label="Открыть меню"
                   >
-                    Последний день OLAP
+                    <IconMenu2 />
                   </button>
-                  {meta.live_sales_enabled &&
-                    (location.pathname === "/" ||
-                      location.pathname === "/sales") && (
-                      <button
-                        className="reset-date"
-                        onClick={() => {
-                          if (meta.today) {
-                            setStart(meta.today);
-                            setEnd(meta.today);
-                          }
-                        }}
-                      >
-                        Сегодня · iiko
-                      </button>
-                    )}
-                </>
-              )}
-              {location.pathname === "/" && <div id="overview-toolbar" />}
-            </div>
-            <AssistantLayout>
+                )}
+                {location.pathname === "/purchase-prices" ? (
+                  <span className="muted">
+                    Закупочные цены по сети · все доступные заведения
+                  </span>
+                ) : (
+                  <RestaurantPicker
+                    restaurants={meta.departments}
+                    value={departments}
+                    onChange={setDepartments}
+                  />
+                )}
+                {location.pathname !== "/purchase-prices" && (
+                  <>
+                    <div className="date-filter">
+                      <label htmlFor="date-start">Период</label>
+                      <input
+                        id="date-start"
+                        aria-label="Начало периода"
+                        type="date"
+                        disabled={!datesEnabled}
+                        value={start}
+                        onChange={(e) => setStart(e.currentTarget.value)}
+                        onInput={(e) => setStart(e.currentTarget.value)}
+                      />
+                      <span>—</span>
+                      <input
+                        aria-label="Конец периода"
+                        type="date"
+                        disabled={!datesEnabled}
+                        min={start}
+                        value={end}
+                        onChange={(e) => setEnd(e.currentTarget.value)}
+                        onInput={(e) => setEnd(e.currentTarget.value)}
+                      />
+                    </div>
+                    <button
+                      className="reset-date"
+                      onClick={() => {
+                        const d = meta.sales_dates[0];
+                        if (d) {
+                          setStart(d);
+                          setEnd(d);
+                        }
+                      }}
+                    >
+                      Последний день OLAP
+                    </button>
+                    {meta.live_sales_enabled &&
+                      (location.pathname === "/" ||
+                        location.pathname === "/sales") && (
+                        <button
+                          className="reset-date"
+                          onClick={() => {
+                            if (meta.today) {
+                              setStart(meta.today);
+                              setEnd(meta.today);
+                            }
+                          }}
+                        >
+                          Сегодня · iiko
+                        </button>
+                      )}
+                  </>
+                )}
+                {location.pathname === "/" && <div id="overview-toolbar" />}
+              </div>
+            )}
+            <ContentLayout>
               <main className="content">
                 <Routes>
                   <Route
@@ -477,6 +499,10 @@ export default function App() {
                     element={<Overview key={departments.join(",")} />}
                   />
                   <Route path="/sales" element={<SalesPage />} />
+                  <Route
+                    path="/deposits"
+                    element={<DepositsPage key={meta.user.id} />}
+                  />
                   <Route
                     path="/indicators"
                     element={<Indicators key={meta.user.id} />}
@@ -491,6 +517,7 @@ export default function App() {
                         ![
                           "/",
                           "/sales",
+                          "/deposits",
                           "/indicators",
                           "/status",
                           "/balances",
@@ -537,7 +564,7 @@ export default function App() {
                   />
                 </Routes>
               </main>
-            </AssistantLayout>
+            </ContentLayout>
             <footer className="page-footer">
               Chaika Team <span>Время: Крым, UTC+3 · Суммы в рублях</span>
             </footer>
