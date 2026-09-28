@@ -88,6 +88,9 @@ function AccountEditor({
     [error, setError] = useState("");
   const creating = account.revision === undefined;
   const iiko = value.sections.some((s) => s !== "deposits");
+  const requiresRestaurants = value.sections.some(
+    (s) => !["deposits", "transfers", "writeoffs"].includes(s),
+  );
   const deposits = value.sections.includes("deposits");
   function section(id: string, checked: boolean) {
     set((v) => ({
@@ -217,7 +220,8 @@ function AccountEditor({
             <Stack gap="sm">
               <Text fw={600}>Заведения iiko</Text>
               <Text size="sm" c="dimmed">
-                Выбранные заведения доступны во всех разрешённых разделах iiko.
+                Заведения задают доступ к аналитике iiko. Склады и действия с
+                заявками назначаются отдельно во вкладке «Документы и склады».
               </Text>
               <Checkbox
                 label="Все заведения iiko, включая новые"
@@ -238,7 +242,7 @@ function AccountEditor({
                     set({ ...value, department_ids })
                   }
                   searchable
-                  required
+                  required={requiresRestaurants}
                 />
               )}
             </Stack>
