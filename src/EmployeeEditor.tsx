@@ -79,7 +79,8 @@ export function EmployeeEditor({
   const [submitted, setSubmitted] = useState<Command | null>(null),
     [saved, setSaved] = useState(false);
   const [pin, setPin] = useState("");
-  if (w.meta.user.role !== "owner") return null;
+  if (w.meta.user.role !== "owner" || w.meta.user.all_departments === false)
+    return null;
   async function open() {
     setOpened(true);
     setLoading(true);
@@ -398,7 +399,11 @@ export function EmployeePending() {
     navigate = useNavigate();
   const pending = useData<
     { id: string; employee_id: string; name: string | null }[]
-  >(w.meta.user.role === "owner" ? "/employees/pending" : null);
+  >(
+    w.meta.user.role === "owner" && w.meta.user.all_departments !== false
+      ? "/employees/pending"
+      : null,
+  );
   const [busy, setBusy] = useState(""),
     [message, setMessage] = useState("");
   useEffect(() => {

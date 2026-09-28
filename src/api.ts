@@ -89,7 +89,12 @@ export type Meta = {
   modules?: ("iiko" | "deposits")[];
   today?: string;
   live_sales_enabled?: boolean;
-  user: { id: string; display_name: string; role: string };
+  user: {
+    id: string;
+    display_name: string;
+    role: string;
+    all_departments?: boolean;
+  };
   departments: { id: string; name: string; code: string }[];
   sales_dates: string[];
   balance_dates: string[];
