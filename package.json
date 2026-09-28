@@ -3,8 +3,10 @@
     "@mantine/core": "9.6.1",
     "@mantine/hooks": "9.6.1",
     "@tabler/icons-react": "3.46.0",
+    "imask": "7.6.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "react-imask": "7.6.1",
     "react-router-dom": "7.18.3"
   },
   "devDependencies": {

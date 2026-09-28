@@ -3,6 +3,7 @@ import {
   Alert,
   Button,
   Group,
+  InputBase,
   Modal,
   Select,
   Stack,
@@ -11,6 +12,7 @@ import {
   TextInput,
 } from "@mantine/core";
 import { IconCopy } from "@tabler/icons-react";
+import { IMaskInput } from "react-imask";
 import { api, ApiError, money } from "./api";
 
 export function CreateDeposit({
@@ -52,8 +54,8 @@ export function CreateDeposit({
     if (submitting.current) return;
     setError("");
     const phone = draft.phone.replace(/\D/g, "");
-    if (!/^[+0-9 ()-]+$/.test(draft.phone) || !/^[0-9]{10,15}$/.test(phone)) {
-      setError("Укажите номер телефона: от 10 до 15 цифр.");
+    if (!/^7[0-9]{10}$/.test(phone)) {
+      setError("Введите номер полностью: +7 (999) 999-99-99.");
       return;
     }
     if (!Number.isInteger(Number(draft.amount)) || Number(draft.amount) < 1) {
@@ -176,22 +178,41 @@ export function CreateDeposit({
             />
             <TextInput
               label="Имя гостя"
+              description={`${draft.name.length}/100 символов`}
               required
               maxLength={100}
               value={draft.name}
-              onChange={(e) => field("name", e.currentTarget.value)}
+              onChange={(e) =>
+                field("name", e.currentTarget.value.slice(0, 100))
+              }
               disabled={busy}
             />
             <div className="deposit-create-grid">
-              <TextInput
+              <InputBase
+                component={IMaskInput}
                 label="Телефон гостя"
-                type="tel"
+                description="11 цифр, включая код +7"
+                type="text"
+                inputMode="tel"
                 placeholder="+7 (___) ___-__-__"
                 autoComplete="tel"
                 required
-                maxLength={24}
+                mask="+{7} (000) 000-00-00"
+                unmask={true}
+                minLength={18}
+                prepare={(value, masked) => {
+                  const digits = value.replace(/\D/g, "");
+                  if (
+                    !masked.unmaskedValue &&
+                    digits.startsWith("8") &&
+                    digits.length !== 10
+                  ) {
+                    return "7" + digits.slice(1);
+                  }
+                  return value;
+                }}
                 value={draft.phone}
-                onChange={(e) => field("phone", e.currentTarget.value)}
+                onAccept={(value) => field("phone", String(value))}
                 disabled={busy}
               />
               <TextInput
@@ -225,10 +246,13 @@ export function CreateDeposit({
             </div>
             <Textarea
               label="Комментарий"
+              description={`${draft.notes.length}/500 символов`}
               maxLength={500}
               rows={3}
               value={draft.notes}
-              onChange={(e) => field("notes", e.currentTarget.value)}
+              onChange={(e) =>
+                field("notes", e.currentTarget.value.slice(0, 500))
+              }
               disabled={busy}
             />
             <Button type="submit" loading={busy} disabled={!draft.venue}>
