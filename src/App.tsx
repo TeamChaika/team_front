@@ -59,6 +59,7 @@ import { RestaurantPicker } from "./RestaurantPicker";
 import { Indicators } from "./Indicators";
 import { DepositsPage } from "./DepositsPage";
 import { ManagementPage } from "./ManagementPage";
+import { DocumentsPage } from "./DocumentsPage";
 export const sections = [
   { path: "/", title: "Обзор", icon: IconLayoutDashboard },
   { path: "/indicators", title: "Показатели", icon: IconActivity },
@@ -430,6 +431,13 @@ export default function App() {
               </div>
             </header>
             {currentAllowed &&
+              !(
+                meta.documents_enabled &&
+                ["transfers", "writeoffs"].includes(currentSection) &&
+                (location.pathname.includes("/documents/") ||
+                  new URLSearchParams(location.search).get("view") !==
+                    "analytics")
+              ) &&
               !["deposits", "management"].includes(currentSection) && (
                 <div className="filterbar">
                   {location.pathname === "/" && (
@@ -525,6 +533,7 @@ export default function App() {
                       path="/management"
                       element={
                         <ManagementPage
+                          documentsEnabled={meta.documents_enabled}
                           onChange={() => {
                             api<Meta>("/me")
                               .then(setMeta)
@@ -549,6 +558,23 @@ export default function App() {
                     <Route path="/balances" element={<BalancesPage />} />
                     <Route path="/status" element={<StatusPage />} />
                     <Route path="/events/topology" element={<TopologyPage />} />
+                    {meta.documents_enabled &&
+                      ["transfers", "writeoffs"].map((resource) => (
+                        <Route
+                          key={resource}
+                          path={`/${resource}/documents/:documentId`}
+                          element={
+                            <DocumentsPage
+                              key={resource}
+                              kind={
+                                resource === "transfers"
+                                  ? "waybill"
+                                  : "writeoff"
+                              }
+                            />
+                          }
+                        />
+                      ))}
                     {sections
                       .filter(
                         (s) =>
@@ -568,11 +594,23 @@ export default function App() {
                           key={s.path}
                           path={s.path}
                           element={
-                            <ResourcePage
-                              key={s.path}
-                              resource={s.path.slice(1)}
-                              title={s.title}
-                            />
+                            meta.documents_enabled &&
+                            ["/transfers", "/writeoffs"].includes(s.path) ? (
+                              <DocumentsPage
+                                key={s.path}
+                                kind={
+                                  s.path === "/transfers"
+                                    ? "waybill"
+                                    : "writeoff"
+                                }
+                              />
+                            ) : (
+                              <ResourcePage
+                                key={s.path}
+                                resource={s.path.slice(1)}
+                                title={s.title}
+                              />
+                            )
                           }
                         />
                       ))}

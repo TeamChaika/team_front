@@ -74,6 +74,12 @@ export async function apiBlob(
     throw new ApiError("Сервер не вернул файл Excel.", 502);
   return response.blob();
 }
+export async function apiCsv(path: string): Promise<Blob> {
+  const response = await request(path);
+  if (!response.headers.get("content-type")?.startsWith("text/csv"))
+    throw new ApiError("Сервер не вернул CSV с документами.", 502);
+  return response.blob();
+}
 export type Row = Record<string, unknown>;
 export type Column = { key: string; label: string };
 export type PageData = {
@@ -84,6 +90,7 @@ export type PageData = {
   limit: number;
 };
 export type Meta = {
+  documents_enabled?: boolean;
   sections?: string[];
   can_manage?: boolean;
   modules?: ("iiko" | "deposits")[];

@@ -1,0 +1,16 @@
+.document-product-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 150px 32px;
+  gap: 12px;
+  align-items: start;
+}
+@media (max-width: 600px) {
+  .document-product-row {
+    grid-template-columns: minmax(0, 1fr) 32px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--mantine-color-default-border);
+  }
+  .document-product-row > div:first-child {
+    grid-column: 1 / -1;
+  }
+}
