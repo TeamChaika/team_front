@@ -128,6 +128,7 @@ export function DocumentEditor({
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [dirty, setDirty] = useState(false),
+    [discard, setDiscard] = useState(false),
     [uncertain, setUncertain] = useState(false);
   const nonce = useRef(crypto.randomUUID());
   const pending = useRef<ReturnType<typeof documentPayload> | null>(null);
@@ -142,8 +143,9 @@ export function DocumentEditor({
     set(next);
   }
   function dismiss() {
-    if (!busy && (!dirty || window.confirm("Закрыть форму без сохранения?")))
-      close();
+    if (busy) return;
+    if (dirty) setDiscard(true);
+    else close();
   }
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
@@ -190,138 +192,167 @@ export function DocumentEditor({
     }
   }
   return (
-    <Modal
-      opened
-      onClose={dismiss}
-      size="xl"
-      title={
-        mode === "edit"
-          ? "Изменить заявку"
-          : mode === "copy"
-            ? "Копия накладной"
-            : kind === "waybill"
-              ? "Новая накладная"
-              : "Новое списание"
-      }
-      closeOnClickOutside={false}
-      closeOnEscape={!busy}
-    >
-      <form onSubmit={submit}>
-        <Stack>
-          {error && (
-            <Alert color="red" role="alert">
-              {error}
-            </Alert>
-          )}
-          {uncertain && (
-            <Alert color="yellow">
-              Ответ не получен. Поля сохранены; «Проверить результат» повторит
-              тот же запрос без создания второй заявки.
-            </Alert>
-          )}
-          <Text size="sm" c="dimmed">
-            {kind === "waybill"
-              ? "После согласования будет отправлена расходная накладная iiko."
-              : "После согласования списание будет передано в iiko со статусом «Новый»."}
-          </Text>
-          <Select
-            required
-            label={kind === "waybill" ? "Со склада" : "Склад"}
-            searchable
-            data={stores.map((s) => ({ value: s.id, label: s.name }))}
-            value={value.store_id || null}
-            onChange={(id) => update({ ...value, store_id: id || "" })}
-            disabled={busy || uncertain || mode === "edit"}
-          />
-          {kind === "waybill" ? (
+    <>
+      <Modal
+        opened
+        onClose={dismiss}
+        size="xl"
+        title={
+          mode === "edit"
+            ? "Изменить заявку"
+            : mode === "copy"
+              ? "Копия накладной"
+              : kind === "waybill"
+                ? "Новая накладная"
+                : "Новое списание"
+        }
+        closeOnClickOutside={false}
+        closeOnEscape={!busy}
+      >
+        <form onSubmit={submit}>
+          <Stack>
+            {error && (
+              <Alert color="red" role="alert">
+                {error}
+              </Alert>
+            )}
+            {uncertain && (
+              <Alert color="yellow">
+                Ответ не получен. Поля сохранены; «Проверить результат» повторит
+                тот же запрос без создания второй заявки.
+              </Alert>
+            )}
+            <Text size="sm" c="dimmed">
+              {kind === "waybill"
+                ? "После согласования будет отправлена расходная накладная iiko."
+                : "После согласования списание будет передано в iiko со статусом «Новый»."}
+            </Text>
             <Select
               required
-              label="Получатель"
+              label={kind === "waybill" ? "Со склада" : "Склад"}
               searchable
-              data={options.recipients
-                .filter((s) => s.id !== value.store_id)
-                .map((s) => ({ value: s.id, label: s.name }))}
-              value={value.counteragent_id || null}
-              onChange={(id) => update({ ...value, counteragent_id: id || "" })}
+              data={stores.map((s) => ({ value: s.id, label: s.name }))}
+              value={value.store_id || null}
+              onChange={(id) => update({ ...value, store_id: id || "" })}
               disabled={busy || uncertain || mode === "edit"}
             />
-          ) : (
-            <Select
-              required
-              label="Причина списания"
-              data={options.reasons.map((r) => ({
-                value: String(r.id),
-                label: r.name,
-              }))}
-              value={value.reason_id ? String(value.reason_id) : null}
+            {kind === "waybill" ? (
+              <Select
+                required
+                label="Получатель"
+                searchable
+                data={options.recipients
+                  .filter((s) => s.id !== value.store_id)
+                  .map((s) => ({ value: s.id, label: s.name }))}
+                value={value.counteragent_id || null}
+                onChange={(id) =>
+                  update({ ...value, counteragent_id: id || "" })
+                }
+                disabled={busy || uncertain || mode === "edit"}
+              />
+            ) : (
+              <Select
+                required
+                label="Причина списания"
+                data={options.reasons.map((r) => ({
+                  value: String(r.id),
+                  label: r.name,
+                }))}
+                value={value.reason_id ? String(value.reason_id) : null}
+                disabled={busy || uncertain}
+                onChange={(id) => {
+                  const reason = options.reasons.find(
+                    (r) => String(r.id) === id,
+                  );
+                  update({
+                    ...value,
+                    reason_id: reason?.id,
+                    reason: reason?.name,
+                  });
+                }}
+              />
+            )}
+            <Textarea
+              label="Комментарий"
+              maxLength={1000}
+              value={value.comment}
+              description={`${value.comment.length}/1000`}
               disabled={busy || uncertain}
-              onChange={(id) => {
-                const reason = options.reasons.find((r) => String(r.id) === id);
-                update({
-                  ...value,
-                  reason_id: reason?.id,
-                  reason: reason?.name,
-                });
-              }}
-            />
-          )}
-          <Textarea
-            label="Комментарий"
-            maxLength={1000}
-            value={value.comment}
-            description={`${value.comment.length}/1000`}
-            disabled={busy || uncertain}
-            onChange={(e) =>
-              update({ ...value, comment: e.currentTarget.value })
-            }
-          />
-          {value.items.map((item, index) => (
-            <ProductRow
-              key={index}
-              kind={kind}
-              item={item}
-              disabled={busy || uncertain}
-              change={(row) =>
-                update({
-                  ...value,
-                  items: value.items.map((old, i) => (i === index ? row : old)),
-                })
-              }
-              remove={() =>
-                update({
-                  ...value,
-                  items: value.items.filter((_, i) => i !== index),
-                })
+              onChange={(e) =>
+                update({ ...value, comment: e.currentTarget.value })
               }
             />
-          ))}
-          <Button
-            variant="light"
-            leftSection={<IconPlus size={16} />}
-            disabled={busy || uncertain || value.items.length >= 200}
-            onClick={() =>
-              update({
-                ...value,
-                items: [...value.items, { product_id: "", amount: "" }],
-              })
-            }
-          >
-            Добавить позицию
-          </Button>
-          <Group justify="flex-end">
-            <Button variant="default" onClick={dismiss} disabled={busy}>
-              Отмена
+            {value.items.map((item, index) => (
+              <ProductRow
+                key={index}
+                kind={kind}
+                item={item}
+                disabled={busy || uncertain}
+                change={(row) =>
+                  update({
+                    ...value,
+                    items: value.items.map((old, i) =>
+                      i === index ? row : old,
+                    ),
+                  })
+                }
+                remove={() =>
+                  update({
+                    ...value,
+                    items: value.items.filter((_, i) => i !== index),
+                  })
+                }
+              />
+            ))}
+            <Button
+              variant="light"
+              leftSection={<IconPlus size={16} />}
+              disabled={busy || uncertain || value.items.length >= 200}
+              onClick={() =>
+                update({
+                  ...value,
+                  items: [...value.items, { product_id: "", amount: "" }],
+                })
+              }
+            >
+              Добавить позицию
             </Button>
-            <Button type="submit" loading={busy}>
-              {uncertain
-                ? "Проверить результат"
-                : mode === "edit"
-                  ? "Сохранить изменения"
-                  : "Создать заявку"}
+            <Group justify="flex-end">
+              <Button variant="default" onClick={dismiss} disabled={busy}>
+                Отмена
+              </Button>
+              <Button type="submit" loading={busy}>
+                {uncertain
+                  ? "Проверить результат"
+                  : mode === "edit"
+                    ? "Сохранить изменения"
+                    : "Создать заявку"}
+              </Button>
+            </Group>
+          </Stack>
+        </form>
+      </Modal>
+      <Modal
+        opened={discard}
+        onClose={() => setDiscard(false)}
+        title="Закрыть форму без сохранения?"
+      >
+        <Stack>
+          <Text>
+            {uncertain
+              ? "Ответ сервера не получен. Заявка могла сохраниться. Перед повторным созданием проверьте список заявок."
+              : "Введённые изменения будут потеряны."}
+          </Text>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setDiscard(false)}>
+              Продолжить заполнение
+            </Button>
+            <Button color="red" onClick={close}>
+              Закрыть форму
             </Button>
           </Group>
         </Stack>
-      </form>
-    </Modal>
+      </Modal>
+    </>
   );
 }

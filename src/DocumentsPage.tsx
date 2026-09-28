@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   Alert,
   Badge,
@@ -54,22 +54,24 @@ function DocumentCard({
   id,
   close,
   changed,
+  saved,
   options,
 }: {
   kind: DocumentKind;
   id: string;
   close: () => void;
   changed: () => void;
+  saved: (doc: DocumentRecord) => void;
   options: DocumentOptions | null;
 }) {
   const state = useData<DocumentRecord>(`/documents/${kind}/${id}`);
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
+    [confirmation, setConfirmation] = useState<string | null>(null),
     [editing, setEditing] = useState<"edit" | "copy" | null>(null);
   const doc = state.data;
   async function act(action: string) {
     if (!doc) return;
-    if (!window.confirm(`${actionLabels[action]} — ${doc.number}?`)) return;
     setBusy(true);
     setError("");
     try {
@@ -85,6 +87,7 @@ function DocumentCard({
       setError((e as Error).message);
     } finally {
       setBusy(false);
+      setConfirmation(null);
       state.reload();
     }
   }
@@ -173,7 +176,7 @@ function DocumentCard({
                     onClick={() =>
                       action === "edit" || action === "copy"
                         ? setEditing(action)
-                        : void act(action)
+                        : setConfirmation(action)
                     }
                   >
                     {actionLabels[action]}
@@ -206,6 +209,44 @@ function DocumentCard({
           )}
         </Stack>
       </Modal>
+      <Modal
+        opened={!!confirmation}
+        onClose={() => {
+          if (!busy) setConfirmation(null);
+        }}
+        title={confirmation ? actionLabels[confirmation] : "Подтверждение"}
+        closeOnClickOutside={false}
+        closeOnEscape={!busy}
+      >
+        <Stack>
+          <Text>
+            Заявка {doc?.number}, версия {doc?.version}.
+          </Text>
+          <Text>
+            {confirmation === "confirm"
+              ? "Документ будет отправлен в iiko. Проверьте склады, товары и количества в карточке перед согласованием."
+              : "Действие будет записано в историю заявки."}
+          </Text>
+          <Group justify="flex-end">
+            <Button
+              variant="default"
+              disabled={busy}
+              onClick={() => setConfirmation(null)}
+            >
+              Назад
+            </Button>
+            <Button
+              loading={busy}
+              color={confirmation === "confirm" ? undefined : "red"}
+              onClick={() => {
+                if (confirmation) void act(confirmation);
+              }}
+            >
+              Подтвердить
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
       {editing && doc && options && (
         <DocumentEditor
           kind={kind}
@@ -213,10 +254,11 @@ function DocumentCard({
           mode={editing}
           options={options}
           close={() => setEditing(null)}
-          saved={() => {
+          saved={(result) => {
             setEditing(null);
             changed();
-            state.reload();
+            if (editing === "copy") saved(result);
+            else state.reload();
           }}
         />
       )}
@@ -227,9 +269,13 @@ function DocumentCard({
 export function DocumentsPage({ kind }: { kind: DocumentKind }) {
   const navigate = useNavigate(),
     { documentId } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab =
+    !documentId && searchParams.get("view") === "analytics"
+      ? "analytics"
+      : "requests";
   const resource = kind === "waybill" ? "transfers" : "writeoffs";
-  const [tab, setTab] = useState<string | null>("requests"),
-    [page, setPage] = useState(1),
+  const [page, setPage] = useState(1),
     [create, setCreate] = useState(false),
     [error, setError] = useState(""),
     [exporting, setExporting] = useState(false);
@@ -279,7 +325,17 @@ export function DocumentsPage({ kind }: { kind: DocumentKind }) {
             : "Заявки на списание и согласование по складам."}
         </Text>
       </div>
-      <Tabs value={documentId ? "requests" : tab} onChange={setTab}>
+      <Tabs
+        value={tab}
+        onChange={(value) => {
+          if (documentId)
+            navigate(
+              `/${resource}${value === "analytics" ? "?view=analytics" : ""}`,
+            );
+          else
+            setSearchParams(value === "analytics" ? { view: "analytics" } : {});
+        }}
+      >
         <Tabs.List>
           <Tabs.Tab value="requests">Заявки и согласование</Tabs.Tab>
           <Tabs.Tab value="analytics">
@@ -474,6 +530,7 @@ export function DocumentsPage({ kind }: { kind: DocumentKind }) {
           options={options.data}
           close={() => navigate(`/${resource}`)}
           changed={state.reload}
+          saved={(result) => navigate(`/${resource}/documents/${result.id}`)}
         />
       )}
     </Stack>

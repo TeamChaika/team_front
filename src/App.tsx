@@ -431,6 +431,13 @@ export default function App() {
               </div>
             </header>
             {currentAllowed &&
+              !(
+                meta.documents_enabled &&
+                ["transfers", "writeoffs"].includes(currentSection) &&
+                (location.pathname.includes("/documents/") ||
+                  new URLSearchParams(location.search).get("view") !==
+                    "analytics")
+              ) &&
               !["deposits", "management"].includes(currentSection) && (
                 <div className="filterbar">
                   {location.pathname === "/" && (
