@@ -20,6 +20,7 @@ import { IconDownload, IconPlus, IconRefresh } from "@tabler/icons-react";
 import { api, apiCsv, dateText } from "./api";
 import { ResourcePage } from "./pages";
 import { useData } from "./useData";
+import { useWorkspace } from "./App";
 import { DocumentEditor } from "./DocumentEditor";
 import {
   documentStatuses,
@@ -267,11 +268,13 @@ function DocumentCard({
 }
 
 export function DocumentsPage({ kind }: { kind: DocumentKind }) {
+  const { meta } = useWorkspace();
+  const canViewAnalytics = meta.departments.length > 0;
   const navigate = useNavigate(),
     { documentId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const tab =
-    !documentId && searchParams.get("view") === "analytics"
+    canViewAnalytics && !documentId && searchParams.get("view") === "analytics"
       ? "analytics"
       : "requests";
   const resource = kind === "waybill" ? "transfers" : "writeoffs";
@@ -338,11 +341,13 @@ export function DocumentsPage({ kind }: { kind: DocumentKind }) {
       >
         <Tabs.List>
           <Tabs.Tab value="requests">Заявки и согласование</Tabs.Tab>
-          <Tabs.Tab value="analytics">
-            {kind === "waybill"
-              ? "Внутренние перемещения iiko"
-              : "Документы iiko"}
-          </Tabs.Tab>
+          {canViewAnalytics && (
+            <Tabs.Tab value="analytics">
+              {kind === "waybill"
+                ? "Внутренние перемещения iiko"
+                : "Документы iiko"}
+            </Tabs.Tab>
+          )}
         </Tabs.List>
         <Tabs.Panel value="requests" pt="md">
           <Stack>
