@@ -507,7 +507,13 @@ function TerminalEditor({
   );
 }
 
-export function ManagementPage({ onChange }: { onChange: () => void }) {
+export function ManagementPage({
+  onChange,
+  documentsEnabled: _documentsEnabled,
+}: {
+  onChange: () => void;
+  documentsEnabled?: boolean;
+}) {
   const [directory, setDirectory] = useState<Directory | null>(null),
     [configuration, setConfiguration] = useState<Configuration | null>(null),
     [error, setError] = useState(""),
