@@ -1,9 +1,9 @@
+import { Link } from "react-router-dom";
 import { useState, type FormEvent } from "react";
 import {
   Alert,
   Badge,
   Button,
-  Checkbox,
   Group,
   Modal,
   Select,
@@ -20,7 +20,7 @@ import {
   IconUsers,
   IconPlus,
 } from "@tabler/icons-react";
-import { api, apiBlob, dateText, money } from "./api";
+import { apiBlob, dateText, money } from "./api";
 import { Feedback, PageTitle } from "./pages";
 import { useData } from "./useData";
 import { CreateDeposit } from "./CreateDeposit";
@@ -44,13 +44,6 @@ type DepositPage = {
   page: number;
   page_size: number;
 };
-type Grant = {
-  user_id: string;
-  venue: string;
-  is_all: boolean;
-  can_create: boolean;
-};
-type Access = { rows: Grant[]; users: { id: string; display_name: string }[] };
 type Filters = {
   query: string;
   status_filter: string;
@@ -163,233 +156,13 @@ function DepositCard({ id, onClose }: { id: string; onClose: () => void }) {
   );
 }
 
-function DepositAccess({
-  venues,
-  onClose,
-}: {
-  venues: string[];
-  onClose: () => void;
-}) {
-  const state = useData<Access>("/deposits/access");
-  const [userId, setUserId] = useState<string | null>(null),
-    [venue, setVenue] = useState<string | null>(null);
-  const [all, setAll] = useState(false),
-    [canCreate, setCanCreate] = useState(false),
-    [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
-  const [confirm, setConfirm] = useState<Grant | null>(null);
-  const names = new Map(state.data?.users.map((u) => [u.id, u.display_name]));
-  const duplicate = state.data?.rows.some(
-    (r) => r.user_id === userId && r.venue === venue,
-  );
-  async function mutate(
-    action: string,
-    payload: Grant | { user_id: string; venue: string },
-  ) {
-    setBusy(true);
-    setError("");
-    try {
-      await api(`/deposits/access/${action}`, {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
-      state.reload();
-      setConfirm(null);
-      if (action === "grant") {
-        setUserId(null);
-        setVenue(null);
-        setAll(false);
-        setCanCreate(false);
-      }
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <Modal
-      opened
-      onClose={onClose}
-      title="Доступ к депозитам"
-      size="xl"
-      centered
-    >
-      <Text size="sm" c="dimmed" mb="md">
-        Создание разрешается отдельно от просмотра. «Все заведения»
-        распространяет назначенные права на всю сеть. Права аналитики iiko не
-        меняются.
-      </Text>
-      {error && (
-        <Alert color="red" role="alert" mb="md">
-          {error}
-        </Alert>
-      )}
-      <Feedback state={state}>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (userId && venue && !duplicate)
-              void mutate("grant", {
-                user_id: userId,
-                venue,
-                is_all: all,
-                can_create: canCreate,
-              });
-          }}
-        >
-          <Stack gap="sm">
-            <Select
-              label="Сотрудник"
-              placeholder="Выберите учётную запись"
-              searchable
-              required
-              value={userId}
-              onChange={setUserId}
-              data={
-                state.data?.users.map((u) => ({
-                  value: u.id,
-                  label: u.display_name,
-                })) ?? []
-              }
-            />
-            <Select
-              label="Заведение"
-              placeholder="Выберите заведение"
-              required
-              value={venue}
-              onChange={setVenue}
-              data={venues}
-            />
-            <Checkbox
-              label="Все заведения"
-              checked={all}
-              onChange={(e) => setAll(e.currentTarget.checked)}
-            />
-            <Checkbox
-              label="Разрешить создание депозитов"
-              checked={canCreate}
-              onChange={(e) => setCanCreate(e.currentTarget.checked)}
-            />
-            {duplicate && (
-              <Text size="sm" c="yellow">
-                Этот доступ уже назначен. Измените его в списке ниже.
-              </Text>
-            )}
-            <Button
-              type="submit"
-              loading={busy}
-              disabled={!userId || !venue || duplicate}
-            >
-              Добавить доступ
-            </Button>
-          </Stack>
-        </form>
-        <div className="deposits-table-scroll" style={{ marginTop: 20 }}>
-          <table className="deposits-table">
-            <thead>
-              <tr>
-                <th>Сотрудник</th>
-                <th>Заведение</th>
-                <th>Все заведения</th>
-                <th>Создание</th>
-                <th>Действие</th>
-              </tr>
-            </thead>
-            <tbody>
-              {state.data?.rows.map((r) => (
-                <tr key={r.user_id + r.venue}>
-                  <td>{names.get(r.user_id) ?? r.user_id}</td>
-                  <td>{r.venue}</td>
-                  <td>
-                    <Checkbox
-                      aria-label={`Все заведения: ${names.get(r.user_id) ?? r.user_id}, ${r.venue}`}
-                      checked={r.is_all}
-                      disabled={busy}
-                      onChange={(e) =>
-                        void mutate("update", {
-                          ...r,
-                          is_all: e.currentTarget.checked,
-                        })
-                      }
-                    />
-                  </td>
-                  <td>
-                    <Checkbox
-                      aria-label={`Создание депозитов: ${names.get(r.user_id) ?? r.user_id}, ${r.venue}`}
-                      checked={Boolean(r.can_create)}
-                      disabled={busy}
-                      onChange={(e) =>
-                        void mutate("update", {
-                          ...r,
-                          can_create: e.currentTarget.checked,
-                        })
-                      }
-                    />
-                  </td>
-                  <td>
-                    <Button
-                      size="xs"
-                      color="red"
-                      variant="subtle"
-                      disabled={busy}
-                      onClick={() => setConfirm(r)}
-                    >
-                      Отозвать
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {!state.data?.rows.length && (
-          <Text c="dimmed" mt="md">
-            Доступы ещё не назначены.
-          </Text>
-        )}
-      </Feedback>
-      {confirm && (
-        <Alert color="orange" title="Отозвать доступ?" mt="md">
-          {names.get(confirm.user_id) ?? confirm.user_id} ·{" "}
-          {confirm.is_all ? "Все заведения" : confirm.venue}
-          <Group mt="sm">
-            <Button
-              color="red"
-              size="xs"
-              loading={busy}
-              onClick={() =>
-                void mutate("revoke", {
-                  user_id: confirm.user_id,
-                  venue: confirm.venue,
-                })
-              }
-            >
-              Подтвердить отзыв
-            </Button>
-            <Button
-              size="xs"
-              variant="subtle"
-              disabled={busy}
-              onClick={() => setConfirm(null)}
-            >
-              Отмена
-            </Button>
-          </Group>
-        </Alert>
-      )}
-    </Modal>
-  );
-}
-
 export function DepositsPage() {
   const [draft, setDraft] = useState<Filters>({ ...empty }),
     [filters, setFilters] = useState<Filters>({ ...empty });
   const [page, setPage] = useState(1),
     [pageSize, setPageSize] = useState("20");
   const [sort, setSort] = useState("created_at:desc");
-  const [selected, setSelected] = useState<string | null>(null),
-    [access, setAccess] = useState(false);
+  const [selected, setSelected] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [exporting, setExporting] = useState(false),
     [error, setError] = useState(""),
@@ -500,7 +273,8 @@ export function DepositsPage() {
               <Button
                 variant="light"
                 leftSection={<IconUsers size={16} />}
-                onClick={() => setAccess(true)}
+                component={Link}
+                to="/management"
               >
                 Доступы
               </Button>
@@ -723,16 +497,6 @@ export function DepositsPage() {
           venues={creationVenues.data ?? []}
           onClose={() => setCreating(false)}
           onCreated={state.reload}
-        />
-      )}
-      {access && permissions.data?.can_manage_access && (
-        <DepositAccess
-          venues={venues.data ?? []}
-          onClose={() => {
-            setAccess(false);
-            state.reload();
-            creationVenues.reload();
-          }}
         />
       )}
     </section>

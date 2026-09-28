@@ -84,6 +84,8 @@ export type PageData = {
   limit: number;
 };
 export type Meta = {
+  sections?: string[];
+  can_manage?: boolean;
   modules?: ("iiko" | "deposits")[];
   today?: string;
   live_sales_enabled?: boolean;

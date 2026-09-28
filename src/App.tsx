@@ -58,6 +58,7 @@ import { AssistantLayout, AssistantToggle } from "./AssistantRail";
 import { RestaurantPicker } from "./RestaurantPicker";
 import { Indicators } from "./Indicators";
 import { DepositsPage } from "./DepositsPage";
+import { ManagementPage } from "./ManagementPage";
 export const sections = [
   { path: "/", title: "Обзор", icon: IconLayoutDashboard },
   { path: "/indicators", title: "Показатели", icon: IconActivity },
@@ -76,9 +77,10 @@ export const sections = [
     title: "Остатки на складах",
     icon: IconBuildingWarehouse,
   },
-  { path: "/employees", title: "Сотрудники", icon: IconUsers },
+  { path: "/employees", title: "Сотрудники iiko", icon: IconUsers },
   { path: "/events", title: "События заказов", icon: IconRoute },
   { path: "/status", title: "Статус данных", icon: IconActivity },
+  { path: "/management", title: "Управление", icon: IconShieldCheck },
 ];
 type Workspace = {
   meta: Meta;
@@ -272,14 +274,28 @@ export default function App() {
         <Login onLogin={() => setRevision((x) => x + 1)} />
       </>
     );
-  const canIiko =
-    meta.user.role !== "deposits" && (meta.modules?.includes("iiko") ?? true);
-  if (!canIiko && location.pathname !== "/deposits")
-    return <Navigate to="/deposits" replace />;
-  const availableSections = sections.filter(
-    (s) => canIiko || s.path === "/deposits",
+  const allowed =
+    meta.sections ??
+    (meta.user.role === "deposits"
+      ? ["deposits"]
+      : sections.map((s) => s.path.slice(1) || "overview"));
+  const availableSections = sections.filter((s) =>
+    s.path === "/management"
+      ? meta.can_manage
+      : allowed.includes(s.path.slice(1) || "overview"),
   );
-  const ContentLayout = canIiko ? AssistantLayout : Fragment;
+  const currentSection =
+    location.pathname === "/" ? "overview" : location.pathname.split("/")[1];
+  const currentAllowed =
+    currentSection === "management"
+      ? meta.can_manage
+      : allowed.includes(currentSection);
+  if (!currentAllowed && availableSections.length)
+    return <Navigate to={availableSections[0].path} replace />;
+  const canAssistant =
+    allowed.includes("purchase-prices") &&
+    !["deposits", "management"].includes(currentSection);
+  const ContentLayout = canAssistant ? AssistantLayout : Fragment;
   const title =
     sections.find((s) => s.path !== "/" && location.pathname.startsWith(s.path))
       ?.title ?? "Обзор";
@@ -407,162 +423,186 @@ export default function App() {
                 <strong>{title}</strong>
               </div>
               <div className="topbar-actions">
-                {canIiko && <AssistantToggle />}
+                {canAssistant && <AssistantToggle />}
                 <Badge variant="light" color="cyan">
                   Первая версия
                 </Badge>
               </div>
             </header>
-            {location.pathname !== "/deposits" && (
-              <div className="filterbar">
-                {location.pathname === "/" && (
-                  <button
-                    className="mobile-menu overview-menu"
-                    onClick={() => setMobile(true)}
-                    aria-label="Открыть меню"
-                  >
-                    <IconMenu2 />
-                  </button>
-                )}
-                {location.pathname === "/purchase-prices" ? (
-                  <span className="muted">
-                    Закупочные цены по сети · все доступные заведения
-                  </span>
-                ) : (
-                  <RestaurantPicker
-                    restaurants={meta.departments}
-                    value={departments}
-                    onChange={setDepartments}
-                  />
-                )}
-                {location.pathname !== "/purchase-prices" && (
-                  <>
-                    <div className="date-filter">
-                      <label htmlFor="date-start">Период</label>
-                      <input
-                        id="date-start"
-                        aria-label="Начало периода"
-                        type="date"
-                        disabled={!datesEnabled}
-                        value={start}
-                        onChange={(e) => setStart(e.currentTarget.value)}
-                        onInput={(e) => setStart(e.currentTarget.value)}
-                      />
-                      <span>—</span>
-                      <input
-                        aria-label="Конец периода"
-                        type="date"
-                        disabled={!datesEnabled}
-                        min={start}
-                        value={end}
-                        onChange={(e) => setEnd(e.currentTarget.value)}
-                        onInput={(e) => setEnd(e.currentTarget.value)}
-                      />
-                    </div>
+            {currentAllowed &&
+              !["deposits", "management"].includes(currentSection) && (
+                <div className="filterbar">
+                  {location.pathname === "/" && (
                     <button
-                      className="reset-date"
-                      onClick={() => {
-                        const d = meta.sales_dates[0];
-                        if (d) {
-                          setStart(d);
-                          setEnd(d);
-                        }
-                      }}
+                      className="mobile-menu overview-menu"
+                      onClick={() => setMobile(true)}
+                      aria-label="Открыть меню"
                     >
-                      Последний день OLAP
+                      <IconMenu2 />
                     </button>
-                    {meta.live_sales_enabled &&
-                      (location.pathname === "/" ||
-                        location.pathname === "/sales") && (
-                        <button
-                          className="reset-date"
-                          onClick={() => {
-                            if (meta.today) {
-                              setStart(meta.today);
-                              setEnd(meta.today);
-                            }
-                          }}
-                        >
-                          Сегодня · iiko
-                        </button>
-                      )}
-                  </>
-                )}
-                {location.pathname === "/" && <div id="overview-toolbar" />}
-              </div>
-            )}
+                  )}
+                  {location.pathname === "/purchase-prices" ? (
+                    <span className="muted">
+                      Закупочные цены по сети · все доступные заведения
+                    </span>
+                  ) : (
+                    <RestaurantPicker
+                      restaurants={meta.departments}
+                      value={departments}
+                      onChange={setDepartments}
+                    />
+                  )}
+                  {location.pathname !== "/purchase-prices" && (
+                    <>
+                      <div className="date-filter">
+                        <label htmlFor="date-start">Период</label>
+                        <input
+                          id="date-start"
+                          aria-label="Начало периода"
+                          type="date"
+                          disabled={!datesEnabled}
+                          value={start}
+                          onChange={(e) => setStart(e.currentTarget.value)}
+                          onInput={(e) => setStart(e.currentTarget.value)}
+                        />
+                        <span>—</span>
+                        <input
+                          aria-label="Конец периода"
+                          type="date"
+                          disabled={!datesEnabled}
+                          min={start}
+                          value={end}
+                          onChange={(e) => setEnd(e.currentTarget.value)}
+                          onInput={(e) => setEnd(e.currentTarget.value)}
+                        />
+                      </div>
+                      <button
+                        className="reset-date"
+                        onClick={() => {
+                          const d = meta.sales_dates[0];
+                          if (d) {
+                            setStart(d);
+                            setEnd(d);
+                          }
+                        }}
+                      >
+                        Последний день OLAP
+                      </button>
+                      {meta.live_sales_enabled &&
+                        (location.pathname === "/" ||
+                          location.pathname === "/sales") && (
+                          <button
+                            className="reset-date"
+                            onClick={() => {
+                              if (meta.today) {
+                                setStart(meta.today);
+                                setEnd(meta.today);
+                              }
+                            }}
+                          >
+                            Сегодня · iiko
+                          </button>
+                        )}
+                    </>
+                  )}
+                  {location.pathname === "/" && <div id="overview-toolbar" />}
+                </div>
+              )}
             <ContentLayout>
               <main className="content">
-                <Routes>
-                  <Route
-                    path="/"
-                    element={<Overview key={departments.join(",")} />}
-                  />
-                  <Route path="/sales" element={<SalesPage />} />
-                  <Route
-                    path="/deposits"
-                    element={<DepositsPage key={meta.user.id} />}
-                  />
-                  <Route
-                    path="/indicators"
-                    element={<Indicators key={meta.user.id} />}
-                  />
-                  <Route path="/purchase-prices" element={<PurchasePrices />} />
-                  <Route path="/balances" element={<BalancesPage />} />
-                  <Route path="/status" element={<StatusPage />} />
-                  <Route path="/events/topology" element={<TopologyPage />} />
-                  {sections
-                    .filter(
-                      (s) =>
-                        ![
-                          "/",
-                          "/sales",
-                          "/deposits",
-                          "/indicators",
-                          "/status",
-                          "/balances",
-                          "/purchase-prices",
-                        ].includes(s.path),
-                    )
-                    .map((s) => (
+                {!availableSections.length ? (
+                  <Alert>
+                    Доступ к разделам пока не назначен. Обратитесь к
+                    администратору.
+                  </Alert>
+                ) : (
+                  <Routes>
+                    <Route
+                      path="/"
+                      element={<Overview key={departments.join(",")} />}
+                    />
+                    <Route
+                      path="/management"
+                      element={
+                        <ManagementPage
+                          onChange={() => {
+                            api<Meta>("/me")
+                              .then(setMeta)
+                              .catch((e) => setError(e.message));
+                          }}
+                        />
+                      }
+                    />
+                    <Route path="/sales" element={<SalesPage />} />
+                    <Route
+                      path="/deposits"
+                      element={<DepositsPage key={meta.user.id} />}
+                    />
+                    <Route
+                      path="/indicators"
+                      element={<Indicators key={meta.user.id} />}
+                    />
+                    <Route
+                      path="/purchase-prices"
+                      element={<PurchasePrices />}
+                    />
+                    <Route path="/balances" element={<BalancesPage />} />
+                    <Route path="/status" element={<StatusPage />} />
+                    <Route path="/events/topology" element={<TopologyPage />} />
+                    {sections
+                      .filter(
+                        (s) =>
+                          ![
+                            "/",
+                            "/sales",
+                            "/deposits",
+                            "/management",
+                            "/indicators",
+                            "/status",
+                            "/balances",
+                            "/purchase-prices",
+                          ].includes(s.path),
+                      )
+                      .map((s) => (
+                        <Route
+                          key={s.path}
+                          path={s.path}
+                          element={
+                            <ResourcePage
+                              key={s.path}
+                              resource={s.path.slice(1)}
+                              title={s.title}
+                            />
+                          }
+                        />
+                      ))}
+                    {[
+                      "invoices",
+                      "outgoing",
+                      "transfers",
+                      "writeoffs",
+                      "products",
+                      "charts",
+                      "employees",
+                      "cash-shifts",
+                    ].map((r) => (
                       <Route
-                        key={s.path}
-                        path={s.path}
-                        element={
-                          <ResourcePage
-                            key={s.path}
-                            resource={s.path.slice(1)}
-                            title={s.title}
-                          />
-                        }
+                        key={r}
+                        path={"/" + r + "/:id"}
+                        element={<DetailPage key={r} resource={r} />}
                       />
                     ))}
-                  {[
-                    "invoices",
-                    "outgoing",
-                    "transfers",
-                    "writeoffs",
-                    "products",
-                    "charts",
-                    "employees",
-                    "cash-shifts",
-                  ].map((r) => (
                     <Route
-                      key={r}
-                      path={"/" + r + "/:id"}
-                      element={<DetailPage key={r} resource={r} />}
+                      path="*"
+                      element={
+                        <div className="empty">
+                          <h2>Страница не найдена</h2>
+                          <Link to="/">Вернуться к обзору</Link>
+                        </div>
+                      }
                     />
-                  ))}
-                  <Route
-                    path="*"
-                    element={
-                      <div className="empty">
-                        <h2>Страница не найдена</h2>
-                        <Link to="/">Вернуться к обзору</Link>
-                      </div>
-                    }
-                  />
-                </Routes>
+                  </Routes>
+                )}
               </main>
             </ContentLayout>
             <footer className="page-footer">
