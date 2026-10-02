@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   Alert,
@@ -32,7 +32,7 @@ import {
 import "./documents.css";
 
 const actionLabels: Record<string, string> = {
-  confirm: "Согласовать и отправить в iiko",
+  confirm: "Согласовать",
   deny: "Отклонить",
   cancel: "Отменить заявку",
   edit: "Изменить",
@@ -42,12 +42,15 @@ const eventLabels: Record<string, string> = {
   create: "Создана заявка",
   edit: "Заявка изменена",
   copy: "Создана копия",
-  confirm: "Начата отправка в iiko",
+  confirm: "Документ согласован",
   deny: "Отклонено",
   cancel: "Отменено",
   iiko_sent: "iiko принял документ",
   iiko_rejected: "iiko отклонил документ",
   iiko_unknown: "Результат отправки требует проверки",
+  reconciled_sent: "Отправка подтверждена сверкой с iiko",
+  reconciled_absent:
+    "Документ отсутствует в iiko — требуется новое согласование",
 };
 
 function DocumentCard({
@@ -65,12 +68,18 @@ function DocumentCard({
   saved: (doc: DocumentRecord) => void;
   options: DocumentOptions | null;
 }) {
-  const state = useData<DocumentRecord>(`/documents/${kind}/${id}`);
+  const state = useData<DocumentRecord>(`/documents/${kind}/${id}`, true);
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [confirmation, setConfirmation] = useState<string | null>(null),
     [editing, setEditing] = useState<"edit" | "copy" | null>(null);
   const doc = state.data;
+  const pending = doc && ["queued", "sending"].includes(doc.submission_state);
+  useEffect(() => {
+    if (!pending || state.refreshing) return;
+    const timer = window.setTimeout(state.reload, 5000);
+    return () => window.clearTimeout(timer);
+  }, [pending, state.refreshing, state.reload]);
   async function act(action: string) {
     if (!doc) return;
     setBusy(true);
@@ -114,7 +123,13 @@ function DocumentCard({
           {doc && (
             <>
               <Group>
-                <Badge>{documentStatuses[doc.status] || doc.status}</Badge>
+                <Badge>
+                  {doc.submission_state === "queued"
+                    ? "Согласован · в очереди"
+                    : doc.submission_state === "sending"
+                      ? "Отправляется"
+                      : documentStatuses[doc.status] || doc.status}
+                </Badge>
                 <Text size="sm">Версия {doc.version}</Text>
               </Group>
               {doc.submission_state !== "idle" && (
@@ -225,7 +240,7 @@ function DocumentCard({
           </Text>
           <Text>
             {confirmation === "confirm"
-              ? "Документ будет отправлен в iiko. Проверьте склады, товары и количества в карточке перед согласованием."
+              ? "Проверьте склады, товары и количества. После согласования документ попадёт в очередь и отправится в iiko автоматически. Ждать ответа iiko не нужно."
               : "Действие будет записано в историю заявки."}
           </Text>
           <Group justify="flex-end">
@@ -296,7 +311,17 @@ export function DocumentsPage({ kind }: { kind: DocumentKind }) {
   const options = useData<DocumentOptions>(`/documents/${kind}/options`);
   const state = useData<{ rows: DocumentRecord[]; total: number }>(
     tab === "requests" ? `/documents/${kind}?${params}&page=${page}` : null,
+    true,
   );
+  const pending = state.data?.rows.some((doc) =>
+    ["queued", "sending"].includes(doc.submission_state),
+  );
+  useEffect(() => {
+    if (!pending || tab !== "requests" || documentId || state.refreshing)
+      return;
+    const timer = window.setTimeout(state.reload, 5000);
+    return () => window.clearTimeout(timer);
+  }, [pending, tab, documentId, state.refreshing, state.reload]);
   function filter(field: string, value: string) {
     setPage(1);
     setFilters((old) => ({ ...old, [field]: value }));
@@ -476,7 +501,7 @@ export function DocumentsPage({ kind }: { kind: DocumentKind }) {
                           {dateText(doc.created_at)} · {doc.created_by}
                         </Text>
                         {doc.reason && <Text size="sm">{doc.reason}</Text>}
-                        {["sending", "unknown", "rejected"].includes(
+                        {["queued", "sending", "unknown", "rejected"].includes(
                           doc.submission_state,
                         ) && (
                           <Text c="orange" size="sm">
@@ -485,7 +510,11 @@ export function DocumentsPage({ kind }: { kind: DocumentKind }) {
                         )}
                       </div>
                       <Badge>
-                        {documentStatuses[doc.status] || doc.status}
+                        {doc.submission_state === "queued"
+                          ? "Согласован · в очереди"
+                          : doc.submission_state === "sending"
+                            ? "Отправляется"
+                            : documentStatuses[doc.status] || doc.status}
                       </Badge>
                     </Group>
                   </div>

@@ -50,6 +50,7 @@ export function submissionLabel(value: string) {
     (
       {
         idle: "Не отправлен",
+        queued: "В очереди — отправим автоматически при наличии связи с iiko",
         sending: "Отправляется — повтор заблокирован",
         unknown: "Результат отправки требует проверки",
         rejected: "iiko отклонил документ",
