@@ -129,3 +129,27 @@ test("logout disposal stops pending requests from refilling a previous user cach
   assert.deepEqual(nextUser.get("/waybill/1").data.items, ["other document"]);
   nextUser.dispose();
 });
+
+test("confirmed document disappears immediately and an older list response cannot restore it", async () => {
+  const stale = deferred();
+  let calls = 0;
+  const cache = new DocumentCache(() =>
+    calls++ === 0
+      ? Promise.resolve({ rows: [{ id: 1 }, { id: 2 }], total: 2 })
+      : stale.promise,
+  );
+  const path = "/documents/waybill?status=Created";
+  await cache.load(path);
+  cache.invalidate(path, true);
+  const refreshing = cache.load(path);
+  await tick();
+  cache.update(path, (data) => ({
+    rows: data.rows.filter((row) => row.id !== 1),
+    total: data.total - 1,
+  }));
+  assert.deepEqual(cache.get(path).data, { rows: [{ id: 2 }], total: 1 });
+  stale.resolve({ rows: [{ id: 1 }, { id: 2 }], total: 2 });
+  await refreshing;
+  assert.deepEqual(cache.get(path).data, { rows: [{ id: 2 }], total: 1 });
+  cache.dispose();
+});

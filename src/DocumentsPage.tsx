@@ -65,7 +65,7 @@ function DocumentCard({
   kind: DocumentKind;
   id: string;
   close: () => void;
-  changed: () => void;
+  changed: (result: DocumentRecord) => void;
   edit: (mode: "edit" | "copy", doc: DocumentRecord) => void;
   options: DocumentOptions | null;
 }) {
@@ -92,14 +92,17 @@ function DocumentCard({
     setBusy(true);
     setError("");
     try {
-      await api(`/documents/${kind}/${doc.id}/${action}`, {
-        method: "POST",
-        body: JSON.stringify({
-          version: doc.version,
-          request_id: crypto.randomUUID(),
-        }),
-      });
-      changed();
+      const result = await api<DocumentRecord>(
+        `/documents/${kind}/${doc.id}/${action}`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            version: doc.version,
+            request_id: crypto.randomUUID(),
+          }),
+        },
+      );
+      changed(result);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -310,8 +313,9 @@ export function DocumentsPage({ kind }: { kind: DocumentKind }) {
     `/documents/${kind}/options`,
     300_000,
   );
+  const listPath = `/documents/${kind}?${params}&page=${page}`;
   const state = useDocumentData<{ rows: DocumentRecord[]; total: number }>(
-    tab === "requests" ? `/documents/${kind}?${params}&page=${page}` : null,
+    tab === "requests" ? listPath : null,
     30_000,
   );
   const pending = state.data?.rows.some((doc) =>
@@ -325,6 +329,28 @@ export function DocumentsPage({ kind }: { kind: DocumentKind }) {
   }, [pending, tab, documentId, state.refreshing, state.reload]);
   function changed() {
     cache.invalidate(`/documents/${kind}`);
+  }
+  function completed(result: DocumentRecord) {
+    if (
+      filters.status === "Created" &&
+      (result.status !== "Created" ||
+        ["queued", "sending", "unknown"].includes(result.submission_state))
+    ) {
+      cache.update<{ rows: DocumentRecord[]; total: number }>(
+        listPath,
+        (data) => {
+          const rows = data.rows.filter((row) => row.id !== result.id);
+          return {
+            ...data,
+            rows,
+            total: Math.max(0, data.total - (data.rows.length - rows.length)),
+          };
+        },
+      );
+      if (state.data?.rows.length === 1 && page > 1) setPage(page - 1);
+      navigate(`/${resource}`);
+    }
+    changed();
   }
   function saved(result: DocumentRecord) {
     setEditor(null);
@@ -546,7 +572,7 @@ export function DocumentsPage({ kind }: { kind: DocumentKind }) {
           id={documentId}
           options={options.data}
           close={() => navigate(`/${resource}`)}
-          changed={changed}
+          changed={completed}
           edit={(mode, document) => setEditor({ mode, document })}
         />
       ) : null}
