@@ -11,31 +11,61 @@ const apiBase = (import.meta.env.VITE_API_BASE_URL?.trim() || "/api").replace(
   /\/+$/,
   "",
 );
+const sessionChannel =
+  typeof BroadcastChannel === "undefined"
+    ? null
+    : new BroadcastChannel("chaika-auth-session");
+if (sessionChannel)
+  sessionChannel.onmessage = () =>
+    window.dispatchEvent(new Event("session-lost"));
 let refresh: Promise<Response> | null = null;
+async function authLock<T>(operation: () => Promise<T>): Promise<T> {
+  // Serialize cookie rotation and sign-out across tabs on the same site.
+  return navigator.locks
+    ? navigator.locks.request("chaika-auth-session", operation)
+    : operation();
+}
+export function renewSession(): Promise<Response> {
+  if (!refresh)
+    refresh = authLock(() =>
+      fetch(apiBase + "/auth/refresh", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        signal: AbortSignal.timeout(20_000),
+      }),
+    )
+      .then((response) => {
+        if ([401, 403].includes(response.status))
+          window.dispatchEvent(new Event("session-lost"));
+        return response;
+      })
+      .finally(() => {
+        refresh = null;
+      });
+  return refresh;
+}
 async function request(
   path: string,
   init: RequestInit = {},
   retry = true,
 ): Promise<Response> {
-  const r = await fetch(apiBase + path, {
-    ...init,
-    credentials: "include",
-    headers: { "Content-Type": "application/json", ...init.headers },
-  });
+  const send = () =>
+    fetch(apiBase + path, {
+      ...init,
+      credentials: "include",
+      headers: { "Content-Type": "application/json", ...init.headers },
+    });
+  const r = await (["/auth/login", "/auth/logout"].includes(path)
+    ? authLock(send)
+    : send());
+  if (r.ok && ["/auth/login", "/auth/logout"].includes(path))
+    sessionChannel?.postMessage("session-changed");
+  init.signal?.throwIfAborted();
   if (r.status === 401 && retry && !path.startsWith("/auth/")) {
-    if (!refresh)
-      refresh = fetch(apiBase + "/auth/refresh", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-      }).finally(() => {
-        refresh = null;
-      });
-    const renewed = await refresh;
+    const renewed = await renewSession();
     if (renewed.ok) return request(path, init, false);
-    if ([401, 403].includes(renewed.status))
-      window.dispatchEvent(new Event("session-lost"));
-    else
+    if (![401, 403].includes(renewed.status))
       throw new ApiError(
         "Не удалось обновить сессию. Повторите запрос позже.",
         renewed.status,

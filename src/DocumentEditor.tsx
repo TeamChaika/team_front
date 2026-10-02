@@ -4,7 +4,6 @@ import {
   Alert,
   Button,
   Group,
-  Modal,
   NumberInput,
   Select,
   Stack,
@@ -14,6 +13,7 @@ import {
 import { IconPlus, IconTrash } from "@tabler/icons-react";
 import { api, ApiError } from "./api";
 import { useData } from "./useData";
+import { DocumentPanel } from "./DocumentPanel";
 import {
   documentPayload,
   type DocumentDraft,
@@ -130,6 +130,13 @@ export function DocumentEditor({
     [dirty, setDirty] = useState(false),
     [discard, setDiscard] = useState(false),
     [uncertain, setUncertain] = useState(false);
+  const discardBlock = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (discard) {
+      discardBlock.current?.focus();
+      discardBlock.current?.scrollIntoView({ block: "nearest" });
+    }
+  }, [discard]);
   const nonce = useRef(crypto.randomUUID());
   const pending = useRef<ReturnType<typeof documentPayload> | null>(null);
   const action = mode === "edit" ? "edit" : "create";
@@ -193,10 +200,9 @@ export function DocumentEditor({
   }
   return (
     <>
-      <Modal
-        opened
-        onClose={dismiss}
-        size="xl"
+      <DocumentPanel
+        close={dismiss}
+        busy={busy}
         title={
           mode === "edit"
             ? "Изменить заявку"
@@ -206,10 +212,8 @@ export function DocumentEditor({
                 ? "Новая накладная"
                 : "Новое списание"
         }
-        closeOnClickOutside={false}
-        closeOnEscape={!busy}
       >
-        <form onSubmit={submit}>
+        <form onSubmit={submit} inert={discard ? true : undefined}>
           <Stack>
             {error && (
               <Alert color="red" role="alert">
@@ -331,28 +335,34 @@ export function DocumentEditor({
             </Group>
           </Stack>
         </form>
-      </Modal>
-      <Modal
-        opened={discard}
-        onClose={() => setDiscard(false)}
-        title="Закрыть форму без сохранения?"
-      >
-        <Stack>
-          <Text>
-            {uncertain
-              ? "Ответ сервера не получен. Заявка могла сохраниться. Перед повторным созданием проверьте список заявок."
-              : "Введённые изменения будут потеряны."}
-          </Text>
-          <Group justify="flex-end">
-            <Button variant="default" onClick={() => setDiscard(false)}>
-              Продолжить заполнение
-            </Button>
-            <Button color="red" onClick={close}>
-              Закрыть форму
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
+        {discard && (
+          <Alert
+            color="yellow"
+            title="Закрыть форму без сохранения?"
+            mt="md"
+            role="region"
+            aria-label="Несохранённые изменения"
+            ref={discardBlock}
+            tabIndex={-1}
+          >
+            <Stack>
+              <Text>
+                {uncertain
+                  ? "Ответ сервера не получен. Заявка могла сохраниться. Перед повторным созданием проверьте список заявок."
+                  : "Введённые изменения будут потеряны."}
+              </Text>
+              <Group justify="flex-end">
+                <Button variant="default" onClick={() => setDiscard(false)}>
+                  Продолжить заполнение
+                </Button>
+                <Button color="red" onClick={close}>
+                  Закрыть форму
+                </Button>
+              </Group>
+            </Stack>
+          </Alert>
+        )}
+      </DocumentPanel>
     </>
   );
 }
