@@ -173,11 +173,14 @@ function Login({ onLogin }: { onLogin: () => void }) {
             </Alert>
           )}
           <TextInput
-            label="Электронная почта"
-            type="email"
+            label="Логин или телефон"
+            type="text"
             value={email}
             onChange={(e) => setEmail(e.currentTarget.value)}
-            placeholder="name@chaika.team"
+            placeholder="gastrodvor или +7 978 123-45-67"
+            description="@chaika.team подставим автоматически"
+            autoCapitalize="none"
+            spellCheck={false}
             required
             autoComplete="username"
           />
