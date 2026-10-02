@@ -113,6 +113,23 @@ export class DocumentCache {
     return current.promise;
   }
 
+  update<T>(path: string, change: (data: T) => T) {
+    const entry = this.entries.get(path);
+    if (!entry?.snapshot.data || this.disposed) return;
+    entry.controller?.abort();
+    entry.controller = undefined;
+    entry.promise = undefined;
+    entry.snapshot = {
+      ...entry.snapshot,
+      data: change(entry.snapshot.data as T),
+      loading: false,
+      error: "",
+      expiresAt: 0,
+      revision: entry.snapshot.revision + 1,
+    };
+    this.emit(path);
+  }
+
   invalidate(prefix: string, exact = false) {
     for (const [path, entry] of this.entries) {
       if (exact ? path !== prefix : !path.startsWith(prefix)) continue;
