@@ -24,6 +24,7 @@ import { apiBlob, dateText, money } from "./api";
 import { Feedback, PageTitle } from "./pages";
 import { useData } from "./useData";
 import { CreateDeposit } from "./CreateDeposit";
+import { todayReservation } from "./depositDates";
 import "./deposits.css";
 
 type Deposit = {
@@ -52,6 +53,8 @@ type Filters = {
   max_amount: string;
   date_from: string;
   date_to: string;
+  reservation_from: string;
+  reservation_to: string;
 };
 const empty: Filters = {
   query: "",
@@ -61,6 +64,8 @@ const empty: Filters = {
   max_amount: "",
   date_from: "",
   date_to: "",
+  reservation_from: "",
+  reservation_to: "",
 };
 const statuses: Record<string, { label: string; color: string }> = {
   pending: { label: "Ожидает оплаты", color: "yellow" },
@@ -196,24 +201,46 @@ export function DepositsPage() {
   );
   const field = (key: keyof Filters, value: string) =>
     setDraft((old) => ({ ...old, [key]: value }));
-  function apply(e: FormEvent) {
-    e.preventDefault();
+  function applyFilters(next: Filters) {
     setError("");
     setNotice("");
-    if (draft.date_from && draft.date_to && draft.date_from > draft.date_to) {
+    if (next.date_from && next.date_to && next.date_from > next.date_to) {
       setError("Дата окончания должна быть не раньше начала.");
       return;
     }
     if (
-      draft.min_amount &&
-      draft.max_amount &&
-      Number(draft.min_amount) > Number(draft.max_amount)
+      next.reservation_from &&
+      next.reservation_to &&
+      next.reservation_from > next.reservation_to
+    ) {
+      setError("Дата окончания бронирования должна быть не раньше начала.");
+      return;
+    }
+    if (
+      next.min_amount &&
+      next.max_amount &&
+      Number(next.min_amount) > Number(next.max_amount)
     ) {
       setError("Максимальная сумма должна быть не меньше минимальной.");
       return;
     }
     setPage(1);
-    setFilters({ ...draft });
+    setDraft({ ...next });
+    setFilters({ ...next });
+  }
+  function apply(e: FormEvent) {
+    e.preventDefault();
+    applyFilters(draft);
+  }
+  function showToday() {
+    const today = todayReservation();
+    applyFilters({
+      ...draft,
+      date_from: "",
+      date_to: "",
+      reservation_from: today,
+      reservation_to: today,
+    });
   }
   async function exportFile() {
     setExporting(true);
@@ -297,6 +324,25 @@ export function DepositsPage() {
         </Alert>
       )}
       <form className="deposits-filters" onSubmit={apply}>
+        <fieldset className="deposits-reservation-filters">
+          <legend>Дата бронирования</legend>
+          <TextInput
+            label="Бронирование с"
+            type="date"
+            value={draft.reservation_from}
+            onChange={(e) => field("reservation_from", e.currentTarget.value)}
+          />
+          <TextInput
+            label="Бронирование по"
+            type="date"
+            min={draft.reservation_from || undefined}
+            value={draft.reservation_to}
+            onChange={(e) => field("reservation_to", e.currentTarget.value)}
+          />
+          <Button type="button" variant="light" onClick={showToday}>
+            Сегодня
+          </Button>
+        </fieldset>
         <TextInput
           label="Поиск"
           placeholder="Имя, телефон, комментарий"
