@@ -1,12 +1,11 @@
-import { useEffect, useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate, useMatch, useSearchParams } from "react-router-dom";
 import {
   Alert,
   Badge,
   Button,
   Group,
   Loader,
-  Modal,
   Pagination,
   Select,
   SimpleGrid,
@@ -19,7 +18,9 @@ import {
 import { IconDownload, IconPlus, IconRefresh } from "@tabler/icons-react";
 import { api, apiCsv, dateText } from "./api";
 import { ResourcePage } from "./pages";
-import { useData } from "./useData";
+import { useDocumentCache, useDocumentData } from "./DocumentData";
+import { DocumentPanel } from "./DocumentPanel";
+import { DocumentListItem } from "./DocumentListItem";
 import { useWorkspace } from "./App";
 import { DocumentEditor } from "./DocumentEditor";
 import {
@@ -58,21 +59,27 @@ function DocumentCard({
   id,
   close,
   changed,
-  saved,
+  edit,
   options,
 }: {
   kind: DocumentKind;
   id: string;
   close: () => void;
   changed: () => void;
-  saved: (doc: DocumentRecord) => void;
+  edit: (mode: "edit" | "copy", doc: DocumentRecord) => void;
   options: DocumentOptions | null;
 }) {
-  const state = useData<DocumentRecord>(`/documents/${kind}/${id}`, true);
+  const state = useDocumentData<DocumentRecord>(`/documents/${kind}/${id}`);
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
-    [confirmation, setConfirmation] = useState<string | null>(null),
-    [editing, setEditing] = useState<"edit" | "copy" | null>(null);
+    [confirmation, setConfirmation] = useState<string | null>(null);
+  const confirmBlock = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (confirmation) {
+      confirmBlock.current?.focus();
+      confirmBlock.current?.scrollIntoView({ block: "nearest" });
+    }
+  }, [confirmation]);
   const doc = state.data;
   const pending = doc && ["queued", "sending"].includes(doc.submission_state);
   useEffect(() => {
@@ -103,15 +110,12 @@ function DocumentCard({
   }
   return (
     <>
-      <Modal
-        opened
-        onClose={() => {
+      <DocumentPanel
+        close={() => {
           if (!busy) close();
         }}
-        size="xl"
         title={doc?.number || "Заявка"}
-        closeOnClickOutside={false}
-        closeOnEscape={!busy}
+        busy={busy}
       >
         <Stack>
           {(state.error || error) && (
@@ -187,11 +191,13 @@ function DocumentCard({
                     }
                     variant={action === "confirm" ? "filled" : "light"}
                     disabled={
-                      busy || (!options && ["edit", "copy"].includes(action))
+                      busy ||
+                      !!state.error ||
+                      (!options && ["edit", "copy"].includes(action))
                     }
                     onClick={() =>
                       action === "edit" || action === "copy"
-                        ? setEditing(action)
+                        ? edit(action, doc)
                         : setConfirmation(action)
                     }
                   >
@@ -224,60 +230,47 @@ function DocumentCard({
             </>
           )}
         </Stack>
-      </Modal>
-      <Modal
-        opened={!!confirmation}
-        onClose={() => {
-          if (!busy) setConfirmation(null);
-        }}
-        title={confirmation ? actionLabels[confirmation] : "Подтверждение"}
-        closeOnClickOutside={false}
-        closeOnEscape={!busy}
-      >
-        <Stack>
-          <Text>
-            Заявка {doc?.number}, версия {doc?.version}.
-          </Text>
-          <Text>
-            {confirmation === "confirm"
-              ? "Проверьте склады, товары и количества. После согласования документ попадёт в очередь и отправится в iiko автоматически. Ждать ответа iiko не нужно."
-              : "Действие будет записано в историю заявки."}
-          </Text>
-          <Group justify="flex-end">
-            <Button
-              variant="default"
-              disabled={busy}
-              onClick={() => setConfirmation(null)}
-            >
-              Назад
-            </Button>
-            <Button
-              loading={busy}
-              color={confirmation === "confirm" ? undefined : "red"}
-              onClick={() => {
-                if (confirmation) void act(confirmation);
-              }}
-            >
-              Подтвердить
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
-      {editing && doc && options && (
-        <DocumentEditor
-          kind={kind}
-          document={doc}
-          mode={editing}
-          options={options}
-          close={() => setEditing(null)}
-          saved={(result) => {
-            setEditing(null);
-            changed();
-            if (editing === "copy") saved(result);
-            else state.reload();
-          }}
-        />
-      )}
+        {confirmation && (
+          <Alert
+            color={confirmation === "confirm" ? "cyan" : "red"}
+            title={actionLabels[confirmation]}
+            mt="md"
+            role="region"
+            aria-label="Подтверждение действия"
+            ref={confirmBlock}
+            tabIndex={-1}
+          >
+            <Stack>
+              <Text>
+                Заявка {doc?.number}, версия {doc?.version}.
+              </Text>
+              <Text>
+                {confirmation === "confirm"
+                  ? "Проверьте склады, товары и количества. После согласования документ попадёт в очередь и отправится в iiko автоматически. Ждать ответа iiko не нужно."
+                  : "Действие будет записано в историю заявки."}
+              </Text>
+              <Group justify="flex-end">
+                <Button
+                  variant="default"
+                  disabled={busy}
+                  onClick={() => setConfirmation(null)}
+                >
+                  Назад
+                </Button>
+                <Button
+                  loading={busy}
+                  color={confirmation === "confirm" ? undefined : "red"}
+                  onClick={() => {
+                    if (confirmation) void act(confirmation);
+                  }}
+                >
+                  Подтвердить
+                </Button>
+              </Group>
+            </Stack>
+          </Alert>
+        )}
+      </DocumentPanel>
     </>
   );
 }
@@ -285,16 +278,21 @@ function DocumentCard({
 export function DocumentsPage({ kind }: { kind: DocumentKind }) {
   const { meta } = useWorkspace();
   const canViewAnalytics = meta.departments.length > 0;
-  const navigate = useNavigate(),
-    { documentId } = useParams();
+  const navigate = useNavigate();
+  const resource = kind === "waybill" ? "transfers" : "writeoffs";
+  const documentId = useMatch(`/${resource}/documents/:documentId`)?.params
+    .documentId;
+  const cache = useDocumentCache();
   const [searchParams, setSearchParams] = useSearchParams();
   const tab =
     canViewAnalytics && !documentId && searchParams.get("view") === "analytics"
       ? "analytics"
       : "requests";
-  const resource = kind === "waybill" ? "transfers" : "writeoffs";
   const [page, setPage] = useState(1),
-    [create, setCreate] = useState(false),
+    [editor, setEditor] = useState<{
+      mode: "create" | "edit" | "copy";
+      document?: DocumentRecord;
+    } | null>(null),
     [error, setError] = useState(""),
     [exporting, setExporting] = useState(false);
   const [filters, setFilters] = useState({
@@ -308,10 +306,13 @@ export function DocumentsPage({ kind }: { kind: DocumentKind }) {
   const params = new URLSearchParams(
     Object.entries(filters).filter(([, value]) => value),
   );
-  const options = useData<DocumentOptions>(`/documents/${kind}/options`);
-  const state = useData<{ rows: DocumentRecord[]; total: number }>(
+  const options = useDocumentData<DocumentOptions>(
+    `/documents/${kind}/options`,
+    300_000,
+  );
+  const state = useDocumentData<{ rows: DocumentRecord[]; total: number }>(
     tab === "requests" ? `/documents/${kind}?${params}&page=${page}` : null,
-    true,
+    30_000,
   );
   const pending = state.data?.rows.some((doc) =>
     ["queued", "sending"].includes(doc.submission_state),
@@ -322,6 +323,14 @@ export function DocumentsPage({ kind }: { kind: DocumentKind }) {
     const timer = window.setTimeout(state.reload, 5000);
     return () => window.clearTimeout(timer);
   }, [pending, tab, documentId, state.refreshing, state.reload]);
+  function changed() {
+    cache.invalidate(`/documents/${kind}`);
+  }
+  function saved(result: DocumentRecord) {
+    setEditor(null);
+    changed();
+    navigate(`/${resource}/documents/${result.id}`);
+  }
   function filter(field: string, value: string) {
     setPage(1);
     setFilters((old) => ({ ...old, [field]: value }));
@@ -344,229 +353,203 @@ export function DocumentsPage({ kind }: { kind: DocumentKind }) {
     }
   }
   return (
-    <Stack>
-      <div>
-        <h1>{kind === "waybill" ? "Перемещения" : "Списания"}</h1>
-        <Text c="dimmed">
-          {kind === "waybill"
-            ? "Заявки между складами оформляются расходными накладными iiko."
-            : "Заявки на списание и согласование по складам."}
-        </Text>
-      </div>
-      <Tabs
-        value={tab}
-        onChange={(value) => {
-          if (documentId)
-            navigate(
-              `/${resource}${value === "analytics" ? "?view=analytics" : ""}`,
-            );
-          else
-            setSearchParams(value === "analytics" ? { view: "analytics" } : {});
-        }}
-      >
-        <Tabs.List>
-          <Tabs.Tab value="requests">Заявки и согласование</Tabs.Tab>
-          {canViewAnalytics && (
-            <Tabs.Tab value="analytics">
-              {kind === "waybill"
-                ? "Внутренние перемещения iiko"
-                : "Документы iiko"}
-            </Tabs.Tab>
-          )}
-        </Tabs.List>
-        <Tabs.Panel value="requests" pt="md">
-          <Stack>
-            <Group justify="space-between">
-              <Button
-                variant="default"
-                leftSection={<IconRefresh size={16} />}
-                onClick={() => {
-                  state.reload();
-                  options.reload();
-                }}
-              >
-                Обновить
-              </Button>
-              <Group>
+    <div
+      className={`document-workspace${editor || documentId ? " has-panel" : ""}`}
+    >
+      <Stack className="document-list" inert={editor ? true : undefined}>
+        <div>
+          <h1>{kind === "waybill" ? "Перемещения" : "Списания"}</h1>
+          <Text c="dimmed">
+            {kind === "waybill"
+              ? "Заявки между складами оформляются расходными накладными iiko."
+              : "Заявки на списание и согласование по складам."}
+          </Text>
+        </div>
+        <Tabs
+          value={tab}
+          onChange={(value) => {
+            if (documentId)
+              navigate(
+                `/${resource}${value === "analytics" ? "?view=analytics" : ""}`,
+              );
+            else
+              setSearchParams(
+                value === "analytics" ? { view: "analytics" } : {},
+              );
+          }}
+        >
+          <Tabs.List>
+            <Tabs.Tab value="requests">Заявки и согласование</Tabs.Tab>
+            {canViewAnalytics && (
+              <Tabs.Tab value="analytics">
+                {kind === "waybill"
+                  ? "Внутренние перемещения iiko"
+                  : "Документы iiko"}
+              </Tabs.Tab>
+            )}
+          </Tabs.List>
+          <Tabs.Panel value="requests" pt="md">
+            <Stack>
+              <Group justify="space-between">
                 <Button
-                  variant="light"
-                  leftSection={<IconDownload size={16} />}
-                  onClick={exportRows}
-                  loading={exporting}
-                  disabled={!state.data}
+                  variant="default"
+                  leftSection={<IconRefresh size={16} />}
+                  onClick={() => {
+                    changed();
+                  }}
                 >
-                  Экспорт CSV
+                  Обновить
                 </Button>
-                {options.data?.grants.some((g) =>
-                  g.actions.includes("create"),
-                ) && (
+                <Group>
                   <Button
-                    leftSection={<IconPlus size={16} />}
-                    onClick={() => setCreate(true)}
+                    variant="light"
+                    leftSection={<IconDownload size={16} />}
+                    onClick={exportRows}
+                    loading={exporting}
+                    disabled={!state.data}
                   >
-                    Создать заявку
+                    Экспорт CSV
                   </Button>
-                )}
+                  {options.data?.grants.some((g) =>
+                    g.actions.includes("create"),
+                  ) && (
+                    <Button
+                      leftSection={<IconPlus size={16} />}
+                      onClick={() => setEditor({ mode: "create" })}
+                    >
+                      Создать заявку
+                    </Button>
+                  )}
+                </Group>
               </Group>
-            </Group>
-            <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
-              <Select
-                label="Статус"
-                value={filters.status}
-                onChange={(v) => filter("status", v || "")}
-                data={[
-                  { value: "", label: "Все статусы" },
-                  ...Object.entries(documentStatuses).map(([value, label]) => ({
-                    value,
-                    label,
-                  })),
-                ]}
-              />
-              <Select
-                label="Склад"
-                searchable
-                clearable
-                value={filters.store_id || null}
-                placeholder="Все доступные"
-                onChange={(v) => filter("store_id", v || "")}
-                data={(options.data?.stores || []).map((s) => ({
-                  value: s.id,
-                  label: s.name,
-                }))}
-              />
-              {kind === "waybill" && (
+              <div className="document-filters">
                 <Select
-                  label="Направление"
-                  value={filters.direction}
-                  onChange={(v) => filter("direction", v || "all")}
+                  label="Статус"
+                  value={filters.status}
+                  onChange={(v) => filter("status", v || "")}
                   data={[
-                    { value: "all", label: "Все" },
-                    { value: "incoming", label: "Входящие" },
-                    { value: "outgoing", label: "Исходящие" },
+                    { value: "", label: "Все статусы" },
+                    ...Object.entries(documentStatuses).map(
+                      ([value, label]) => ({
+                        value,
+                        label,
+                      }),
+                    ),
                   ]}
                 />
-              )}
-              <TextInput
-                label="Поиск"
-                placeholder="Номер DJ… или комментарий"
-                maxLength={200}
-                value={filters.query}
-                onChange={(e) => filter("query", e.currentTarget.value)}
-              />
-              <TextInput
-                label="Дата с"
-                type="date"
-                value={filters.date_from}
-                onChange={(e) => filter("date_from", e.currentTarget.value)}
-              />
-              <TextInput
-                label="Дата по"
-                type="date"
-                value={filters.date_to}
-                onChange={(e) => filter("date_to", e.currentTarget.value)}
-              />
-            </SimpleGrid>
-            {(state.error || options.error || error) && (
-              <Alert color="red" role="alert">
-                {state.error || options.error || error}
-              </Alert>
-            )}
-            {state.loading && <Loader />}
-            {state.data && (
-              <>
-                <Text size="sm" c="dimmed">
-                  Найдено: {state.data.total}
-                </Text>
-                {!state.data.rows.length && (
-                  <Text>По выбранным фильтрам заявок нет.</Text>
-                )}
-                {state.data.rows.map((doc) => (
-                  <div className="management-card" key={doc.id}>
-                    <Group justify="space-between" align="flex-start">
-                      <div>
-                        <Button
-                          variant="subtle"
-                          p={0}
-                          onClick={() =>
-                            navigate(`/${resource}/documents/${doc.id}`)
-                          }
-                        >
-                          {doc.number}
-                        </Button>
-                        <Text fw={600}>
-                          {doc.store}
-                          {kind === "waybill" && ` → ${doc.counteragent}`}
-                        </Text>
-                        <Text size="sm" c="dimmed">
-                          {dateText(doc.created_at)} · {doc.created_by}
-                        </Text>
-                        {doc.reason && <Text size="sm">{doc.reason}</Text>}
-                        {["queued", "sending", "unknown", "rejected"].includes(
-                          doc.submission_state,
-                        ) && (
-                          <Text c="orange" size="sm">
-                            {submissionLabel(doc.submission_state)}
-                          </Text>
-                        )}
-                      </div>
-                      <Badge>
-                        {doc.submission_state === "queued"
-                          ? "Согласован · в очереди"
-                          : doc.submission_state === "sending"
-                            ? "Отправляется"
-                            : documentStatuses[doc.status] || doc.status}
-                      </Badge>
-                    </Group>
-                  </div>
-                ))}
-                {state.data.total > 30 && (
-                  <Pagination
-                    value={page}
-                    onChange={setPage}
-                    total={Math.ceil(state.data.total / 30)}
-                    siblings={1}
+                <Select
+                  label="Склад"
+                  searchable
+                  clearable
+                  value={filters.store_id || null}
+                  placeholder="Все доступные"
+                  onChange={(v) => filter("store_id", v || "")}
+                  data={(options.data?.stores || []).map((s) => ({
+                    value: s.id,
+                    label: s.name,
+                  }))}
+                />
+                {kind === "waybill" && (
+                  <Select
+                    label="Направление"
+                    value={filters.direction}
+                    onChange={(v) => filter("direction", v || "all")}
+                    data={[
+                      { value: "all", label: "Все" },
+                      { value: "incoming", label: "Входящие" },
+                      { value: "outgoing", label: "Исходящие" },
+                    ]}
                   />
                 )}
-              </>
+                <TextInput
+                  label="Поиск"
+                  placeholder="Номер DJ… или комментарий"
+                  maxLength={200}
+                  value={filters.query}
+                  onChange={(e) => filter("query", e.currentTarget.value)}
+                />
+                <TextInput
+                  label="Дата с"
+                  type="date"
+                  value={filters.date_from}
+                  onChange={(e) => filter("date_from", e.currentTarget.value)}
+                />
+                <TextInput
+                  label="Дата по"
+                  type="date"
+                  value={filters.date_to}
+                  onChange={(e) => filter("date_to", e.currentTarget.value)}
+                />
+              </div>
+              {(state.error || options.error || error) && (
+                <Alert color="red" role="alert">
+                  {state.error || options.error || error}
+                </Alert>
+              )}
+              {state.loading && <Loader />}
+              {state.data && (
+                <>
+                  <Text size="sm" c="dimmed">
+                    Найдено: {state.data.total}
+                  </Text>
+                  {!state.data.rows.length && (
+                    <Text>По выбранным фильтрам заявок нет.</Text>
+                  )}
+                  {state.data.rows.map((doc) => (
+                    <DocumentListItem
+                      key={doc.id}
+                      kind={kind}
+                      doc={doc}
+                      selected={documentId === String(doc.id)}
+                    />
+                  ))}
+                  {state.data.total > 30 && (
+                    <Pagination
+                      value={page}
+                      onChange={setPage}
+                      total={Math.ceil(state.data.total / 30)}
+                      siblings={1}
+                    />
+                  )}
+                </>
+              )}
+            </Stack>
+          </Tabs.Panel>
+          <Tabs.Panel value="analytics" pt="md">
+            {tab === "analytics" && (
+              <ResourcePage
+                resource={resource}
+                title={
+                  kind === "waybill"
+                    ? "Внутренние перемещения iiko"
+                    : "Списания iiko"
+                }
+              />
             )}
-          </Stack>
-        </Tabs.Panel>
-        <Tabs.Panel value="analytics" pt="md">
-          {tab === "analytics" && (
-            <ResourcePage
-              resource={resource}
-              title={
-                kind === "waybill"
-                  ? "Внутренние перемещения iiko"
-                  : "Списания iiko"
-              }
-            />
-          )}
-        </Tabs.Panel>
-      </Tabs>
-      {create && options.data && (
+          </Tabs.Panel>
+        </Tabs>
+      </Stack>
+      {editor && options.data ? (
         <DocumentEditor
+          key={`${editor.mode}-${editor.document?.id || "new"}`}
           kind={kind}
           options={options.data}
-          close={() => setCreate(false)}
-          saved={(result) => {
-            setCreate(false);
-            state.reload();
-            navigate(`/${resource}/documents/${result.id}`);
-          }}
+          mode={editor.mode}
+          document={editor.document}
+          close={() => setEditor(null)}
+          saved={saved}
         />
-      )}
-      {documentId && (
+      ) : documentId ? (
         <DocumentCard
           key={documentId}
           kind={kind}
           id={documentId}
           options={options.data}
           close={() => navigate(`/${resource}`)}
-          changed={state.reload}
-          saved={(result) => navigate(`/${resource}/documents/${result.id}`)}
+          changed={changed}
+          edit={(mode, document) => setEditor({ mode, document })}
         />
-      )}
-    </Stack>
+      ) : null}
+    </div>
   );
 }
