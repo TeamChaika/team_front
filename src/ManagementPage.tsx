@@ -182,11 +182,11 @@ function AccountEditor({
           {creating && (
             <PasswordInput
               label="Пароль для входа"
-              description="От 12 до 128 символов. Передайте сотруднику почту и пароль; письмо автоматически не отправляется."
+              description="От 8 до 128 символов. Передайте сотруднику почту и пароль; письмо автоматически не отправляется."
               value={password}
               onChange={(e) => setPassword(e.currentTarget.value)}
               required
-              minLength={12}
+              minLength={8}
               maxLength={128}
               autoComplete="new-password"
             />

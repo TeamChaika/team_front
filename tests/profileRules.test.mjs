@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { passwordValidationError, telegramUrl } from "../src/profileRules.ts";
 
-test("password change requires the current password, 12–128 characters, and confirmation", () => {
+test("password change requires the current password, 8–128 characters, and confirmation", () => {
   assert.match(
     passwordValidationError("", "a".repeat(12), "a".repeat(12)),
     /текущий/i,
   );
   assert.match(
-    passwordValidationError("old", "a".repeat(11), "a".repeat(11)),
-    /12/,
+    passwordValidationError("old", "a".repeat(7), "a".repeat(7)),
+    /8/,
   );
   assert.match(
     passwordValidationError("old", "a".repeat(129), "a".repeat(129)),
@@ -23,10 +23,12 @@ test("password change requires the current password, 12–128 characters, and co
     passwordValidationError("a".repeat(12), "a".repeat(12), "a".repeat(12)),
     /отличаться/i,
   );
-  assert.equal(
-    passwordValidationError("old", "a".repeat(12), "a".repeat(12)),
-    null,
-  );
+  for (const length of [8, 11, 128]) {
+    assert.equal(
+      passwordValidationError("old", "a".repeat(length), "a".repeat(length)),
+      null,
+    );
+  }
 });
 
 test("Telegram links open only HTTPS on the exact t.me host", () => {
