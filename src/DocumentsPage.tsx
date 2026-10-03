@@ -6,6 +6,7 @@ import {
   Button,
   Group,
   Loader,
+  NumberInput,
   Pagination,
   SegmentedControl,
   Select,
@@ -17,7 +18,7 @@ import {
   TextInput,
 } from "@mantine/core";
 import { IconDownload, IconPlus, IconRefresh } from "@tabler/icons-react";
-import { api, apiCsv, dateText } from "./api";
+import { api, apiCsv, ApiError, dateText } from "./api";
 import { ResourcePage } from "./pages";
 import { useDocumentCache, useDocumentData } from "./DocumentData";
 import { DocumentPanel } from "./DocumentPanel";
@@ -25,16 +26,25 @@ import { DocumentListItem } from "./DocumentListItem";
 import { useWorkspace } from "./App";
 import { DocumentEditor } from "./DocumentEditor";
 import {
+  actionSnapshot,
   documentStatuses,
+  receiptDifference,
+  receiptPayload,
+  receiptSnapshot,
+  receiptStatuses,
   submissionLabel,
   type DocumentKind,
   type DocumentOptions,
   type DocumentRecord,
+  type ReceiptItem,
 } from "./documentModel";
 import "./documents.css";
 
 const actionLabels: Record<string, string> = {
   confirm: "Согласовать",
+  receive: "Принять с расхождением",
+  confirm_receipt: "Подтвердить расхождение",
+  reject_receipt: "Отклонить расхождение",
   deny: "Отклонить",
   cancel: "Отменить заявку",
   edit: "Изменить",
@@ -45,6 +55,9 @@ const eventLabels: Record<string, string> = {
   edit: "Заявка изменена",
   copy: "Создана копия",
   confirm: "Документ согласован",
+  receive: "Получатель указал фактическое количество",
+  confirm_receipt: "Отправитель подтвердил расхождение",
+  reject_receipt: "Отправитель отклонил расхождение",
   deny: "Отклонено",
   cancel: "Отменено",
   iiko_sent: "iiko принял документ",
@@ -73,32 +86,51 @@ function DocumentCard({
   const state = useDocumentData<DocumentRecord>(`/documents/${kind}/${id}`);
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
-    [confirmation, setConfirmation] = useState<string | null>(null);
+    [confirmation, setConfirmation] = useState<ReturnType<
+      typeof actionSnapshot
+    > | null>(null),
+    [receiptBasis, setReceiptBasis] = useState<ReturnType<
+      typeof receiptSnapshot
+    > | null>(null),
+    [actual, setActual] = useState<ReceiptItem[]>([]);
   const confirmBlock = useRef<HTMLDivElement>(null);
+  const receiptBlock = useRef<HTMLFormElement>(null);
+  const receiptRequest = useRef<ReturnType<typeof receiptPayload> | null>(null);
+  const receiptRequestId = useRef(crypto.randomUUID());
+  const [receiptUncertain, setReceiptUncertain] = useState(false);
   useEffect(() => {
     if (confirmation) {
       confirmBlock.current?.focus();
       confirmBlock.current?.scrollIntoView({ block: "nearest" });
     }
   }, [confirmation]);
+  useEffect(() => {
+    if (receiptBasis) {
+      receiptBlock.current?.focus();
+      receiptBlock.current?.scrollIntoView({ block: "nearest" });
+    }
+  }, [receiptBasis]);
   const doc = state.data;
+  const receiptStale =
+    !!doc && !!receiptBasis && doc.version !== receiptBasis.version;
+  const confirmationStale =
+    !!doc && !!confirmation && doc.version !== confirmation.version;
   const pending = doc && ["queued", "sending"].includes(doc.submission_state);
   useEffect(() => {
     if (!pending || state.refreshing) return;
     const timer = window.setTimeout(state.reload, 5000);
     return () => window.clearTimeout(timer);
   }, [pending, state.refreshing, state.reload]);
-  async function act(action: string) {
-    if (!doc) return;
+  async function act(selected: NonNullable<typeof confirmation>) {
     setBusy(true);
     setError("");
     try {
       const result = await api<DocumentRecord>(
-        `/documents/${kind}/${doc.id}/${action}`,
+        `/documents/${kind}/${selected.id}/${selected.action}`,
         {
           method: "POST",
           body: JSON.stringify({
-            version: doc.version,
+            version: selected.version,
             request_id: crypto.randomUUID(),
           }),
         },
@@ -109,6 +141,62 @@ function DocumentCard({
     } finally {
       setBusy(false);
       setConfirmation(null);
+      state.reload();
+    }
+  }
+  function openReceipt() {
+    if (!doc) return;
+    const basis = receiptSnapshot(doc);
+    setError("");
+    setConfirmation(null);
+    setActual(
+      basis.items.map((row) => ({
+        product_id: row.product_id,
+        amount: row.received_amount ?? row.amount,
+      })),
+    );
+    receiptRequest.current = null;
+    receiptRequestId.current = crypto.randomUUID();
+    setReceiptUncertain(false);
+    setReceiptBasis(basis);
+  }
+  async function submitReceipt(event: React.FormEvent) {
+    event.preventDefault();
+    if (!receiptBasis || (receiptStale && !receiptUncertain)) return;
+    setError("");
+    try {
+      receiptRequest.current ||= receiptPayload(
+        receiptBasis.items,
+        actual,
+        receiptRequestId.current,
+        receiptBasis.version,
+      );
+      setBusy(true);
+      const result = await api<DocumentRecord>(
+        `/documents/${kind}/${receiptBasis.id}/receive`,
+        {
+          method: "POST",
+          body: JSON.stringify(receiptRequest.current),
+        },
+      );
+      setReceiptBasis(null);
+      setReceiptUncertain(false);
+      receiptRequest.current = null;
+      changed(result);
+    } catch (e) {
+      setError((e as Error).message);
+      if (
+        receiptRequest.current &&
+        (!(e instanceof ApiError) || e.status >= 500)
+      )
+        setReceiptUncertain(true);
+      else {
+        receiptRequest.current = null;
+        receiptRequestId.current = crypto.randomUUID();
+        setReceiptUncertain(false);
+      }
+    } finally {
+      setBusy(false);
       state.reload();
     }
   }
@@ -132,14 +220,30 @@ function DocumentCard({
             <>
               <Group>
                 <Badge>
-                  {doc.submission_state === "queued"
-                    ? "Согласован · в очереди"
-                    : doc.submission_state === "sending"
-                      ? "Отправляется"
-                      : documentStatuses[doc.status] || doc.status}
+                  {doc.receipt_state === "pending_sender"
+                    ? receiptStatuses.pending_sender
+                    : doc.submission_state === "queued"
+                      ? "Согласован · в очереди"
+                      : doc.submission_state === "sending"
+                        ? "Отправляется"
+                        : documentStatuses[doc.status] || doc.status}
                 </Badge>
                 <Text size="sm">Версия {doc.version}</Text>
               </Group>
+              {kind === "waybill" && doc.receipt_state === "pending_sender" && (
+                <Alert color="yellow">
+                  Получатель указал фактическое количество. Отправитель должен
+                  подтвердить или отклонить расхождение. До подтверждения
+                  документ не отправляется в iiko.
+                </Alert>
+              )}
+              {kind === "waybill" && doc.receipt_state === "rejected" && (
+                <Alert color="orange">
+                  Отправитель отклонил расхождение. Получатель может исправить
+                  количество и отправить его повторно либо согласовать исходное
+                  количество.
+                </Alert>
+              )}
               {doc.submission_state !== "idle" && (
                 <Alert
                   color={doc.submission_state === "sent" ? "teal" : "yellow"}
@@ -170,7 +274,11 @@ function DocumentCard({
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th>Товар</Table.Th>
-                      <Table.Th>Количество</Table.Th>
+                      <Table.Th>
+                        {kind === "waybill" ? "Исходно" : "Количество"}
+                      </Table.Th>
+                      {kind === "waybill" && <Table.Th>Фактически</Table.Th>}
+                      {kind === "waybill" && <Table.Th>Разница</Table.Th>}
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
@@ -178,6 +286,18 @@ function DocumentCard({
                       <Table.Tr key={row.product_id}>
                         <Table.Td>{row.name}</Table.Td>
                         <Table.Td>{String(row.amount)}</Table.Td>
+                        {kind === "waybill" && (
+                          <Table.Td>
+                            {row.received_amount == null
+                              ? "—"
+                              : String(row.received_amount)}
+                          </Table.Td>
+                        )}
+                        {kind === "waybill" && (
+                          <Table.Td>
+                            {receiptDifference(row.amount, row.received_amount)}
+                          </Table.Td>
+                        )}
                       </Table.Tr>
                     ))}
                   </Table.Tbody>
@@ -196,19 +316,105 @@ function DocumentCard({
                     variant={action === "confirm" ? "filled" : "light"}
                     disabled={
                       busy ||
+                      !!receiptBasis ||
                       !!state.error ||
                       (!options && ["edit", "copy"].includes(action))
                     }
                     onClick={() =>
                       action === "edit" || action === "copy"
                         ? edit(action, doc)
-                        : setConfirmation(action)
+                        : action === "receive"
+                          ? openReceipt()
+                          : setConfirmation(actionSnapshot(doc, action))
                     }
                   >
                     {actionLabels[action]}
                   </Button>
                 ))}
               </Group>
+              {receiptBasis && kind === "waybill" && (
+                <form
+                  ref={receiptBlock}
+                  tabIndex={-1}
+                  onSubmit={submitReceipt}
+                  className="document-receipt-form"
+                  aria-label="Фактическое количество при приёмке"
+                >
+                  <Stack>
+                    <Text fw={600}>Фактическое количество</Text>
+                    <Text size="sm" c="dimmed">
+                      Укажите, сколько получили по каждой позиции. Ноль допустим
+                      для отдельной позиции; весь документ нулевым быть не
+                      может.
+                    </Text>
+                    {receiptStale && !receiptUncertain && (
+                      <Alert color="yellow" role="alert">
+                        Заявка изменилась после открытия формы. Закройте форму и
+                        откройте её заново, чтобы проверить новые количества.
+                      </Alert>
+                    )}
+                    {receiptUncertain && (
+                      <Alert color="yellow">
+                        Ответ сервера не получен. Повторная проверка отправит
+                        тот же запрос. Можно обновить карточку, чтобы проверить
+                        статус.
+                      </Alert>
+                    )}
+                    {receiptBasis.items.map((row) => (
+                      <div
+                        className="document-receipt-row"
+                        key={row.product_id}
+                      >
+                        <Text size="sm">{row.name || row.product_id}</Text>
+                        <Text size="sm" c="dimmed">
+                          Исходно: {String(row.amount)}
+                        </Text>
+                        <NumberInput
+                          label="Фактически"
+                          aria-label={`Фактически: ${row.name || row.product_id}`}
+                          value={
+                            actual.find(
+                              (item) => item.product_id === row.product_id,
+                            )?.amount ?? ""
+                          }
+                          onChange={(amount) =>
+                            setActual((old) =>
+                              old.map((item) =>
+                                item.product_id === row.product_id
+                                  ? { ...item, amount }
+                                  : item,
+                              ),
+                            )
+                          }
+                          min={0}
+                          max={1e9}
+                          allowNegative={false}
+                          decimalSeparator=","
+                          disabled={busy || receiptUncertain}
+                        />
+                      </div>
+                    ))}
+                    <Group justify="flex-end">
+                      <Button
+                        variant="default"
+                        disabled={busy}
+                        onClick={() => setReceiptBasis(null)}
+                      >
+                        Отмена
+                      </Button>
+                      <Button
+                        type="submit"
+                        loading={busy}
+                        disabled={receiptStale && !receiptUncertain}
+                      >
+                        {receiptUncertain
+                          ? "Проверить результат"
+                          : "Отправить расхождение"}
+                      </Button>
+                    </Group>
+                  </Stack>
+                </form>
+              )}
               <Text fw={600}>История действий</Text>
               {!doc.history?.length && (
                 <Text size="sm" c="dimmed">
@@ -236,8 +442,13 @@ function DocumentCard({
         </Stack>
         {confirmation && (
           <Alert
-            color={confirmation === "confirm" ? "cyan" : "red"}
-            title={actionLabels[confirmation]}
+            color={
+              confirmation.action === "confirm" ||
+              confirmation.action === "confirm_receipt"
+                ? "cyan"
+                : "red"
+            }
+            title={actionLabels[confirmation.action]}
             mt="md"
             role="region"
             aria-label="Подтверждение действия"
@@ -246,12 +457,26 @@ function DocumentCard({
           >
             <Stack>
               <Text>
-                Заявка {doc?.number}, версия {doc?.version}.
+                Заявка {confirmation.number}, версия {confirmation.version}.
               </Text>
+              {confirmationStale && (
+                <Alert color="yellow" role="alert">
+                  Заявка изменилась после открытия подтверждения. Вернитесь к
+                  карточке и проверьте новую версию.
+                </Alert>
+              )}
               <Text>
-                {confirmation === "confirm"
-                  ? "Проверьте склады, товары и количества. После согласования документ попадёт в очередь и отправится в iiko автоматически. Ждать ответа iiko не нужно."
-                  : "Действие будет записано в историю заявки."}
+                {confirmation.action === "confirm"
+                  ? confirmation.receipt_state === "rejected"
+                    ? "Будет согласовано исходное количество. Отклонённое расхождение останется в истории; документ попадёт в очередь отправки в iiko."
+                    : confirmation.receipt_state === "accepted"
+                      ? "Будет повторно отправлено ранее подтверждённое фактическое количество. Проверьте его в таблице перед согласованием."
+                      : "Проверьте склады, товары и количества. После согласования документ попадёт в очередь и отправится в iiko автоматически. Ждать ответа iiko не нужно."
+                  : confirmation.action === "confirm_receipt"
+                    ? "Проверьте фактические количества. После подтверждения документ попадёт в очередь отправки в iiko."
+                    : confirmation.action === "reject_receipt"
+                      ? "Расхождение вернётся получателю для повторной проверки. Документ не отправится в iiko."
+                      : "Действие будет записано в историю заявки."}
               </Text>
               <Group justify="flex-end">
                 <Button
@@ -263,7 +488,13 @@ function DocumentCard({
                 </Button>
                 <Button
                   loading={busy}
-                  color={confirmation === "confirm" ? undefined : "red"}
+                  color={
+                    confirmation.action === "confirm" ||
+                    confirmation.action === "confirm_receipt"
+                      ? undefined
+                      : "red"
+                  }
+                  disabled={confirmationStale}
                   onClick={() => {
                     if (confirmation) void act(confirmation);
                   }}

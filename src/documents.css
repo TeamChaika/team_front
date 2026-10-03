@@ -65,6 +65,30 @@
 .document-panel-body {
   padding: 20px;
 }
+.document-receipt-form {
+  padding: 16px;
+  border: 1px solid var(--mantine-color-cyan-7);
+  border-radius: 8px;
+}
+.document-receipt-form:focus {
+  outline: none;
+}
+.document-receipt-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(115px, 135px);
+  gap: 12px;
+  align-items: center;
+  padding-block: 8px;
+  border-bottom: 1px solid var(--mantine-color-default-border);
+}
+@media (max-width: 600px) {
+  .document-receipt-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .document-receipt-row .mantine-NumberInput-root {
+    grid-column: 1 / -1;
+  }
+}
 @media (min-width: 64em) {
   .document-workspace.has-panel {
     grid-template-columns: minmax(260px, 0.9fr) minmax(380px, 1.2fr);
