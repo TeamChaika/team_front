@@ -88,11 +88,15 @@ async function request(
   const r = await ([
     "/auth/login",
     "/auth/logout",
+    "/auth/recovery/reset",
     "/profile/password",
   ].includes(path)
     ? authLock(send)
     : send());
-  if (r.ok && ["/auth/login", "/auth/logout"].includes(path))
+  if (
+    r.ok &&
+    ["/auth/login", "/auth/logout", "/auth/recovery/reset"].includes(path)
+  )
     sessionChannel?.postMessage("session-changed");
   init.signal?.throwIfAborted();
   if (r.status === 401 && retry && !path.startsWith("/auth/")) {
@@ -129,7 +133,8 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     (result as { password_change_required?: boolean })?.password_change_required
   )
     passwordRequired(true);
-  if (path === "/auth/logout") clearPasswordRequirement();
+  if (["/auth/logout", "/auth/recovery/reset"].includes(path))
+    clearPasswordRequirement();
   if (path === "/profile/password" && response.ok)
     sessionChannel?.postMessage("password-updated");
   return result;
