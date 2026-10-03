@@ -72,6 +72,7 @@ import { DocumentDataProvider } from "./DocumentData";
 import { DocumentsPage } from "./DocumentsPage";
 import { ProfilePage } from "./ProfilePage";
 import { PasswordForm } from "./PasswordForm";
+import { ForgotPassword, ResetPassword } from "./PasswordRecovery";
 import { checkForegroundPasswordRequirement } from "./foregroundPasswordCheck";
 import "./profile.css";
 export const sections = [
@@ -208,6 +209,14 @@ function Login({ onLogin }: { onLogin: () => void }) {
           <Button type="submit" fullWidth loading={busy} size="md">
             Войти в рабочее пространство
           </Button>
+          <Button
+            component={Link}
+            to="/forgot-password"
+            variant="subtle"
+            fullWidth
+          >
+            Забыли пароль?
+          </Button>
           <p className="login-note">
             Доступ к ресторанам назначает владелец системы.
           </p>
@@ -217,6 +226,13 @@ function Login({ onLogin }: { onLogin: () => void }) {
   );
 }
 export default function App() {
+  const location = useLocation();
+  if (location.pathname === "/forgot-password") return <ForgotPassword />;
+  if (location.pathname === "/reset-password") return <ResetPassword />;
+  return <WorkspaceApp />;
+}
+
+function WorkspaceApp() {
   const [meta, setMeta] = useState<Meta | null>(null),
     [checking, setChecking] = useState(true),
     [error, setError] = useState(""),
@@ -422,6 +438,9 @@ export default function App() {
           <h1>Задайте новый пароль</h1>
           <p>Смените временный пароль, чтобы продолжить работу.</p>
           <PasswordForm required onSuccess={verifyPasswordChange} />
+          <Button component={Link} to="/forgot-password" variant="subtle">
+            Не помню текущий пароль
+          </Button>
           <Button variant="subtle" onClick={() => void logout()}>
             Выйти
           </Button>

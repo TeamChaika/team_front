@@ -44,6 +44,17 @@
 .password-gate-card > .mantine-Button-root {
   margin-top: 12px;
 }
+.recovery-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--accent);
+  font-size: 20px;
+  font-weight: 650;
+}
+.password-gate-card h1 + .mantine-Stack-root {
+  margin-top: 22px;
+}
 @media (max-width: 760px) {
   .profile-grid {
     grid-template-columns: 1fr;
