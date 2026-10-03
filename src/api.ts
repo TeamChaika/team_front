@@ -15,9 +15,31 @@ const sessionChannel =
   typeof BroadcastChannel === "undefined"
     ? null
     : new BroadcastChannel("chaika-auth-session");
+let passwordRequirementVersion = 0;
+let passwordRequirementActive = false;
+function passwordRequired(broadcast: boolean) {
+  if (passwordRequirementActive) return;
+  passwordRequirementActive = true;
+  passwordRequirementVersion += 1;
+  window.dispatchEvent(new Event("password-required"));
+  if (broadcast) sessionChannel?.postMessage("password-required");
+}
+export function getPasswordRequirementVersion() {
+  return passwordRequirementVersion;
+}
+export function announcePasswordRequired() {
+  passwordRequired(true);
+}
+export function clearPasswordRequirement() {
+  passwordRequirementActive = false;
+}
 if (sessionChannel)
-  sessionChannel.onmessage = () =>
-    window.dispatchEvent(new Event("session-lost"));
+  sessionChannel.onmessage = (event) => {
+    if (event.data === "password-required") passwordRequired(false);
+    else if (event.data === "password-updated")
+      window.dispatchEvent(new Event("password-updated"));
+    else window.dispatchEvent(new Event("session-lost"));
+  };
 let refresh: Promise<Response> | null = null;
 async function authLock<T>(operation: () => Promise<T>): Promise<T> {
   // Serialize cookie rotation and sign-out across tabs on the same site.
@@ -35,9 +57,16 @@ export function renewSession(): Promise<Response> {
         signal: AbortSignal.timeout(20_000),
       }),
     )
-      .then((response) => {
+      .then(async (response) => {
         if ([401, 403].includes(response.status))
           window.dispatchEvent(new Event("session-lost"));
+        if (response.ok) {
+          const body = await response
+            .clone()
+            .json()
+            .catch(() => ({}));
+          if (body.password_change_required === true) passwordRequired(true);
+        }
         return response;
       })
       .finally(() => {
@@ -77,6 +106,8 @@ async function request(
   }
   if (!r.ok) {
     const body = await r.json().catch(() => ({}));
+    if (r.status === 403 && body.detail?.code === "password_change_required")
+      passwordRequired(true);
     throw new ApiError(
       typeof body.detail === "string"
         ? body.detail
@@ -91,7 +122,17 @@ async function request(
 }
 export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await request(path, init);
-  return response.status === 204 ? (undefined as T) : response.json();
+  const result =
+    response.status === 204 ? (undefined as T) : await response.json();
+  if (
+    path === "/auth/login" &&
+    (result as { password_change_required?: boolean })?.password_change_required
+  )
+    passwordRequired(true);
+  if (path === "/auth/logout") clearPasswordRequirement();
+  if (path === "/profile/password" && response.ok)
+    sessionChannel?.postMessage("password-updated");
+  return result;
 }
 export async function apiBlob(
   path: string,
@@ -135,6 +176,7 @@ export type Meta = {
     display_name: string;
     role: string;
     all_departments?: boolean;
+    password_change_required?: boolean;
   };
   departments: { id: string; name: string; code: string }[];
   sales_dates: string[];
