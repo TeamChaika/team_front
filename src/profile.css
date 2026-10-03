@@ -23,15 +23,15 @@
   display: grid;
   place-items: center;
   padding: 24px;
-  background: #f4f7f8;
+  background: var(--bg);
 }
 .password-gate-card {
   width: min(100%, 440px);
   padding: 32px;
-  border: 1px solid #dce5e9;
+  border: 1px solid var(--border);
   border-radius: 20px;
-  background: #fff;
-  box-shadow: 0 18px 48px rgb(18 54 64 / 9%);
+  background: var(--panel);
+  box-shadow: 0 18px 48px rgb(0 0 0 / 18%);
 }
 .password-gate-card h1 {
   margin: 28px 0 6px;
@@ -39,7 +39,7 @@
 }
 .password-gate-card > p {
   margin: 0 0 24px;
-  color: #5b6e74;
+  color: var(--muted);
 }
 .password-gate-card > .mantine-Button-root {
   margin-top: 12px;
