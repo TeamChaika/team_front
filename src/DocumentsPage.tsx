@@ -7,6 +7,7 @@ import {
   Group,
   Loader,
   Pagination,
+  SegmentedControl,
   Select,
   SimpleGrid,
   Stack,
@@ -300,7 +301,7 @@ export function DocumentsPage({ kind }: { kind: DocumentKind }) {
     [exporting, setExporting] = useState(false);
   const [filters, setFilters] = useState({
     status: "Created",
-    direction: "all",
+    direction: kind === "waybill" ? "incoming" : "all",
     store_id: "",
     query: "",
     date_from: "",
@@ -448,6 +449,20 @@ export function DocumentsPage({ kind }: { kind: DocumentKind }) {
                   )}
                 </Group>
               </Group>
+              {kind === "waybill" && (
+                <Group>
+                  <SegmentedControl
+                    aria-label="Направление накладных"
+                    value={filters.direction}
+                    onChange={(value) => filter("direction", value)}
+                    data={[
+                      { value: "incoming", label: "Входящие" },
+                      { value: "outgoing", label: "Исходящие" },
+                      { value: "all", label: "Все" },
+                    ]}
+                  />
+                </Group>
+              )}
               <div className="document-filters">
                 <Select
                   label="Статус"
@@ -475,18 +490,6 @@ export function DocumentsPage({ kind }: { kind: DocumentKind }) {
                     label: s.name,
                   }))}
                 />
-                {kind === "waybill" && (
-                  <Select
-                    label="Направление"
-                    value={filters.direction}
-                    onChange={(v) => filter("direction", v || "all")}
-                    data={[
-                      { value: "all", label: "Все" },
-                      { value: "incoming", label: "Входящие" },
-                      { value: "outgoing", label: "Исходящие" },
-                    ]}
-                  />
-                )}
                 <TextInput
                   label="Поиск"
                   placeholder="Номер DJ… или комментарий"
