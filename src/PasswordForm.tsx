@@ -74,7 +74,7 @@ export function PasswordForm({
   return (
     <Stack gap="md" component="form" onSubmit={save}>
       <Text size="sm" c="dimmed">
-        Для изменения введите текущий пароль и придумайте новый длиной от 12 до
+        Для изменения введите текущий пароль и придумайте новый длиной от 8 до
         128 символов.
       </Text>
       {error && (
@@ -106,7 +106,7 @@ export function PasswordForm({
           label="Новый пароль"
           autoComplete={required ? "off" : "new-password"}
           required
-          minLength={12}
+          minLength={8}
           maxLength={128}
           value={newPassword}
           onChange={(e) => setNewPassword(e.currentTarget.value)}
