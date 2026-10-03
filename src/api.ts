@@ -56,7 +56,11 @@ async function request(
       credentials: "include",
       headers: { "Content-Type": "application/json", ...init.headers },
     });
-  const r = await (["/auth/login", "/auth/logout"].includes(path)
+  const r = await ([
+    "/auth/login",
+    "/auth/logout",
+    "/profile/password",
+  ].includes(path)
     ? authLock(send)
     : send());
   if (r.ok && ["/auth/login", "/auth/logout"].includes(path))

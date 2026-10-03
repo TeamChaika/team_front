@@ -41,6 +41,7 @@ import {
   IconArrowUpRight,
   IconBuildingStore,
   IconShieldCheck,
+  IconUserCircle,
 } from "@tabler/icons-react";
 import { api, renewSession, type Meta } from "./api";
 import {
@@ -61,6 +62,7 @@ import { DepositsPage } from "./DepositsPage";
 import { ManagementPage } from "./ManagementPage";
 import { DocumentDataProvider } from "./DocumentData";
 import { DocumentsPage } from "./DocumentsPage";
+import { ProfilePage } from "./ProfilePage";
 export const sections = [
   { path: "/", title: "Обзор", icon: IconLayoutDashboard },
   { path: "/indicators", title: "Показатели", icon: IconActivity },
@@ -316,18 +318,23 @@ export default function App() {
   const currentSection =
     location.pathname === "/" ? "overview" : location.pathname.split("/")[1];
   const currentAllowed =
-    currentSection === "management"
-      ? meta.can_manage
-      : allowed.includes(currentSection);
+    currentSection === "profile"
+      ? true
+      : currentSection === "management"
+        ? meta.can_manage
+        : allowed.includes(currentSection);
   if (!currentAllowed && availableSections.length)
     return <Navigate to={availableSections[0].path} replace />;
   const canAssistant =
     allowed.includes("purchase-prices") &&
-    !["deposits", "management"].includes(currentSection);
+    !["deposits", "management", "profile"].includes(currentSection);
   const ContentLayout = canAssistant ? AssistantLayout : Fragment;
   const title =
-    sections.find((s) => s.path !== "/" && location.pathname.startsWith(s.path))
-      ?.title ?? "Обзор";
+    currentSection === "profile"
+      ? "Мой профиль"
+      : (sections.find(
+          (s) => s.path !== "/" && location.pathname.startsWith(s.path),
+        )?.title ?? "Обзор");
   const datesEnabled = [
     "/",
     "/sales",
@@ -414,25 +421,35 @@ export default function App() {
                 ))}
               </nav>
               <div className="sidebar-footer">
+                <NavLink to="/profile" className="profile-nav-link">
+                  <IconUserCircle size={18} stroke={1.6} />
+                  <span>Мой профиль</span>
+                </NavLink>
                 <div className="connection">
                   <i /> Данные из Supabase
                 </div>
                 <div className="user-card">
-                  <Avatar color="cyan" radius="md">
-                    {meta.user.display_name[0]}
-                  </Avatar>
-                  <div>
-                    <strong>{meta.user.display_name}</strong>
-                    <small>
-                      {meta.user.role === "owner"
-                        ? "Владелец"
-                        : meta.user.role === "manager"
-                          ? "Менеджер"
-                          : meta.user.role === "deposits"
-                            ? "Депозиты"
-                            : "Аналитик"}
-                    </small>
-                  </div>
+                  <Link
+                    to="/profile"
+                    className="user-card-profile"
+                    aria-label="Открыть мой профиль"
+                  >
+                    <Avatar color="cyan" radius="md">
+                      {meta.user.display_name[0]}
+                    </Avatar>
+                    <span>
+                      <strong>{meta.user.display_name}</strong>
+                      <small>
+                        {meta.user.role === "owner"
+                          ? "Владелец"
+                          : meta.user.role === "manager"
+                            ? "Менеджер"
+                            : meta.user.role === "deposits"
+                              ? "Депозиты"
+                              : "Пользователь"}
+                      </small>
+                    </span>
+                  </Link>
                   <button onClick={logout} title="Выйти" aria-label="Выйти">
                     <IconLogout size={18} />
                   </button>
@@ -467,7 +484,9 @@ export default function App() {
                     new URLSearchParams(location.search).get("view") !==
                       "analytics")
                 ) &&
-                !["deposits", "management"].includes(currentSection) && (
+                !["deposits", "management", "profile"].includes(
+                  currentSection,
+                ) && (
                   <div className="filterbar">
                     {location.pathname === "/" && (
                       <button
@@ -547,13 +566,19 @@ export default function App() {
                 )}
               <ContentLayout>
                 <main className="content">
-                  {!availableSections.length ? (
+                  {!availableSections.length && currentSection !== "profile" ? (
                     <Alert>
                       Доступ к разделам пока не назначен. Обратитесь к
                       администратору.
                     </Alert>
                   ) : (
                     <Routes>
+                      <Route
+                        path="/profile"
+                        element={
+                          <ProfilePage key={meta.user.id} user={meta.user} />
+                        }
+                      />
                       <Route
                         path="/"
                         element={<Overview key={departments.join(",")} />}
