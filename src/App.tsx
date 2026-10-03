@@ -3,6 +3,7 @@ import {
   useState,
   createContext,
   useContext,
+  useRef,
   type FormEvent,
   Fragment,
 } from "react";
@@ -43,7 +44,14 @@ import {
   IconShieldCheck,
   IconUserCircle,
 } from "@tabler/icons-react";
-import { api, renewSession, type Meta } from "./api";
+import {
+  announcePasswordRequired,
+  api,
+  clearPasswordRequirement,
+  getPasswordRequirementVersion,
+  renewSession,
+  type Meta,
+} from "./api";
 import {
   SalesPage,
   ResourcePage,
@@ -63,6 +71,9 @@ import { ManagementPage } from "./ManagementPage";
 import { DocumentDataProvider } from "./DocumentData";
 import { DocumentsPage } from "./DocumentsPage";
 import { ProfilePage } from "./ProfilePage";
+import { PasswordForm } from "./PasswordForm";
+import { checkForegroundPasswordRequirement } from "./foregroundPasswordCheck";
+import "./profile.css";
 export const sections = [
   { path: "/", title: "Обзор", icon: IconLayoutDashboard },
   { path: "/indicators", title: "Показатели", icon: IconActivity },
@@ -209,7 +220,12 @@ export default function App() {
   const [meta, setMeta] = useState<Meta | null>(null),
     [checking, setChecking] = useState(true),
     [error, setError] = useState(""),
-    [revision, setRevision] = useState(0);
+    [revision, setRevision] = useState(0),
+    [passwordRequired, setPasswordRequired] = useState(false);
+  const passwordRequiredRef = useRef(false);
+  const requestEpoch = useRef(0);
+  const currentUserId = useRef<string | null>(null);
+  currentUserId.current = meta?.user.id ?? null;
   const [departments, setDepartments] = useState<string[]>([]);
   const setDepartment = (id: string) => setDepartments(id ? [id] : []);
   const [start, setStart] = useState(""),
@@ -218,10 +234,27 @@ export default function App() {
   const location = useLocation();
   useEffect(() => {
     let live = true;
+    const requirementVersion = getPasswordRequirementVersion();
+    const epoch = requestEpoch.current;
     setChecking(true);
     api<Meta>("/me")
       .then((x) => {
-        if (live) {
+        if (live && epoch === requestEpoch.current) {
+          if (requirementVersion !== getPasswordRequirementVersion()) {
+            setRevision((value) => value + 1);
+            return;
+          }
+          if (x.user.password_change_required) {
+            if (!passwordRequiredRef.current) announcePasswordRequired();
+            passwordRequiredRef.current = true;
+            setPasswordRequired(true);
+            setMeta(null);
+            setDepartments([]);
+            return;
+          }
+          passwordRequiredRef.current = false;
+          clearPasswordRequirement();
+          setPasswordRequired(false);
           setMeta(x);
           const date =
             (x.live_sales_enabled ? x.today : x.sales_dates[0]) ??
@@ -232,13 +265,22 @@ export default function App() {
         }
       })
       .catch((e) => {
-        if (live) {
+        if (live && epoch === requestEpoch.current) {
+          if (requirementVersion !== getPasswordRequirementVersion()) {
+            setRevision((value) => value + 1);
+            return;
+          }
           setMeta(null);
           if (e.status !== 401) setError(e.message);
         }
       })
       .finally(() => {
-        if (live) setChecking(false);
+        if (
+          live &&
+          epoch === requestEpoch.current &&
+          requirementVersion === getPasswordRequirementVersion()
+        )
+          setChecking(false);
       });
     return () => {
       live = false;
@@ -246,11 +288,31 @@ export default function App() {
   }, [revision]);
   useEffect(() => {
     const lost = () => {
+      requestEpoch.current += 1;
+      passwordRequiredRef.current = false;
+      clearPasswordRequirement();
+      setPasswordRequired(false);
       setMeta(null);
       setDepartments([]);
+      setChecking(false);
     };
+    const required = () => {
+      requestEpoch.current += 1;
+      passwordRequiredRef.current = true;
+      setPasswordRequired(true);
+      setMeta(null);
+      setDepartments([]);
+      setRevision((value) => value + 1);
+    };
+    const updated = () => setRevision((value) => value + 1);
     window.addEventListener("session-lost", lost);
-    return () => window.removeEventListener("session-lost", lost);
+    window.addEventListener("password-required", required);
+    window.addEventListener("password-updated", updated);
+    return () => {
+      window.removeEventListener("session-lost", lost);
+      window.removeEventListener("password-required", required);
+      window.removeEventListener("password-updated", updated);
+    };
   }, []);
   useEffect(() => {
     if (!meta?.user.id) return;
@@ -277,9 +339,95 @@ export default function App() {
     };
   }, [meta?.user.id]);
   useEffect(() => {
+    if (!meta?.user.id || passwordRequired) return;
+    const accountId = meta.user.id;
+    let live = true;
+    let lastCheck = Date.now();
+    const pending = new Set<AbortController>();
+    const check = () => {
+      if (
+        document.visibilityState !== "visible" ||
+        Date.now() - lastCheck < 30_000
+      )
+        return;
+      lastCheck = Date.now();
+      const controller = new AbortController();
+      const epoch = requestEpoch.current;
+      const requirementVersion = getPasswordRequirementVersion();
+      pending.add(controller);
+      void checkForegroundPasswordRequirement(
+        (signal) => api<Meta>("/me", { signal }),
+        (userId) =>
+          live &&
+          epoch === requestEpoch.current &&
+          requirementVersion === getPasswordRequirementVersion() &&
+          currentUserId.current === accountId &&
+          userId === accountId,
+        controller.signal,
+        announcePasswordRequired,
+      )
+        .catch(() => {
+          // The existing session and the next foreground check remain available.
+        })
+        .finally(() => pending.delete(controller));
+    };
+    window.addEventListener("focus", check);
+    document.addEventListener("visibilitychange", check);
+    return () => {
+      live = false;
+      for (const controller of pending) controller.abort();
+      window.removeEventListener("focus", check);
+      document.removeEventListener("visibilitychange", check);
+    };
+  }, [meta?.user.id, passwordRequired]);
+  useEffect(() => {
     setMobile(false);
     window.scrollTo(0, 0);
   }, [location.pathname]);
+  async function logout() {
+    requestEpoch.current += 1;
+    try {
+      await api("/auth/logout", { method: "POST" });
+    } catch (e) {
+      setError((e as Error).message);
+    }
+    passwordRequiredRef.current = false;
+    clearPasswordRequirement();
+    setPasswordRequired(false);
+    setMeta(null);
+    setDepartments([]);
+    setChecking(false);
+  }
+  async function verifyPasswordChange() {
+    const version = getPasswordRequirementVersion();
+    const epoch = requestEpoch.current;
+    const updated = await api<Meta>("/me");
+    if (
+      epoch !== requestEpoch.current ||
+      version !== getPasswordRequirementVersion() ||
+      updated.user.password_change_required
+    )
+      throw new Error("Смена пароля ещё не подтверждена. Повторите проверку.");
+    passwordRequiredRef.current = false;
+    clearPasswordRequirement();
+    setPasswordRequired(false);
+    setMeta(updated);
+    setError("");
+  }
+  if (passwordRequired)
+    return (
+      <main className="password-gate">
+        <div className="password-gate-card">
+          <Brand />
+          <h1>Задайте новый пароль</h1>
+          <p>Смените временный пароль, чтобы продолжить работу.</p>
+          <PasswordForm required onSuccess={verifyPasswordChange} />
+          <Button variant="subtle" onClick={() => void logout()}>
+            Выйти
+          </Button>
+        </div>
+      </main>
+    );
   if (checking)
     return (
       <div className="center-screen">
@@ -354,15 +502,6 @@ export default function App() {
     }
     return p.toString();
   };
-  async function logout() {
-    try {
-      await api("/auth/logout", { method: "POST" });
-    } catch (e) {
-      setError((e as Error).message);
-    }
-    setMeta(null);
-    setDepartments([]);
-  }
   return (
     <WorkspaceContext.Provider
       value={{

@@ -7,7 +7,7 @@
 | Задача | Начать с |
 | --- | --- |
 | Маршруты, меню, доступ к разделам, сессия | [App.tsx](../src/App.tsx), [interface.md](CODEMAPS/interface.md) |
-| Личный кабинет, пароль и Telegram | [ProfilePage.tsx](../src/ProfilePage.tsx), [App.tsx](../src/App.tsx), [api.ts](../src/api.ts) |
+| Личный кабинет, пароль и Telegram | [ProfilePage.tsx](../src/ProfilePage.tsx), [PasswordForm.tsx](../src/PasswordForm.tsx), [App.tsx](../src/App.tsx), [api.ts](../src/api.ts) |
 | Общие фильтры заведений и дат | [App.tsx](../src/App.tsx), [RestaurantPicker.tsx](../src/RestaurantPicker.tsx) |
 | Обзор и карточки | [Overview.tsx](../src/Overview.tsx), [interface.md](CODEMAPS/interface.md) |
 | Показатели и периоды сравнения | [Indicators.tsx](../src/Indicators.tsx), [indicatorPeriods.ts](../src/indicatorPeriods.ts) |
@@ -29,6 +29,7 @@
 
 - [index.html](../index.html) → [main.tsx](../src/main.tsx) (React, Mantine, Router) → [App.tsx](../src/App.tsx) (сессия, контекст рабочего пространства, маршруты).
 - [api.ts](../src/api.ts) — общий клиент запросов и обновление cookie-сессии; [useData.ts](../src/useData.ts) — обычная загрузка GET. Документы используют отдельный кеш, описанный в [documents.md](CODEMAPS/documents.md).
+- При `meta.user.password_change_required` [App.tsx](../src/App.tsx) показывает только отдельную форму [PasswordForm.tsx](../src/PasswordForm.tsx). [passwordChangeFlow.ts](../src/passwordChangeFlow.ts) предотвращает повторный `POST` после успешного сохранения при ошибке проверки; [foregroundPasswordCheck.ts](../src/foregroundPasswordCheck.ts) отбрасывает устаревшую фоновую проверку. `api.ts` распознаёт `403 detail.code=password_change_required`, уведомляет другие вкладки и не обновляет сессию по такому ответу. Рабочие маршруты открываются лишь после нового `GET /me` с ложным признаком.
 - [interface.md](CODEMAPS/interface.md) — маршруты, обзор, показатели, продажи, ресурсы, стили; [integrations.md](CODEMAPS/integrations.md) — закупки, помощник, депозиты, управление, тесты.
 - Начните с строки нужной задачи в таблице, затем откройте тематическую карту; кода в ней достаточно для выбора первого файла.
 - Разделы «Сотрудники iiko» и «Управление аккаунтами dashboard» имеют разные модели и API. При `meta.documents_enabled` перемещения и списания переключаются с аналитики iiko на заявки с отдельной вкладкой аналитики.

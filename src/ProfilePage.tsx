@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type FormEvent,
-} from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert,
   Anchor,
@@ -12,7 +6,6 @@ import {
   Button,
   Group,
   Paper,
-  PasswordInput,
   Stack,
   Text,
   Title,
@@ -23,7 +16,8 @@ import {
   IconShieldLock,
 } from "@tabler/icons-react";
 import { api, type Meta } from "./api";
-import { passwordValidationError, telegramUrl } from "./profileRules";
+import { telegramUrl } from "./profileRules";
+import { PasswordForm } from "./PasswordForm";
 import "./profile.css";
 
 type TelegramStatus = {
@@ -34,12 +28,6 @@ type TelegramStatus = {
 type TelegramLink = { url: string; expires_at: string };
 
 export function ProfilePage({ user }: { user: Meta["user"] }) {
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [passwordBusy, setPasswordBusy] = useState(false);
-  const [passwordError, setPasswordError] = useState("");
-  const [passwordSuccess, setPasswordSuccess] = useState("");
   const [telegram, setTelegram] = useState<TelegramStatus | null>(null);
   const [telegramBusy, setTelegramBusy] = useState(false);
   const [telegramLoading, setTelegramLoading] = useState(true);
@@ -49,7 +37,6 @@ export function ProfilePage({ user }: { user: Meta["user"] }) {
   const active = useRef(true);
   const statusRequest = useRef<AbortController | null>(null);
   const mutationInFlight = useRef(false);
-  const passwordInFlight = useRef(false);
 
   const refreshTelegram = useCallback(async () => {
     if (mutationInFlight.current) return;
@@ -106,43 +93,6 @@ export function ProfilePage({ user }: { user: Meta["user"] }) {
     }, 10_000);
     return () => window.clearInterval(timer);
   }, [pendingLink, telegram?.linked, refreshTelegram]);
-
-  async function savePassword(event: FormEvent) {
-    event.preventDefault();
-    if (passwordInFlight.current) return;
-    setPasswordError("");
-    setPasswordSuccess("");
-    const validationError = passwordValidationError(
-      currentPassword,
-      newPassword,
-      confirmPassword,
-    );
-    if (validationError) {
-      setPasswordError(validationError);
-      return;
-    }
-    passwordInFlight.current = true;
-    setPasswordBusy(true);
-    try {
-      await api<{ status: "ok" }>("/profile/password", {
-        method: "POST",
-        body: JSON.stringify({
-          current_password: currentPassword,
-          new_password: newPassword,
-        }),
-      });
-      if (!active.current) return;
-      setCurrentPassword("");
-      setNewPassword("");
-      setConfirmPassword("");
-      setPasswordSuccess("Пароль изменён.");
-    } catch (error) {
-      if (active.current) setPasswordError((error as Error).message);
-    } finally {
-      passwordInFlight.current = false;
-      if (active.current) setPasswordBusy(false);
-    }
-  }
 
   async function connectTelegram() {
     if (mutationInFlight.current) return;
@@ -217,57 +167,14 @@ export function ProfilePage({ user }: { user: Meta["user"] }) {
       </div>
       <div className="profile-grid">
         <Paper withBorder radius="lg" p="lg">
-          <Stack gap="md" component="form" onSubmit={savePassword}>
+          <Stack gap="md">
             <Group gap="sm">
               <IconShieldLock size={24} />
               <Title order={2} size="h3">
                 Смена пароля
               </Title>
             </Group>
-            <Text size="sm" c="dimmed">
-              Для изменения введите текущий пароль и придумайте новый длиной от
-              12 до 128 символов.
-            </Text>
-            {passwordError && (
-              <Alert color="red" role="alert">
-                {passwordError}
-              </Alert>
-            )}
-            {passwordSuccess && (
-              <Alert color="green" role="status">
-                {passwordSuccess}
-              </Alert>
-            )}
-            <PasswordInput
-              label="Текущий пароль"
-              autoComplete="current-password"
-              required
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.currentTarget.value)}
-            />
-            <PasswordInput
-              label="Новый пароль"
-              autoComplete="new-password"
-              required
-              minLength={12}
-              maxLength={128}
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.currentTarget.value)}
-            />
-            <PasswordInput
-              label="Повторите новый пароль"
-              autoComplete="new-password"
-              required
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.currentTarget.value)}
-            />
-            <Button
-              type="submit"
-              loading={passwordBusy}
-              disabled={passwordBusy}
-            >
-              Сохранить новый пароль
-            </Button>
+            <PasswordForm />
           </Stack>
         </Paper>
         <Paper withBorder radius="lg" p="lg">
