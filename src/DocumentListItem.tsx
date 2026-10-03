@@ -5,6 +5,7 @@ import { dateText } from "./api";
 import { useDocumentCache } from "./DocumentData";
 import {
   documentStatuses,
+  receiptStatuses,
   submissionLabel,
   type DocumentKind,
   type DocumentRecord,
@@ -77,11 +78,15 @@ export function DocumentListItem({
           )}
         </div>
         <Badge size="sm">
-          {doc.submission_state === "queued"
-            ? "Согласован · в очереди"
-            : doc.submission_state === "sending"
-              ? "Отправляется"
-              : documentStatuses[doc.status] || doc.status}
+          {doc.receipt_state === "pending_sender"
+            ? receiptStatuses.pending_sender
+            : doc.submission_state === "queued"
+              ? "Согласован · в очереди"
+              : doc.submission_state === "sending"
+                ? "Отправляется"
+                : doc.receipt_state === "rejected"
+                  ? receiptStatuses.rejected
+                  : documentStatuses[doc.status] || doc.status}
         </Badge>
       </Group>
     </Link>
