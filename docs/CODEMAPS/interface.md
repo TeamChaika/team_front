@@ -12,9 +12,10 @@
 | `/events/topology` | `TopologyPage` в [pages.tsx](../../src/pages.tsx); `GET /topology` |
 | `/balances` | [BalancesPage.tsx](../../src/BalancesPage.tsx), [BalanceSearch.tsx](../../src/BalanceSearch.tsx); `GET /resources/balances` |
 | `/status` | `StatusPage` в [pages.tsx](../../src/pages.tsx); `GET /status` |
+| `/profile` | [ProfilePage.tsx](../../src/ProfilePage.tsx); `POST /profile/password`, `GET /profile/telegram`, `POST /profile/telegram/link`, `POST /profile/telegram/unlink` |
 | `/transfers`, `/writeoffs` | Если `meta.documents_enabled` — [заявки](documents.md); `?view=analytics` возвращает `ResourcePage` |
 
-- [App.tsx](../../src/App.tsx) содержит `sections`, `<Routes>`, боковое меню и `WorkspaceContext` с заведениями и датами. `meta.sections` ограничивает разделы, `meta.can_manage` — `/management`; недоступный маршрут перенаправляется в первый доступный раздел.
+- [App.tsx](../../src/App.tsx) содержит `sections`, `<Routes>`, боковое меню и `WorkspaceContext` с заведениями и датами. `meta.sections` ограничивает разделы, `meta.can_manage` — `/management`; `/profile` доступен всем вошедшим независимо от рабочих разделов. Недоступный рабочий маршрут перенаправляется в первый доступный раздел.
 - Глобальные даты используются обзором, продажами, сменами, накладными, перемещениями, списаниями и событиями. Показатели рассчитывают свой период; закупочные цены не используют общий диапазон дат.
 - [Overview.tsx](../../src/Overview.tsx) объединяет KPI, тренд и блюда; [OverviewCards.tsx](../../src/OverviewCards.tsx) — уведомления и лидеры изменения цен. [LiveDataNotice.tsx](../../src/LiveDataNotice.tsx) и [PartialDayNotice.tsx](../../src/PartialDayNotice.tsx) отмечают источник и неполные дни.
 - [Indicators.tsx](../../src/Indicators.tsx) загружает карточки независимо, повторяет ответ `loading` по `retry_after`; порядок и скрытие карточек хранит в `localStorage` по `meta.user.id`. Логика календарных сравнений — в [indicatorPeriods.ts](../../src/indicatorPeriods.ts).

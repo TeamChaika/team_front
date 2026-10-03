@@ -205,9 +205,12 @@ small {
   border-top: 1px solid var(--border);
   padding: 18px 8px;
 }
-.user-card > div:nth-child(2) {
-  flex: 1;
-}
+.user-card-profile { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; color: inherit; text-decoration: none; border-radius: 7px; }
+.user-card-profile:hover, .user-card-profile:focus-visible { color: #d9e9f7; }
+.user-card-profile > span { min-width: 0; }
+.user-card-profile strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profile-nav-link { display: flex; align-items: center; gap: 10px; padding: 11px 12px; border-radius: 7px; color: #96a9c1; font-size: 12px; text-decoration: none; }
+.profile-nav-link:hover, .profile-nav-link.active { background: #193246; color: #75dbef; }
 .user-card strong {
   display: block;
   font-size: 11px;
