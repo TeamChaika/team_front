@@ -1,4 +1,6 @@
 import { useState, type ReactNode } from "react";
+import { ScheduledSync } from "./ScheduledSync";
+import type { ScheduledSyncTask } from "./scheduledSyncModel";
 import { PartialDayNotice } from "./PartialDayNotice";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import {
@@ -1362,8 +1364,8 @@ export function StatusPage() {
     runs: Row[];
     observations: Row[];
     cash_shift_days: Row[];
-    scheduled?: Row[];
-  }>("/status?" + w.query());
+    scheduled?: ScheduledSyncTask[];
+  }>("/status?" + w.query(), true);
   return (
     <>
       <PageTitle
@@ -1379,32 +1381,19 @@ export function StatusPage() {
           </Button>
         }
       />
-      <Feedback state={state}>
+      {state.data && state.error && (
+        <Alert color="red" mb="md" role="alert">
+          Не удалось обновить статус: {state.error}
+        </Alert>
+      )}
+      <Feedback state={{ ...state, error: state.data ? "" : state.error }}>
         {state.data && (
           <>
             {!!state.data.scheduled?.length && (
-              <section className="panel">
-                <div className="panel-heading">
-                  <div>
-                    <h2>Автоматическая синхронизация</h2>
-                    <p>
-                      Время расписания: Крым, UTC+3. При ошибке — повтор через 5
-                      минут.
-                    </p>
-                  </div>
-                </div>
-                <DataTable
-                  columns={[
-                    { key: "label", label: "Задача" },
-                    { key: "schedule", label: "Расписание" },
-                    { key: "status", label: "Статус" },
-                    { key: "finished_at", label: "Завершено" },
-                    { key: "error_code", label: "Ошибка" },
-                    { key: "next_retry_at", label: "Повтор" },
-                  ]}
-                  rows={state.data.scheduled}
-                />
-              </section>
+              <ScheduledSync
+                tasks={state.data.scheduled}
+                reload={state.reload}
+              />
             )}
             <section className="panel">
               <div className="panel-heading">

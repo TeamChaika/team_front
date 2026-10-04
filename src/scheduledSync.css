@@ -1,0 +1,72 @@
+.scheduled-sync-table .sync-task-name {
+  color: var(--text);
+  font-weight: 600;
+  background: transparent;
+  min-width: 160px;
+}
+.scheduled-sync-table small {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.sync-task-action {
+  min-width: 185px;
+  max-width: 280px;
+}
+@media (max-width: 700px) {
+  .scheduled-sync-table,
+  .scheduled-sync-table tbody {
+    display: block;
+    width: 100%;
+  }
+  .scheduled-sync-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+  .scheduled-sync-table tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(130px, 1fr);
+    gap: 12px;
+    padding: 16px;
+    border-top: 1px solid var(--border);
+  }
+  .scheduled-sync-table tr > th,
+  .scheduled-sync-table tr > td {
+    padding: 0;
+    border: 0;
+    min-width: 0;
+    white-space: normal;
+  }
+  .scheduled-sync-table .sync-task-name {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: start;
+    text-align: left;
+  }
+  .scheduled-sync-table .sync-task-action {
+    grid-column: 2;
+    grid-row: 1;
+    text-align: right;
+    max-width: none;
+  }
+  .scheduled-sync-table .sync-task-action button {
+    min-height: 36px;
+  }
+  .scheduled-sync-table .sync-task-schedule {
+    grid-column: 1 / -1;
+  }
+  .scheduled-sync-table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    color: var(--muted);
+    font-size: 10px;
+    margin-bottom: 5px;
+  }
+  .scheduled-sync-table .table-date {
+    white-space: normal;
+  }
+}

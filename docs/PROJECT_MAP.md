@@ -12,6 +12,7 @@
 | Общие фильтры заведений и дат | [App.tsx](../src/App.tsx), [RestaurantPicker.tsx](../src/RestaurantPicker.tsx) |
 | Обзор и карточки | [Overview.tsx](../src/Overview.tsx), [interface.md](CODEMAPS/interface.md) |
 | Показатели и периоды сравнения | [Indicators.tsx](../src/Indicators.tsx), [indicatorPeriods.ts](../src/indicatorPeriods.ts) |
+| Ручной запуск синхронизации | [ScheduledSync.tsx](../src/ScheduledSync.tsx), [scheduledSyncModel.ts](../src/scheduledSyncModel.ts); `GET /status`, `POST /status/sync/{job}/run` |
 | Продажи, ресурсы, детали, статус данных | [pages.tsx](../src/pages.tsx), [interface.md](CODEMAPS/interface.md) |
 | Перемещения/списания: заявки, согласование | [DocumentsPage.tsx](../src/DocumentsPage.tsx), [documents.md](CODEMAPS/documents.md) |
 | Форма документа и проверки данных | [DocumentEditor.tsx](../src/DocumentEditor.tsx), [documentModel.ts](../src/documentModel.ts) |
