@@ -11,7 +11,7 @@
 | `/:resource/:id` | `DetailPage` в [pages.tsx](../../src/pages.tsx); `GET /resources/:resource/:id` |
 | `/events/topology` | `TopologyPage` в [pages.tsx](../../src/pages.tsx); `GET /topology` |
 | `/balances` | [BalancesPage.tsx](../../src/BalancesPage.tsx), [BalanceSearch.tsx](../../src/BalanceSearch.tsx); `GET /resources/balances` |
-| `/status` | `StatusPage` в [pages.tsx](../../src/pages.tsx); `GET /status` |
+| `/status` | `StatusPage` в [pages.tsx](../../src/pages.tsx), [ScheduledSync.tsx](../../src/ScheduledSync.tsx); `GET /status`, `POST /status/sync/{job}/run` |
 | `/profile` | [ProfilePage.tsx](../../src/ProfilePage.tsx), [PasswordForm.tsx](../../src/PasswordForm.tsx); `POST /profile/password`, `GET /profile/telegram`, `POST /profile/telegram/link`, `POST /profile/telegram/unlink` |
 | `/forgot-password`, `/reset-password` | [PasswordRecovery.tsx](../../src/PasswordRecovery.tsx); публичные маршруты до загрузки `/me`, `GET /auth/recovery/telegram`, `POST /auth/recovery/reset` |
 | `/transfers`, `/writeoffs` | Если `meta.documents_enabled` — [заявки](documents.md); `?view=analytics` возвращает `ResourcePage` |
@@ -25,3 +25,7 @@
 - [pages.tsx](../../src/pages.tsx) также содержит `DataTable`, `ExportButton`, KPI продаж и часовую диаграмму. [DiscountDrilldown.tsx](../../src/DiscountDrilldown.tsx) связывает скидки с событиями заказа.
 - Сотрудники iiko: список/деталь находятся в `pages.tsx`, форма и ожидание изменений — в [EmployeeEditor.tsx](../../src/EmployeeEditor.tsx); пути `/employees/options`, `/employees/:id/edit`, `/employees`, `/employees/:id`, `/employees/pending`, `/employees/changes/:id/refresh`.
 - Мобильное меню открывает `App` и закрывает при смене URL. Общая оболочка и адаптивные правила — [styles.css](../../src/styles.css); экраны — [overview.css](../../src/overview.css), [indicators.css](../../src/indicators.css), [documents.css](../../src/documents.css), [deposits.css](../../src/deposits.css), [purchase-prices.css](../../src/purchase-prices.css), [purchase-assistant.css](../../src/purchase-assistant.css).
+
+## Ручные синхронизации
+
+`ScheduledSync` показывает кнопку у каждой задачи. Сервер выдаёт права, состояние очереди и остаток общего 10-минутного ограничения в `scheduled[].manual`; браузер отсчитывает длительность от получения ответа, независимо от настройки часов. Запрос содержит UUID, повтор после неопределённого ответа использует тот же UUID. Статус обновляется каждые 15 секунд только на видимой странице, и при возвращении на неё. Действующий запуск, недоступный планировщик или недостаточные права блокируют кнопку; окончательная проверка и защита от дублей находятся на сервере.
