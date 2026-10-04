@@ -116,6 +116,19 @@
   gap: 12px;
   align-items: start;
 }
+.writeoff-cost-summary {
+  padding: 14px;
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: 8px;
+  background: var(--mantine-color-dark-6);
+}
+.writeoff-cost-summary > div + p,
+.writeoff-cost-summary > p + p {
+  margin-top: 6px;
+}
+.writeoff-money {
+  font-variant-numeric: tabular-nums;
+}
 @media (max-width: 600px) {
   .document-product-row {
     grid-template-columns: minmax(0, 1fr) 32px;

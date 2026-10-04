@@ -25,6 +25,8 @@ import { DocumentPanel } from "./DocumentPanel";
 import { DocumentListItem } from "./DocumentListItem";
 import { useWorkspace } from "./App";
 import { DocumentEditor } from "./DocumentEditor";
+import { WriteoffCostSummary } from "./WriteoffCosts";
+import { writeoffMoney } from "./writeoffCostModel";
 import {
   actionSnapshot,
   documentStatuses,
@@ -279,30 +281,58 @@ function DocumentCard({
                       </Table.Th>
                       {kind === "waybill" && <Table.Th>Фактически</Table.Th>}
                       {kind === "waybill" && <Table.Th>Разница</Table.Th>}
+                      {kind === "writeoff" && (
+                        <Table.Th ta="right">Сумма, ₽</Table.Th>
+                      )}
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
-                    {doc.items.map((row) => (
-                      <Table.Tr key={row.product_id}>
-                        <Table.Td>{row.name}</Table.Td>
-                        <Table.Td>{String(row.amount)}</Table.Td>
-                        {kind === "waybill" && (
+                    {doc.items.map((row) => {
+                      const cost = doc.cost_estimate?.items?.find(
+                        (item) => item.product_id === row.product_id,
+                      );
+                      return (
+                        <Table.Tr key={row.product_id}>
                           <Table.Td>
-                            {row.received_amount == null
-                              ? "—"
-                              : String(row.received_amount)}
+                            {row.name}
+                            {kind === "writeoff" && (
+                              <Text size="xs" c="dimmed">
+                                За ед.: {writeoffMoney(cost?.unit_cost)}
+                              </Text>
+                            )}
                           </Table.Td>
-                        )}
-                        {kind === "waybill" && (
-                          <Table.Td>
-                            {receiptDifference(row.amount, row.received_amount)}
-                          </Table.Td>
-                        )}
-                      </Table.Tr>
-                    ))}
+                          <Table.Td>{String(row.amount)}</Table.Td>
+                          {kind === "waybill" && (
+                            <Table.Td>
+                              {row.received_amount == null
+                                ? "—"
+                                : String(row.received_amount)}
+                            </Table.Td>
+                          )}
+                          {kind === "waybill" && (
+                            <Table.Td>
+                              {receiptDifference(
+                                row.amount,
+                                row.received_amount,
+                              )}
+                            </Table.Td>
+                          )}
+                          {kind === "writeoff" && (
+                            <Table.Td ta="right" className="writeoff-money">
+                              {cost?.sum != null
+                                ? writeoffMoney(cost.sum)
+                                : "Нет данных"}
+                            </Table.Td>
+                          )}
+                        </Table.Tr>
+                      );
+                    })}
                   </Table.Tbody>
                 </Table>
               </Table.ScrollContainer>
+              {kind === "writeoff" && (
+                <WriteoffCostSummary estimate={doc.cost_estimate} />
+              )}
               <Group>
                 {doc.actions?.map((action) => (
                   <Button

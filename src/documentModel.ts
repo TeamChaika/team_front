@@ -1,4 +1,20 @@
 export type DocumentKind = "waybill" | "writeoff";
+export type WriteoffCostItem = {
+  product_id: string;
+  amount: number | string;
+  unit_cost: string | null;
+  sum: string | null;
+  reason: string | null;
+};
+export type WriteoffCostEstimate = {
+  source: "store_balance";
+  source_at: string | null;
+  estimated_at: string;
+  items?: WriteoffCostItem[];
+  total: string | null;
+  known_total: string;
+  unpriced_count: number;
+};
 export type DocumentItem = {
   product_id: string;
   name?: string;
@@ -29,6 +45,7 @@ export type DocumentRecord = DocumentDraft & {
   processed_by?: string;
   processed_at?: string;
   actions?: string[];
+  cost_estimate?: WriteoffCostEstimate | null;
   history?: {
     action: string;
     version: number;
