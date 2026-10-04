@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Badge, Group, Text } from "@mantine/core";
 import { dateText } from "./api";
 import { useDocumentCache } from "./DocumentData";
+import { writeoffCostSummary } from "./writeoffCostModel";
 import {
   documentStatuses,
   receiptStatuses,
@@ -69,6 +70,13 @@ export function DocumentListItem({
             {dateText(doc.created_at)} · {doc.created_by}
           </Text>
           {doc.reason && <Text size="sm">{doc.reason}</Text>}
+          {kind === "writeoff" && (
+            <Text size="sm" fw={600}>
+              {doc.cost_estimate
+                ? `Сумма (оценка): ${writeoffCostSummary(doc.cost_estimate).total}`
+                : "Сумма: нет данных"}
+            </Text>
+          )}
           {["queued", "sending", "unknown", "rejected"].includes(
             doc.submission_state,
           ) && (
