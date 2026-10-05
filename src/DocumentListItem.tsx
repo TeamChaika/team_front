@@ -2,8 +2,11 @@ import { useCallback, useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
 import { Badge, Group, Text } from "@mantine/core";
 import { dateText } from "./api";
-import { useDocumentCache } from "./DocumentData";
-import { writeoffCostSummary } from "./writeoffCostModel";
+import { useDocumentCache, useDocumentSnapshot } from "./DocumentData";
+import {
+  writeoffListCostText,
+  writeoffListEstimate,
+} from "./writeoffCostModel";
 import {
   documentStatuses,
   receiptStatuses,
@@ -24,6 +27,9 @@ export function DocumentListItem({
   const cache = useDocumentCache();
   const link = useRef<HTMLAnchorElement>(null);
   const path = `/documents/${kind}/${doc.id}`;
+  const detail = useDocumentSnapshot<DocumentRecord>(
+    kind === "writeoff" ? path : null,
+  );
   const prefetch = useCallback(() => cache.prefetch(path), [cache, path]);
   useEffect(() => {
     const previous = cache.get<DocumentRecord>(path).data;
@@ -72,9 +78,7 @@ export function DocumentListItem({
           {doc.reason && <Text size="sm">{doc.reason}</Text>}
           {kind === "writeoff" && (
             <Text size="sm" fw={600}>
-              {doc.cost_estimate
-                ? `Сумма (оценка): ${writeoffCostSummary(doc.cost_estimate).total}`
-                : "Сумма: нет данных"}
+              {writeoffListCostText(writeoffListEstimate(doc, detail))}
             </Text>
           )}
           {["queued", "sending", "unknown", "rejected"].includes(
