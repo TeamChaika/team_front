@@ -13,15 +13,15 @@ export function WriteoffCostSummary({
     <div className="writeoff-cost-summary">
       <Group justify="space-between" gap="xs">
         <Text size="sm" fw={600}>
-          Сумма списания · оценка
+          {estimate ? result.label : "Сумма списания"} · оценка
         </Text>
         <Text fw={700} className="writeoff-money">
-          {estimate ? result.total : "Нет данных"}
+          {result.amount}
         </Text>
       </Group>
       {estimate && !result.complete && (
         <Text size="xs" c="dimmed">
-          Известная сумма: {result.known} · без расчёта: {result.missing} поз.
+          Без расчёта: {result.missing} поз.
         </Text>
       )}
       {estimate?.source_at && (

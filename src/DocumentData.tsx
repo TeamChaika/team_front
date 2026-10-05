@@ -37,14 +37,20 @@ export function useDocumentCache() {
   return cache;
 }
 
-export function useDocumentData<T>(path: string | null, ttl = 60_000) {
+// Observe prefetched details without starting one request per rendered row.
+export function useDocumentSnapshot<T>(path: string | null) {
   const cache = useDocumentCache();
   const subscribe = useCallback(
     (listener: () => void) =>
       path ? cache.subscribe(path, listener) : () => {},
     [cache, path],
   );
-  const snapshot = useSyncExternalStore(subscribe, () => cache.get<T>(path));
+  return useSyncExternalStore(subscribe, () => cache.get<T>(path));
+}
+
+export function useDocumentData<T>(path: string | null, ttl = 60_000) {
+  const cache = useDocumentCache();
+  const snapshot = useDocumentSnapshot<T>(path);
   useEffect(() => {
     if (path) void cache.load(path, ttl).catch(() => {});
   }, [cache, path, ttl, snapshot.revision]);
