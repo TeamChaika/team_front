@@ -1,0 +1,17 @@
+{
+  "reverse_proxy": {
+    "spa_fallback": true,
+    "redirects": [],
+    "headers": [
+      {
+        "operation": "set",
+        "name": "Cache-Control",
+        "value": "private, no-cache"
+      }
+    ],
+    "compression": {
+      "enabled": true,
+      "algorithms": ["zstd", "gzip"]
+    }
+  }
+}
