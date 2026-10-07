@@ -7,11 +7,13 @@ export function DocumentPanel({
   title,
   close,
   busy = false,
+  mobileInline = false,
   children,
 }: {
   title: string;
   close: () => void;
   busy?: boolean;
+  mobileInline?: boolean;
   children: ReactNode;
 }) {
   const desktop = useMediaQuery("(min-width: 64em)", false, {
@@ -20,15 +22,16 @@ export function DocumentPanel({
   const heading = useId();
   const panel = useRef<HTMLElement>(null);
   useEffect(() => {
-    if (!desktop) return;
+    if (!desktop && !mobileInline) return;
     const previous = document.activeElement;
-    panel.current?.focus();
+    panel.current?.focus({ preventScroll: true });
+    if (!desktop) panel.current?.scrollIntoView({ block: "start" });
     return () => {
       if (previous instanceof HTMLElement && previous.isConnected)
-        previous.focus();
+        previous.focus({ preventScroll: true });
     };
-  }, [desktop]);
-  if (!desktop)
+  }, [desktop, mobileInline]);
+  if (!desktop && !mobileInline)
     return (
       <Modal
         opened
@@ -39,13 +42,14 @@ export function DocumentPanel({
         closeOnEscape={!busy}
         withCloseButton={!busy}
         closeButtonProps={{ "aria-label": "Закрыть документ" }}
+        removeScrollProps={{ allowPinchZoom: true }}
       >
         {children}
       </Modal>
     );
   return (
     <aside
-      className="document-panel"
+      className={`document-panel${mobileInline ? " document-panel-mobile-inline" : ""}`}
       aria-labelledby={heading}
       ref={panel}
       tabIndex={-1}

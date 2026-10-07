@@ -560,6 +560,32 @@ export function DocumentsPage({ kind }: { kind: DocumentKind }) {
     } | null>(null),
     [error, setError] = useState(""),
     [exporting, setExporting] = useState(false);
+  const editorScroll = useRef<{ x: number; y: number } | null>(null);
+  const editorTrigger = useRef<HTMLElement | null>(null);
+  function openEditor(next: NonNullable<typeof editor>) {
+    editorTrigger.current =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    editorScroll.current = window.matchMedia("(min-width: 64em)").matches
+      ? null
+      : { x: window.scrollX, y: window.scrollY };
+    setEditor(next);
+  }
+  function closeEditor() {
+    setEditor(null);
+    const position = editorScroll.current;
+    if (!position) return;
+    window.requestAnimationFrame(() => {
+      if (editorTrigger.current?.isConnected)
+        editorTrigger.current.focus({ preventScroll: true });
+      window.scrollTo({
+        left: position.x,
+        top: position.y,
+        behavior: "instant",
+      });
+    });
+  }
   const [filters, setFilters] = useState({
     status: "Created",
     direction: kind === "waybill" ? "incoming" : "all",
@@ -642,7 +668,7 @@ export function DocumentsPage({ kind }: { kind: DocumentKind }) {
   }
   return (
     <div
-      className={`document-workspace${editor || documentId ? " has-panel" : ""}`}
+      className={`document-workspace${editor || documentId ? " has-panel" : ""}${editor ? " has-editor" : ""}`}
     >
       <Stack className="document-list" inert={editor ? true : undefined}>
         <div>
@@ -703,7 +729,7 @@ export function DocumentsPage({ kind }: { kind: DocumentKind }) {
                   ) && (
                     <Button
                       leftSection={<IconPlus size={16} />}
-                      onClick={() => setEditor({ mode: "create" })}
+                      onClick={() => openEditor({ mode: "create" })}
                     >
                       Создать заявку
                     </Button>
@@ -826,7 +852,7 @@ export function DocumentsPage({ kind }: { kind: DocumentKind }) {
           options={options.data}
           mode={editor.mode}
           document={editor.document}
-          close={() => setEditor(null)}
+          close={closeEditor}
           saved={saved}
         />
       ) : documentId ? (
@@ -837,7 +863,7 @@ export function DocumentsPage({ kind }: { kind: DocumentKind }) {
           options={options.data}
           close={() => navigate(`/${resource}`)}
           changed={completed}
-          edit={(mode, document) => setEditor({ mode, document })}
+          edit={(mode, document) => openEditor({ mode, document })}
         />
       ) : null}
     </div>

@@ -201,6 +201,7 @@ export function DocumentEditor({
   return (
     <>
       <DocumentPanel
+        mobileInline
         close={dismiss}
         busy={busy}
         title={
