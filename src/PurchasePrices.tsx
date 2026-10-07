@@ -10,6 +10,12 @@ import { Feedback, PageTitle } from "./pages";
 import { PurchaseImpact } from "./PurchaseImpact";
 import { PurchaseModal } from "./PurchaseModal";
 import { useAssistant } from "./AssistantContext";
+import {
+  canReadPurchaseImpact,
+  purchaseImpactNotice,
+  purchasePriceReportPath,
+  type PreparedImpactPeriod,
+} from "./purchasePriceReport";
 import "./purchase-prices.css";
 
 type SourceLine = {
@@ -70,7 +76,7 @@ type Report = {
   history_size: number;
   recent_only: boolean;
   recent_since: string;
-  impact_period?: {
+  impact_period?: PreparedImpactPeriod & {
     start: string;
     end: string;
     recipe_day: string | null;
@@ -129,35 +135,43 @@ export function PurchasePrices() {
   params.delete("department_id");
   params.delete("start");
   params.delete("end");
-  return <PriceWorkspace key={params.toString()} scope={params.toString()} />;
+  const impactAllowed = canReadPurchaseImpact(w.meta.warehouse_scope?.mode);
+  return (
+    <PriceWorkspace
+      key={params.toString() + "/" + impactAllowed}
+      scope={params.toString()}
+      impactAllowed={impactAllowed}
+    />
+  );
 }
-function PriceWorkspace({ scope }: { scope: string }) {
+function PriceWorkspace({
+  scope,
+  impactAllowed,
+}: {
+  scope: string;
+  impactAllowed: boolean;
+}) {
   const assistant = useAssistant();
   const [kind, setKind] = useState("unlinked");
   const [excludeHousehold, setExcludeHousehold] = useState(true);
   const [recentOnly, setRecentOnly] = useState(true);
-  const reportPath =
-    "/purchase-prices?" +
-    scope +
-    "&kind=" +
-    kind +
-    "&exclude_household=" +
-    excludeHousehold +
-    "&recent_only=" +
-    recentOnly;
+  const reportPath = purchasePriceReportPath(
+    scope,
+    kind,
+    excludeHousehold,
+    recentOnly,
+    impactAllowed,
+  );
   const state = useData<Report>(reportPath);
   const matchesFilters = (value: Report | null) =>
     value?.kind === kind &&
     value.exclude_household === excludeHousehold &&
     value.recent_only === recentOnly;
-  const prices = matchesFilters(state.data) ? state.data : null;
-  // Prices remain usable while one batch calculates all weekly scenarios.
-  const weekly = useData<Report>(
-    prices ? reportPath + "&include_impact=true" : null,
+  const report = matchesFilters(state.data) ? state.data : null;
+  const impactNotice = purchaseImpactNotice(
+    impactAllowed,
+    report?.impact_period,
   );
-  const detailed = matchesFilters(weekly.data) ? weekly.data : null;
-  const report = detailed ?? prices;
-  const calculating = !!prices && !detailed && !weekly.error;
   const [product, setProduct] = useState<string | null>(null);
   const [direction, setDirection] = useState("all");
   const [threshold, setThreshold] = useState("0");
@@ -463,7 +477,7 @@ function PriceWorkspace({ scope }: { scope: string }) {
                     Последняя закупка каждого товара по сети и отклонение от
                     средней предыдущих поступлений.
                   </p>
-                  {report?.impact_period && (
+                  {report?.impact_period?.status === "ready" && (
                     <p>
                       Влияние за неделю — оценка по техкартам и продажам за{" "}
                       {dateText(report.impact_period.start)}–
@@ -472,11 +486,7 @@ function PriceWorkspace({ scope }: { scope: string }) {
                       чтобы увидеть расчёт по блюдам.
                     </p>
                   )}
-                  {calculating && (
-                    <p role="status">
-                      Рассчитываем влияние на неделю… Цены уже доступны.
-                    </p>
-                  )}
+                  {impactNotice && <p role="status">{impactNotice}</p>}
                   {report?.impact_period?.coverage &&
                     !report.impact_period.coverage.complete && (
                       <p role="status" className="price-rise">
@@ -501,23 +511,11 @@ function PriceWorkspace({ scope }: { scope: string }) {
                         <Link to="/status">Статус загрузок</Link>
                       </p>
                     )}
-                  {weekly.error && (
-                    <p role="alert">
-                      Не удалось рассчитать влияние на неделю. {weekly.error}{" "}
-                      <Button
-                        size="xs"
-                        variant="subtle"
-                        onClick={weekly.reload}
-                      >
-                        Повторить расчёт
-                      </Button>
-                    </p>
-                  )}
                 </div>
                 <Button
                   variant="default"
                   leftSection={<IconDownload size={16} />}
-                  disabled={!rows.length || !detailed}
+                  disabled={!rows.length}
                   onClick={exportRows}
                 >
                   CSV · все найденные
@@ -643,41 +641,43 @@ function PriceWorkspace({ scope }: { scope: string }) {
                           <Percent row={r} />
                         </td>
                         <td className="numeric price-weekly">
-                          <button
-                            type="button"
-                            className="price-impact-link"
-                            onClick={() => setImpact(r)}
-                            aria-label={
-                              "Расчёт влияния за неделю: " + r.product
-                            }
-                            title={r.impact?.reason ?? "Расчёт по блюдам"}
-                          >
-                            <span
-                              className={
-                                Number(r.impact?.weekly_delta) > 0
-                                  ? "price-rise"
-                                  : Number(r.impact?.weekly_delta) < 0
-                                    ? "price-fall"
-                                    : "muted"
+                          {impactAllowed ? (
+                            <button
+                              type="button"
+                              className="price-impact-link"
+                              onClick={() => setImpact(r)}
+                              aria-label={
+                                "Расчёт влияния за неделю: " + r.product
                               }
+                              title={r.impact?.reason ?? "Расчёт по блюдам"}
                             >
-                              {signed(r.impact?.weekly_delta ?? null)}
-                            </span>
-                            <small className="price-subtext">
-                              {!r.impact
-                                ? calculating
-                                  ? "Расчёт…"
-                                  : "Ошибка расчёта"
-                                : r.impact.weekly_delta == null
-                                  ? "Нет расчёта"
-                                  : `По ${r.impact.included_positions} поз.`}
-                            </small>
-                            {!!r.impact?.excluded_positions && (
+                              <span
+                                className={
+                                  Number(r.impact?.weekly_delta) > 0
+                                    ? "price-rise"
+                                    : Number(r.impact?.weekly_delta) < 0
+                                      ? "price-fall"
+                                      : "muted"
+                                }
+                              >
+                                {signed(r.impact?.weekly_delta ?? null)}
+                              </span>
                               <small className="price-subtext">
-                                Исключено: {r.impact.excluded_positions}
+                                {!r.impact
+                                  ? "—"
+                                  : r.impact.weekly_delta == null
+                                    ? "Нет расчёта"
+                                    : `По ${r.impact.included_positions} поз.`}
                               </small>
-                            )}
-                          </button>
+                              {!!r.impact?.excluded_positions && (
+                                <small className="price-subtext">
+                                  Исключено: {r.impact.excluded_positions}
+                                </small>
+                              )}
+                            </button>
+                          ) : (
+                            <span className="muted">—</span>
+                          )}
                         </td>
                         <td>
                           <div className="price-actions">
@@ -689,14 +689,18 @@ function PriceWorkspace({ scope }: { scope: string }) {
                             >
                               Динамика
                             </Button>
-                            <Button
-                              size="xs"
-                              variant="subtle"
-                              onClick={() => setImpact(r)}
-                              aria-label={"Блюда и влияние цены: " + r.product}
-                            >
-                              Блюда и влияние
-                            </Button>
+                            {impactAllowed && (
+                              <Button
+                                size="xs"
+                                variant="subtle"
+                                onClick={() => setImpact(r)}
+                                aria-label={
+                                  "Блюда и влияние цены: " + r.product
+                                }
+                              >
+                                Блюда и влияние
+                              </Button>
+                            )}
                             <Button
                               size="xs"
                               variant="subtle"
@@ -792,7 +796,7 @@ function PriceWorkspace({ scope }: { scope: string }) {
         </p>
       </details>
       <PurchaseModal
-        opened={Boolean(impact)}
+        opened={impactAllowed && Boolean(impact)}
         onClose={() => setImpact(null)}
         closeButtonProps={{ "aria-label": "Закрыть влияние цены" }}
         title={
@@ -802,7 +806,7 @@ function PriceWorkspace({ scope }: { scope: string }) {
         }
         size="70rem"
       >
-        {impact && (
+        {impactAllowed && impact && (
           <PurchaseImpact key={identity(impact)} row={impact} scope={scope} />
         )}
       </PurchaseModal>
