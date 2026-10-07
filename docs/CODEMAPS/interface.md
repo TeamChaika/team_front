@@ -26,6 +26,12 @@
 - Сотрудники iiko: список/деталь находятся в `pages.tsx`, форма и ожидание изменений — в [EmployeeEditor.tsx](../../src/EmployeeEditor.tsx); пути `/employees/options`, `/employees/:id/edit`, `/employees`, `/employees/:id`, `/employees/pending`, `/employees/changes/:id/refresh`.
 - Мобильное меню открывает `App` и закрывает при смене URL. Общая оболочка и адаптивные правила — [styles.css](../../src/styles.css); экраны — [overview.css](../../src/overview.css), [indicators.css](../../src/indicators.css), [documents.css](../../src/documents.css), [deposits.css](../../src/deposits.css), [purchase-prices.css](../../src/purchase-prices.css), [purchase-assistant.css](../../src/purchase-assistant.css).
 
+## Ограничение по складам
+
+- Дополнение 07.10.2026, локальная release-копия; production-деплой этим документом не подтверждается. [api.ts](../../src/api.ts) описывает `Meta.warehouse_scope` (`mode: all | selected`, `warehouse_ids`) и `warehouse_capabilities` (`supported_sections`, `unsupported_sections`) из `GET /me`.
+- [App.tsx](../../src/App.tsx) исключает серверные `unsupported_sections` из назначенных разделов и доступных маршрутов. Выбранные склады ограничивают данные всех поддерживаемых разделов, включая отчёты и экспорты; неподдерживаемые разделы закрывает сервер. Фильтрация меню — отображение серверной политики, а не источник защиты данных.
+- Исторические продажи при складской области получают складской срез SALES OLAP по `Store.Id`, а не общую историю заведения. `SalesRow` в `api.ts` содержит `warehouse_scoped` и `drilldown_available`; [pages.tsx](../../src/pages.tsx) допускает детализацию скидок из прямого среза только при серверном `drilldown_available`.
+
 ## Ручные синхронизации
 
 `ScheduledSync` показывает кнопку у каждой задачи. Сервер выдаёт права, состояние очереди и остаток общего 10-минутного ограничения в `scheduled[].manual`; браузер отсчитывает длительность от получения ответа, независимо от настройки часов. Запрос содержит UUID, повтор после неопределённого ответа использует тот же UUID. Статус обновляется каждые 15 секунд только на видимой странице, и при возвращении на неё. Действующий запуск, недоступный планировщик или недостаточные права блокируют кнопку; окончательная проверка и защита от дублей находятся на сервере.

@@ -784,18 +784,22 @@ export function SalesPage() {
                     columns={table.columns}
                     rows={salesTable(kind, [selectedRow]).rows}
                   />
-                  {kind === "discounts" && !selectedRow.live && (
-                    <DiscountDrilldown
-                      key={`${selectedRow.report_id}:${selectedRow.ordinal}`}
-                      anchor={selectedRow}
-                    />
-                  )}
-                  {kind === "discounts" && selectedRow.live && (
-                    <p className="section-note">
-                      Сегодняшний срез получен напрямую из iiko. Детализация до
-                      заказов будет доступна после сохранения дневного отчёта.
-                    </p>
-                  )}
+                  {kind === "discounts" &&
+                    (!selectedRow.live || selectedRow.drilldown_available) && (
+                      <DiscountDrilldown
+                        key={`${selectedRow.report_id}:${selectedRow.ordinal}`}
+                        anchor={selectedRow}
+                      />
+                    )}
+                  {kind === "discounts" &&
+                    selectedRow.live &&
+                    !selectedRow.drilldown_available && (
+                      <p className="section-note">
+                        Сегодняшний срез получен напрямую из iiko. Детализация
+                        до заказов будет доступна после сохранения дневного
+                        отчёта.
+                      </p>
+                    )}
                   <p className="section-note">
                     Получено: {dateText(selectedRow.observed_at)}. Отчёт:{" "}
                     {selectedRow.report_id}, строка {selectedRow.ordinal + 1}.
