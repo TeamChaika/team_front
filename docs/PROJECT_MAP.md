@@ -30,6 +30,7 @@
 | Аккаунты dashboard, заведения, терминалы | [ManagementPage.tsx](../src/ManagementPage.tsx), [integrations.md](CODEMAPS/integrations.md) |
 | Мобильный UI и стили | [styles.css](../src/styles.css), [interface.md](CODEMAPS/interface.md) |
 | Сборка и проверки | [package.json](../package.json), [integrations.md](CODEMAPS/integrations.md) |
+| Сжатие JS/CSS, кеш браузера, SPA fallback в Timeweb | [static-delivery.md](static-delivery.md), [timeweb-reverse-proxy.json](../ops/timeweb-reverse-proxy.json); настройки приложения `254029`, не `ops/Caddyfile` |
 
 ## Точки входа и границы
 
