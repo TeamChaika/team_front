@@ -14,11 +14,12 @@
 | Показатели и периоды сравнения | [Indicators.tsx](../src/Indicators.tsx), [indicatorPeriods.ts](../src/indicatorPeriods.ts) |
 | Ручной запуск синхронизации | [ScheduledSync.tsx](../src/ScheduledSync.tsx), [scheduledSyncModel.ts](../src/scheduledSyncModel.ts); `GET /status`, `POST /status/sync/{job}/run` |
 | Продажи, ресурсы, детали, статус данных | [pages.tsx](../src/pages.tsx), [interface.md](CODEMAPS/interface.md) |
+| Приходные накладные, реализация и счёт PDF | [CommercialInvoices.tsx](../src/CommercialInvoices.tsx), [commercialInvoiceModel.ts](../src/commercialInvoiceModel.ts); `/invoices`, `/outgoing`, [контракт](CODEMAPS/documents.md#приходные-накладные-и-реализация) |
 | Перемещения/списания: заявки, согласование | [DocumentsPage.tsx](../src/DocumentsPage.tsx), [documents.md](CODEMAPS/documents.md) |
 | Форма документа и проверки данных | [DocumentEditor.tsx](../src/DocumentEditor.tsx), [documentModel.ts](../src/documentModel.ts) |
 | Оценка стоимости списания | [WriteoffCosts.tsx](../src/WriteoffCosts.tsx), [writeoffCostModel.ts](../src/writeoffCostModel.ts); сумма после создания заявки |
 | Кеш карточек документов и обновление | [DocumentData.tsx](../src/DocumentData.tsx), [documentCache.ts](../src/documentCache.ts) |
-| Права на документы | [DocumentAccess.tsx](../src/DocumentAccess.tsx), [documents.md](CODEMAPS/documents.md) |
+| Права на документы | [DocumentAccess.tsx](../src/DocumentAccess.tsx), [CommercialInvoiceAccess.tsx](../src/CommercialInvoiceAccess.tsx), [documents.md](CODEMAPS/documents.md) |
 | Закупочные цены, недельное влияние | [PurchasePrices.tsx](../src/PurchasePrices.tsx), [PurchaseImpact.tsx](../src/PurchaseImpact.tsx) |
 | Помощник и его источники | [PurchaseAssistant.tsx](../src/PurchaseAssistant.tsx), [integrations.md](CODEMAPS/integrations.md) |
 | Остатки и поиск товара | [BalancesPage.tsx](../src/BalancesPage.tsx), [BalanceSearch.tsx](../src/BalanceSearch.tsx) |

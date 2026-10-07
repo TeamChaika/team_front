@@ -19,6 +19,7 @@ import {
 import { IconBuildingStore, IconPlus, IconUsers } from "@tabler/icons-react";
 import { api } from "./api";
 import { DocumentAccess } from "./DocumentAccess";
+import { CommercialInvoiceAccess } from "./CommercialInvoiceAccess";
 
 type Grant = { venue: string; can_create: boolean };
 type Account = {
@@ -589,12 +590,16 @@ export function ManagementPage({
             {documentsEnabled && (
               <Tabs.Tab value="documents">Документы и склады</Tabs.Tab>
             )}
+            <Tabs.Tab value="commercial">Приход и реализация</Tabs.Tab>
           </Tabs.List>
           {documentsEnabled && (
             <Tabs.Panel value="documents" pt="lg">
               <DocumentAccess accounts={directory.users} />
             </Tabs.Panel>
           )}
+          <Tabs.Panel value="commercial" pt="lg">
+            <CommercialInvoiceAccess accounts={directory.users} />
+          </Tabs.Panel>
           <Tabs.Panel value="accounts" pt="lg">
             <Stack>
               <Group justify="space-between">

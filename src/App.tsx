@@ -75,6 +75,7 @@ import { PasswordForm } from "./PasswordForm";
 import { ForgotPassword, ResetPassword } from "./PasswordRecovery";
 import { checkForegroundPasswordRequirement } from "./foregroundPasswordCheck";
 import "./profile.css";
+import { CommercialInvoices } from "./CommercialInvoices";
 export const sections = [
   { path: "/", title: "Обзор", icon: IconLayoutDashboard },
   { path: "/indicators", title: "Показатели", icon: IconActivity },
@@ -83,7 +84,7 @@ export const sections = [
   { path: "/cash-shifts", title: "Кассовые смены", icon: IconReceipt },
   { path: "/invoices", title: "Приходные накладные", icon: IconReceipt },
   { path: "/purchase-prices", title: "Закупочные цены", icon: IconChartBar },
-  { path: "/outgoing", title: "Расходные накладные", icon: IconArrowUpRight },
+  { path: "/outgoing", title: "Реализация", icon: IconArrowUpRight },
   { path: "/transfers", title: "Перемещения", icon: IconArrowsExchange },
   { path: "/writeoffs", title: "Списания", icon: IconTrash },
   { path: "/products", title: "Номенклатура", icon: IconPackages },
@@ -502,6 +503,9 @@ function WorkspaceApp() {
       : (sections.find(
           (s) => s.path !== "/" && location.pathname.startsWith(s.path),
         )?.title ?? "Обзор");
+  const commercialWorkspace =
+    ["/invoices", "/outgoing"].includes(location.pathname) &&
+    new URLSearchParams(location.search).get("view") !== "analytics";
   const datesEnabled = [
     "/",
     "/sales",
@@ -635,6 +639,7 @@ function WorkspaceApp() {
                 </div>
               </header>
               {currentAllowed &&
+                !commercialWorkspace &&
                 !(
                   meta.documents_enabled &&
                   ["transfers", "writeoffs"].includes(currentSection) &&
@@ -813,11 +818,15 @@ function WorkspaceApp() {
                             key={s.path}
                             path={s.path}
                             element={
+                              s.path === "/invoices" || s.path === "/outgoing" ? (
+                                <CommercialInvoices key={s.path} kind={s.path === "/invoices" ? "purchase" : "sale"} />
+                              ) : (
                               <ResourcePage
                                 key={s.path}
                                 resource={s.path.slice(1)}
                                 title={s.title}
                               />
+                              )
                             }
                           />
                         ))}

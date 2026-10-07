@@ -298,3 +298,10 @@ export function csv(name: string, cols: Column[], rows: Row[]) {
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+export async function apiPdf(path: string): Promise<Blob> {
+  const response = await request(path);
+  if (!response.headers.get("content-type")?.startsWith("application/pdf"))
+    throw new ApiError("Сервер не вернул PDF.", 502);
+  return response.blob();
+}
