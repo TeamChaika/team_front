@@ -9,6 +9,7 @@ import {
   Modal,
   MultiSelect,
   PasswordInput,
+  Select,
   SimpleGrid,
   Stack,
   Switch,
@@ -31,6 +32,8 @@ type Account = {
   sections: string[];
   all_departments: boolean;
   department_ids: string[];
+  warehouse_scope_mode?: "all" | "selected";
+  warehouse_ids?: string[];
   deposits_all: boolean;
   deposits_create: boolean;
   deposit_grants: Grant[];
@@ -40,6 +43,7 @@ type Directory = {
   users: Account[];
   sections: { id: string; title: string }[];
   departments: { id: string; name: string }[];
+  warehouses?: { id: string; name: string; parent_id?: string | null }[];
   venues: string[];
 };
 type Venue = {
@@ -67,6 +71,8 @@ const emptyAccount = (): Account => ({
   sections: [],
   all_departments: false,
   department_ids: [],
+  warehouse_scope_mode: "all",
+  warehouse_ids: [],
   deposits_all: false,
   deposits_create: false,
   deposit_grants: [],
@@ -93,6 +99,7 @@ function AccountEditor({
     (s) => !["deposits", "transfers", "writeoffs"].includes(s),
   );
   const deposits = value.sections.includes("deposits");
+  const warehouseRestricted = value.warehouse_scope_mode === "selected";
   function section(id: string, checked: boolean) {
     set((v) => ({
       ...v,
@@ -115,6 +122,8 @@ function AccountEditor({
       all_departments: iiko && value.all_departments,
       department_ids:
         iiko && !value.all_departments ? value.department_ids : [],
+      warehouse_scope_mode: value.warehouse_scope_mode ?? "all",
+      warehouse_ids: warehouseRestricted ? (value.warehouse_ids ?? []) : [],
       deposits_all: deposits && value.deposits_all,
       deposits_create: deposits && value.deposits_all && value.deposits_create,
       deposit_grants:
@@ -217,34 +226,83 @@ function AccountEditor({
               ))}
             </SimpleGrid>
           </div>
-          {iiko && (
+          {value.sections.length > 0 && (
             <Stack gap="sm">
-              <Text fw={600}>Заведения iiko</Text>
-              <Text size="sm" c="dimmed">
-                Заведения задают доступ к аналитике iiko. Склады и действия с
-                заявками назначаются отдельно во вкладке «Документы и склады».
-              </Text>
-              <Checkbox
-                label="Все заведения iiko, включая новые"
-                checked={value.all_departments}
-                onChange={(e) =>
-                  set({ ...value, all_departments: e.currentTarget.checked })
-                }
+              <Text fw={600}>Доступ к данным</Text>
+              <Select
+                label="Ограничение доступа"
+                value={value.warehouse_scope_mode ?? "all"}
+                allowDeselect={false}
+                data={[
+                  { value: "selected", label: "Только выбранные склады" },
+                  { value: "all", label: "По заведениям" },
+                ]}
+                onChange={(mode) => {
+                  if (!mode) return;
+                  set({
+                    ...value,
+                    warehouse_scope_mode: mode as "all" | "selected",
+                    ...(mode === "selected"
+                      ? { all_departments: false, department_ids: [] }
+                      : {}),
+                  });
+                }}
               />
-              {!value.all_departments && (
-                <MultiSelect
-                  label="Разрешённые заведения iiko"
-                  data={directory.departments.map((d) => ({
-                    value: d.id,
-                    label: d.name,
-                  }))}
-                  value={value.department_ids}
-                  onChange={(department_ids) =>
-                    set({ ...value, department_ids })
-                  }
-                  searchable
-                  required={requiresRestaurants}
-                />
+              {warehouseRestricted ? (
+                <>
+                  <MultiSelect
+                    label="Разрешённые склады"
+                    placeholder="Выберите один или несколько складов"
+                    data={(directory.warehouses ?? []).map((w) => ({
+                      value: w.id,
+                      label: w.name,
+                    }))}
+                    value={value.warehouse_ids ?? []}
+                    onChange={(warehouse_ids) =>
+                      set({ ...value, warehouse_ids })
+                    }
+                    searchable
+                    clearable
+                    nothingFoundMessage="Склад не найден"
+                  />
+                  {!(value.warehouse_ids ?? []).length && (
+                    <Text size="sm" c="orange">
+                      Без выбранных складов данные будут недоступны.
+                    </Text>
+                  )}
+                  <Text size="sm" c="dimmed">
+                    Ограничение действует и в отчётах. Действия с накладными
+                    назначаются отдельно.
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Checkbox
+                    label="Все заведения iiko, включая новые"
+                    checked={value.all_departments}
+                    onChange={(e) =>
+                      set({
+                        ...value,
+                        all_departments: e.currentTarget.checked,
+                      })
+                    }
+                  />
+                  {!value.all_departments && (
+                    <MultiSelect
+                      label="Разрешённые заведения iiko"
+                      data={directory.departments.map((d) => ({
+                        value: d.id,
+                        label: d.name,
+                      }))}
+                      value={value.department_ids}
+                      onChange={(department_ids) =>
+                        set({ ...value, department_ids })
+                      }
+                      searchable
+                      required={requiresRestaurants}
+                    />
+                  )}
+                </>
               )}
             </Stack>
           )}

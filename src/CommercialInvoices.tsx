@@ -22,6 +22,8 @@ import { api, apiPdf, dateText, money } from "./api";
 import { useData } from "./useData";
 import { useWorkspace } from "./App";
 import { DocumentPanel } from "./DocumentPanel";
+import { CommercialCounterpartyCreate } from "./CommercialCounterpartyCreate";
+import type { CounterpartyOperation } from "./commercialCounterpartyModel";
 import { PageTitle, ResourcePage } from "./pages";
 import {
   commercialCommand,
@@ -212,12 +214,14 @@ function Editor({
   document,
   close,
   saved,
+  onCounterpartyOperation,
 }: {
   kind: CommercialKind;
   options: CommercialOptions;
   document?: CommercialDocument;
   close: () => void;
   saved: (doc: CommercialDocument) => void;
+  onCounterpartyOperation: (operation: CounterpartyOperation) => void;
 }) {
   const w = useWorkspace();
   const [value, set] = useState<CommercialDraft>(() =>
@@ -254,6 +258,10 @@ function Editor({
       : null,
   );
   const selectedParty = useRef<CommercialParty | null>(null);
+  const [creatingParty, setCreatingParty] = useState(false);
+  const [partyOperations, setPartyOperations] = useState<
+    CounterpartyOperation[]
+  >(options.counterparty_operations ?? []);
   const parties = new Map(
     (found.data?.items || []).map((p) => [p.id, commercialPartyLabel(p)]),
   );
@@ -316,8 +324,10 @@ function Editor({
             ? "Новая приходная накладная"
             : "Новая реализация"
       }
-      busy={locked}
-      close={() => (dirty ? setDiscard(true) : close())}
+      busy={locked || creatingParty}
+      close={() => {
+        if (!creatingParty) dirty ? setDiscard(true) : close();
+      }}
     >
       <form
         onSubmit={(e) => {
@@ -363,6 +373,18 @@ function Editor({
               found.loading ? "Поиск…" : "Контрагент не найден"
             }
           />
+          {options.can_create_counterparty && (
+            <Button
+              variant="subtle"
+              size="compact-sm"
+              leftSection={<IconPlus size={14} />}
+              disabled={locked}
+              onClick={() => setCreatingParty(true)}
+              style={{ alignSelf: "flex-start" }}
+            >
+              Новый контрагент
+            </Button>
+          )}
           <div className="commercial-numbers">
             <TextInput
               required
@@ -457,6 +479,27 @@ function Editor({
           )}
         </Stack>
       </form>
+      {creatingParty && (
+        <CommercialCounterpartyCreate
+          kind={kind}
+          name={search}
+          operations={partyOperations}
+          operationChanged={(operation) => {
+            setPartyOperations((current) => [
+              operation,
+              ...current.filter((old) => old.id !== operation.id),
+            ]);
+            onCounterpartyOperation(operation);
+          }}
+          close={() => setCreatingParty(false)}
+          selected={(party) => {
+            selectedParty.current = party;
+            change({ ...value, counterparty_id: party.id });
+            setSearch("");
+            setCreatingParty(false);
+          }}
+        />
+      )}
     </DocumentPanel>
   );
 }
@@ -662,6 +705,9 @@ export function CommercialInvoices({ kind }: { kind: CommercialKind }) {
   const options = useData<CommercialOptions>(
     analytics ? null : `${base(kind)}/options`,
   );
+  const [recentPartyOperations, setRecentPartyOperations] = useState<
+    CounterpartyOperation[]
+  >([]);
   const [offset, setOffset] = useState(0),
     [selection, setSelection] = useState<string | null>(null),
     [editing, setEditing] = useState<CommercialDocument | "new" | null>(null);
@@ -789,7 +835,24 @@ export function CommercialInvoices({ kind }: { kind: CommercialKind }) {
               <Editor
                 key={editing === "new" ? "new" : editing.id}
                 kind={kind}
-                options={options.data}
+                options={{
+                  ...options.data,
+                  counterparty_operations: [
+                    ...recentPartyOperations,
+                    ...(options.data.counterparty_operations ?? []).filter(
+                      (op) =>
+                        !recentPartyOperations.some(
+                          (recent) => recent.id === op.id,
+                        ),
+                    ),
+                  ],
+                }}
+                onCounterpartyOperation={(operation) =>
+                  setRecentPartyOperations((current) => [
+                    operation,
+                    ...current.filter((old) => old.id !== operation.id),
+                  ])
+                }
                 document={editing === "new" ? undefined : editing}
                 close={() => setEditing(null)}
                 saved={(doc) => {

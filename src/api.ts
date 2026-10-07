@@ -3,6 +3,7 @@ export class ApiError extends Error {
     message: string,
     public status: number,
     public employeePending = false,
+    public detail?: unknown,
   ) {
     super(message);
   }
@@ -120,6 +121,7 @@ async function request(
           : "Не удалось получить данные.",
       r.status,
       body.detail?.employee_pending === true,
+      body.detail,
     );
   }
   return r;
@@ -170,6 +172,11 @@ export type PageData = {
   limit: number;
 };
 export type Meta = {
+  warehouse_scope?: { mode: "all" | "selected"; warehouse_ids: string[] };
+  warehouse_capabilities?: {
+    supported_sections: string[];
+    unsupported_sections: string[];
+  };
   documents_enabled?: boolean;
   sections?: string[];
   can_manage?: boolean;
@@ -189,6 +196,8 @@ export type Meta = {
 };
 export type SalesRow = {
   live?: boolean;
+  warehouse_scoped?: boolean;
+  drilldown_available?: boolean;
   ordinal: number;
   request: Row;
   business_date: string;

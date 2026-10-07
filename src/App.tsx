@@ -473,11 +473,15 @@ function WorkspaceApp() {
         <Login onLogin={() => setRevision((x) => x + 1)} />
       </>
     );
-  const allowed =
+  const assigned =
     meta.sections ??
     (meta.user.role === "deposits"
       ? ["deposits"]
       : sections.map((s) => s.path.slice(1) || "overview"));
+  const allowed = assigned.filter(
+    (section) =>
+      !meta.warehouse_capabilities?.unsupported_sections.includes(section),
+  );
   const availableSections = sections.filter((s) =>
     s.path === "/management"
       ? meta.can_manage
@@ -818,14 +822,20 @@ function WorkspaceApp() {
                             key={s.path}
                             path={s.path}
                             element={
-                              s.path === "/invoices" || s.path === "/outgoing" ? (
-                                <CommercialInvoices key={s.path} kind={s.path === "/invoices" ? "purchase" : "sale"} />
+                              s.path === "/invoices" ||
+                              s.path === "/outgoing" ? (
+                                <CommercialInvoices
+                                  key={s.path}
+                                  kind={
+                                    s.path === "/invoices" ? "purchase" : "sale"
+                                  }
+                                />
                               ) : (
-                              <ResourcePage
-                                key={s.path}
-                                resource={s.path.slice(1)}
-                                title={s.title}
-                              />
+                                <ResourcePage
+                                  key={s.path}
+                                  resource={s.path.slice(1)}
+                                  title={s.title}
+                                />
                               )
                             }
                           />

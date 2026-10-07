@@ -20,6 +20,8 @@
 | Оценка стоимости списания | [WriteoffCosts.tsx](../src/WriteoffCosts.tsx), [writeoffCostModel.ts](../src/writeoffCostModel.ts); сумма после создания заявки |
 | Кеш карточек документов и обновление | [DocumentData.tsx](../src/DocumentData.tsx), [documentCache.ts](../src/documentCache.ts) |
 | Права на документы | [DocumentAccess.tsx](../src/DocumentAccess.tsx), [CommercialInvoiceAccess.tsx](../src/CommercialInvoiceAccess.tsx), [documents.md](CODEMAPS/documents.md) |
+| Создание контрагентов в iiko и восстановление операции | [CommercialCounterpartyCreate.tsx](../src/CommercialCounterpartyCreate.tsx), [commercialCounterpartyModel.ts](../src/commercialCounterpartyModel.ts), [CounterpartyPermission.tsx](../src/CounterpartyPermission.tsx); [контракт](CODEMAPS/documents.md#создание-контрагентов-в-iiko) |
+| Ограничение всех данных выбранными складами | [ManagementPage.tsx](../src/ManagementPage.tsx), [App.tsx](../src/App.tsx), [api.ts](../src/api.ts); [границы](CODEMAPS/interface.md#ограничение-по-складам) |
 | Закупочные цены, недельное влияние | [PurchasePrices.tsx](../src/PurchasePrices.tsx), [PurchaseImpact.tsx](../src/PurchaseImpact.tsx) |
 | Помощник и его источники | [PurchaseAssistant.tsx](../src/PurchaseAssistant.tsx), [integrations.md](CODEMAPS/integrations.md) |
 | Остатки и поиск товара | [BalancesPage.tsx](../src/BalancesPage.tsx), [BalanceSearch.tsx](../src/BalanceSearch.tsx) |
@@ -39,3 +41,5 @@
 - Разделы «Сотрудники iiko» и «Управление аккаунтами dashboard» имеют разные модели и API. При `meta.documents_enabled` перемещения и списания переключаются с аналитики iiko на заявки с отдельной вкладкой аналитики.
 - Связи между frontend и backend приведены по реально вызываемым URL, без предположений о внутренней реализации сервера.
 - Права, расчёты, статус синхронизации и фактический деплой подтверждаются в backend/операционной документации. Эта карта фиксирует только вызовы и переходы, видимые в frontend.
+
+Дополнение 07.10.2026: складская область доступа и создание контрагентов реализованы в локальной release-копии `.local/commercial-release/frontend`; это описание исходников, подтверждение production-деплоя ещё требуется.

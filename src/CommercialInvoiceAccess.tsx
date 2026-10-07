@@ -14,6 +14,7 @@ import {
 } from "@mantine/core";
 import { api, ApiError } from "./api";
 import { useData } from "./useData";
+import { CounterpartyPermission } from "./CounterpartyPermission";
 import {
   commercialUncertain,
   type CommercialKind,
@@ -165,6 +166,7 @@ function Editor({
         }}
       >
         <Stack>
+          <CounterpartyPermission userId={person.id} />
           {error && <Alert color="red">{error}</Alert>}
           {uncertain && (
             <Alert color="yellow">

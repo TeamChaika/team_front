@@ -56,6 +56,8 @@ export type CommercialOptions = {
     can_submit: boolean;
   }[];
   can_create: boolean;
+  can_create_counterparty?: boolean;
+  counterparty_operations?: import("./commercialCounterpartyModel").CounterpartyOperation[];
   can_submit: boolean;
   submit_enabled: boolean;
   vat_rates: string[];
