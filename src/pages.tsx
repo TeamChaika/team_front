@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { ScheduledSync } from "./ScheduledSync";
+import { CommercialPdfButton } from "./CommercialInvoices";
 import type { ScheduledSyncTask } from "./scheduledSyncModel";
 import { PartialDayNotice } from "./PartialDayNotice";
 import { Link, useParams, useSearchParams } from "react-router-dom";
@@ -1266,6 +1267,16 @@ export function DetailPage({ resource }: { resource: string }) {
             <PageTitle
               title={String(state.data.header.title ?? "Документ")}
               subtitle={"Идентификатор iiko: " + id}
+              action={
+                resource === "outgoing" &&
+                id &&
+                state.data.header.can_invoice_pdf === true ? (
+                  <CommercialPdfButton
+                    path={`/commercial-invoices/existing-outgoing/${encodeURIComponent(id)}/pdf`}
+                    name={`Счёт-${String(state.data.header.number ?? state.data.header.title ?? id)}`}
+                  />
+                ) : undefined
+              }
             />
             {resource === "cash-shifts" && (
               <p className="section-note">

@@ -1,0 +1,52 @@
+.commercial-card {
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+.commercial-product {
+  flex: 1;
+  min-width: 0;
+}
+.commercial-item {
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: 8px;
+  padding: 12px;
+  min-width: 0;
+}
+.commercial-item legend {
+  font-size: 13px;
+  color: var(--mantine-color-dimmed);
+}
+.commercial-item .mantine-Checkbox-root {
+  margin-top: 12px;
+}
+.commercial-numbers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+.commercial-saved-item {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--mantine-color-default-border);
+}
+.commercial-totals {
+  padding: 14px;
+  border-radius: 8px;
+  background: var(--mantine-color-dark-6);
+}
+
+.commercial-invoice-heading .page-title > .commercial-title-actions {
+  display: flex;
+}
+@media (max-width: 720px) {
+  .commercial-invoice-heading .page-title {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .commercial-invoice-heading .commercial-title-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
