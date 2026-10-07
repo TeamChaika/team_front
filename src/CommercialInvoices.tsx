@@ -700,38 +700,40 @@ export function CommercialInvoices({ kind }: { kind: CommercialKind }) {
         <ResourcePage resource={resource} title={title} />
       ) : (
         <>
-          <PageTitle
-            title={title}
-            subtitle={
-              kind === "purchase"
-                ? "Поступление товаров от поставщика"
-                : "Продажа товаров внешнему покупателю"
-            }
-            action={
-              <Group>
-                <Button
-                  variant="default"
-                  loading={list.refreshing}
-                  disabled={Boolean(editing || selection) || !options.data}
-                  onClick={list.reload}
-                >
-                  Обновить
-                </Button>
-                {options.data?.can_create ? (
+          <div className="commercial-invoice-heading">
+            <PageTitle
+              title={title}
+              subtitle={
+                kind === "purchase"
+                  ? "Поступление товаров от поставщика"
+                  : "Продажа товаров внешнему покупателю"
+              }
+              action={
+                <Group className="commercial-title-actions">
                   <Button
-                    leftSection={<IconPlus size={16} />}
-                    disabled={Boolean(editing || selection)}
-                    onClick={() => {
-                      setSelection(null);
-                      setEditing("new");
-                    }}
+                    variant="default"
+                    loading={list.refreshing}
+                    disabled={Boolean(editing || selection) || !options.data}
+                    onClick={list.reload}
                   >
-                    Создать
+                    Обновить
                   </Button>
-                ) : null}
-              </Group>
-            }
-          />
+                  {options.data?.can_create ? (
+                    <Button
+                      leftSection={<IconPlus size={16} />}
+                      disabled={Boolean(editing || selection)}
+                      onClick={() => {
+                        setSelection(null);
+                        setEditing("new");
+                      }}
+                    >
+                      Создать
+                    </Button>
+                  ) : null}
+                </Group>
+              }
+            />
+          </div>
           {options.loading && <Loader />}
           {options.error && <Alert color="red">{options.error}</Alert>}
           <div
