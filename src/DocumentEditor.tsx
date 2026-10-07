@@ -10,6 +10,11 @@ import {
   Text,
   Textarea,
 } from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
+import {
+  MobileDocumentItems,
+  type MobileItemsNavigation,
+} from "./MobileDocumentItems";
 import { IconPlus, IconTrash } from "@tabler/icons-react";
 import { api, ApiError } from "./api";
 import { useData } from "./useData";
@@ -125,6 +130,11 @@ export function DocumentEditor({
           items: [{ product_id: "", amount: "" }],
         },
   );
+  const desktop = useMediaQuery("(min-width: 64em)", false, {
+    getInitialValueInEffect: false,
+  });
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const mobileNavigation = useRef<MobileItemsNavigation>(null);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [dirty, setDirty] = useState(false),
@@ -151,6 +161,7 @@ export function DocumentEditor({
   }
   function dismiss() {
     if (busy) return;
+    if (!desktop && mobileNavigation.current?.back()) return;
     if (dirty) setDiscard(true);
     else close();
   }
@@ -166,6 +177,7 @@ export function DocumentEditor({
   }, [dirty]);
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (!desktop && pickerOpen) return;
     setError("");
     try {
       pending.current ||= documentPayload(
@@ -216,113 +228,138 @@ export function DocumentEditor({
       >
         <form onSubmit={submit} inert={discard ? true : undefined}>
           <Stack>
-            {error && (
-              <Alert color="red" role="alert">
-                {error}
-              </Alert>
-            )}
-            {uncertain && (
-              <Alert color="yellow">
-                Ответ не получен. Поля сохранены; «Проверить результат» повторит
-                тот же запрос без создания второй заявки.
-              </Alert>
-            )}
-            <Text size="sm" c="dimmed">
-              {kind === "waybill"
-                ? "После согласования будет отправлена расходная накладная iiko."
-                : "После согласования списание будет передано в iiko со статусом «Новый»."}
-            </Text>
-            <Select
-              required
-              label={kind === "waybill" ? "Со склада" : "Склад"}
-              searchable
-              data={stores.map((s) => ({ value: s.id, label: s.name }))}
-              value={value.store_id || null}
-              onChange={(id) => update({ ...value, store_id: id || "" })}
-              disabled={busy || uncertain || mode === "edit"}
-            />
-            {kind === "waybill" ? (
+            <Stack
+              style={!desktop && pickerOpen ? { display: "none" } : undefined}
+            >
+              {error && (
+                <Alert color="red" role="alert">
+                  {error}
+                </Alert>
+              )}
+              {uncertain && (
+                <Alert color="yellow">
+                  Ответ не получен. Поля сохранены; «Проверить результат»
+                  повторит тот же запрос без создания второй заявки.
+                </Alert>
+              )}
+              <Text size="sm" c="dimmed">
+                {kind === "waybill"
+                  ? "После согласования будет отправлена расходная накладная iiko."
+                  : "После согласования списание будет передано в iiko со статусом «Новый»."}
+              </Text>
               <Select
                 required
-                label="Получатель"
+                label={kind === "waybill" ? "Со склада" : "Склад"}
                 searchable
-                data={options.recipients
-                  .filter((s) => s.id !== value.store_id)
-                  .map((s) => ({ value: s.id, label: s.name }))}
-                value={value.counteragent_id || null}
-                onChange={(id) =>
-                  update({ ...value, counteragent_id: id || "" })
-                }
+                data={stores.map((s) => ({ value: s.id, label: s.name }))}
+                value={value.store_id || null}
+                onChange={(id) => update({ ...value, store_id: id || "" })}
                 disabled={busy || uncertain || mode === "edit"}
               />
-            ) : (
-              <Select
-                required
-                label="Причина списания"
-                data={options.reasons.map((r) => ({
-                  value: String(r.id),
-                  label: r.name,
-                }))}
-                value={value.reason_id ? String(value.reason_id) : null}
+              {kind === "waybill" ? (
+                <Select
+                  required
+                  label="Получатель"
+                  searchable
+                  data={options.recipients
+                    .filter((s) => s.id !== value.store_id)
+                    .map((s) => ({ value: s.id, label: s.name }))}
+                  value={value.counteragent_id || null}
+                  onChange={(id) =>
+                    update({ ...value, counteragent_id: id || "" })
+                  }
+                  disabled={busy || uncertain || mode === "edit"}
+                />
+              ) : (
+                <Select
+                  required
+                  label="Причина списания"
+                  data={options.reasons.map((r) => ({
+                    value: String(r.id),
+                    label: r.name,
+                  }))}
+                  value={value.reason_id ? String(value.reason_id) : null}
+                  disabled={busy || uncertain}
+                  onChange={(id) => {
+                    const reason = options.reasons.find(
+                      (r) => String(r.id) === id,
+                    );
+                    update({
+                      ...value,
+                      reason_id: reason?.id,
+                      reason: reason?.name,
+                    });
+                  }}
+                />
+              )}
+              <Textarea
+                label="Комментарий"
+                maxLength={1000}
+                value={value.comment}
+                description={`${value.comment.length}/1000`}
                 disabled={busy || uncertain}
-                onChange={(id) => {
-                  const reason = options.reasons.find(
-                    (r) => String(r.id) === id,
-                  );
-                  update({
-                    ...value,
-                    reason_id: reason?.id,
-                    reason: reason?.name,
-                  });
-                }}
-              />
-            )}
-            <Textarea
-              label="Комментарий"
-              maxLength={1000}
-              value={value.comment}
-              description={`${value.comment.length}/1000`}
-              disabled={busy || uncertain}
-              onChange={(e) =>
-                update({ ...value, comment: e.currentTarget.value })
-              }
-            />
-            {value.items.map((item, index) => (
-              <ProductRow
-                key={index}
-                kind={kind}
-                item={item}
-                disabled={busy || uncertain}
-                change={(row) =>
-                  update({
-                    ...value,
-                    items: value.items.map((old, i) =>
-                      i === index ? row : old,
-                    ),
-                  })
-                }
-                remove={() =>
-                  update({
-                    ...value,
-                    items: value.items.filter((_, i) => i !== index),
-                  })
+                onChange={(e) =>
+                  update({ ...value, comment: e.currentTarget.value })
                 }
               />
-            ))}
-            <Button
-              variant="light"
-              leftSection={<IconPlus size={16} />}
-              disabled={busy || uncertain || value.items.length >= 200}
-              onClick={() =>
-                update({
-                  ...value,
-                  items: [...value.items, { product_id: "", amount: "" }],
-                })
-              }
+            </Stack>
+            <fieldset
+              hidden={desktop}
+              disabled={desktop}
+              style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}
             >
-              Добавить позицию
-            </Button>
-            <Group justify="flex-end">
+              <MobileDocumentItems
+                kind={kind}
+                items={value.items}
+                change={(items) => update({ ...value, items })}
+                disabled={busy || uncertain}
+                onStepChange={setPickerOpen}
+                navigation={mobileNavigation}
+              />
+            </fieldset>
+            {desktop && (
+              <>
+                {value.items.map((item, index) => (
+                  <ProductRow
+                    key={index}
+                    kind={kind}
+                    item={item}
+                    disabled={busy || uncertain}
+                    change={(row) =>
+                      update({
+                        ...value,
+                        items: value.items.map((old, i) =>
+                          i === index ? row : old,
+                        ),
+                      })
+                    }
+                    remove={() =>
+                      update({
+                        ...value,
+                        items: value.items.filter((_, i) => i !== index),
+                      })
+                    }
+                  />
+                ))}
+                <Button
+                  variant="light"
+                  leftSection={<IconPlus size={16} />}
+                  disabled={busy || uncertain || value.items.length >= 200}
+                  onClick={() =>
+                    update({
+                      ...value,
+                      items: [...value.items, { product_id: "", amount: "" }],
+                    })
+                  }
+                >
+                  Добавить позицию
+                </Button>
+              </>
+            )}
+            <Group
+              style={!desktop && pickerOpen ? { display: "none" } : undefined}
+              justify="flex-end"
+            >
               <Button variant="default" onClick={dismiss} disabled={busy}>
                 Отмена
               </Button>
