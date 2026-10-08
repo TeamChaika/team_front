@@ -7,7 +7,13 @@ import {
 } from "./saasTenantApi";
 import { moduleLabels, tenantPasswordError } from "./saasAdminModel";
 
-export default function SaasTenant({ slug }: { slug: string }) {
+export default function SaasTenant({
+  slug,
+  companyName,
+}: {
+  slug: string;
+  companyName?: string;
+}) {
   const api = useMemo(() => createTenantApi(slug), [slug]);
   const [session, setSession] = useState<TenantSession | null>(null);
   const [workspace, setWorkspace] = useState<TenantWorkspace | null>(null);
@@ -136,7 +142,9 @@ export default function SaasTenant({ slug }: { slug: string }) {
           <span className="sa-eyebrow">RESTCONTROL · ВХОД КОМПАНИИ</span>
           <h1>{session ? "Задайте свой пароль" : "Вход администратора"}</h1>
           <p className="sa-hint">
-            {session ? session.company.name : `Компания: ${slug}`}
+            {session
+              ? session.company.name
+              : companyName || `Компания: ${slug}`}
           </p>
           {session && (
             <p className="sa-hint">
@@ -153,7 +161,7 @@ export default function SaasTenant({ slug }: { slug: string }) {
             {!session ? (
               <>
                 <label className="sa-field">
-                  Логин
+                  Email
                   <input
                     autoFocus
                     required

@@ -251,6 +251,7 @@ export function connectionLoadMatchesCompany(
 export type AdminAccess = {
   company_version: number;
   exists: boolean;
+  can_reset_password?: boolean;
   login_path: string;
   admin: null | {
     id: string;
@@ -258,11 +259,44 @@ export type AdminAccess = {
     display_name: string;
     must_change_password: boolean;
     temporary_expires_at: string | null;
-    status: "temporary" | "expired" | "active" | "blocked";
+    status:
+      | "temporary"
+      | "expired"
+      | "active"
+      | "blocked"
+      | "activation_required";
   };
 };
-export type IssuedAdminAccess = AdminAccess & { temporary_password: string };
+export function adminAccessAction(
+  access: AdminAccess,
+): "create" | "activate" | "reset" | "none" {
+  if (access.admin?.status === "activation_required") return "activate";
+  if (!access.exists) return "create";
+  return access.can_reset_password === true ? "reset" : "none";
+}
+export type IssuedAdminAccess = AdminAccess & {
+  temporary_password: string | null;
+  existing_account?: boolean;
+};
+export function validateIssuedAccess(access: IssuedAdminAccess): void {
+  if (!access.temporary_password && access.existing_account !== true)
+    throw new Error(
+      "Доступ требует активации. Обновите карточку и проверьте статус учётной записи.",
+    );
+}
+export function issuedAccessText(
+  access: IssuedAdminAccess,
+  loginUrl: string,
+): string {
+  return (
+    `Вход: ${loginUrl}\nEmail: ${access.admin?.username || ""}` +
+    (access.temporary_password
+      ? `\nВременный пароль: ${access.temporary_password}`
+      : "\nИспользуйте пароль своей учётной записи RestControl.")
+  );
+}
 export const adminAccessLabels = {
+  activation_required: "Требуется активация учётной записи",
   temporary: "Ожидает смены пароля",
   expired: "Временный пароль истёк",
   active: "Доступ создан",

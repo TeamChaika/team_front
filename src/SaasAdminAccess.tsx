@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { api } from "./saasAdminApi";
 import {
   adminAccessLabels,
+  adminAccessAction,
+  issuedAccessText,
+  validateIssuedAccess,
   loadAdminAccessSnapshot,
   tenantLoginPath,
   type AdminAccess,
@@ -77,6 +80,7 @@ export default function SaasAdminAccess({
         reset,
       );
       if (!live.current) return;
+      validateIssuedAccess(data);
       const { temporary_password, ...metadata } = data;
       setAccess(metadata);
       setIssued({ ...metadata, temporary_password });
@@ -99,6 +103,8 @@ export default function SaasAdminAccess({
     actionButton.current?.focus();
   }
   const path = tenantLoginPath(company.slug);
+  const action = access ? adminAccessAction(access) : "none";
+  const needsProvision = action === "create" || action === "activate";
   const canCreate =
     !!company.primary_admin?.name.trim() &&
     !!company.primary_admin?.email.trim();
@@ -134,36 +140,47 @@ export default function SaasAdminAccess({
       )}
       {access && !loading && (
         <>
-          {!access.exists && (
+          {needsProvision && (
             <p className="sa-hint">
-              Создайте учётную запись по сохранённым имени и email контакта.
-              Пароль появится один раз.
+              Создайте учётную запись по сохранённым имени и email контакта. Для
+              новой учётной записи пароль появится один раз. Существующая
+              учётная запись получит доступ с прежним паролем.
             </p>
           )}
-          {!access.exists && !canCreate && (
+          {needsProvision && !canCreate && (
             <p className="sa-hint">
               Сначала сохраните имя и email контакта администратора.
             </p>
           )}
           <button
             ref={actionButton}
-            className={`sa-button ${access.exists ? "secondary " : ""}small`}
+            className={`sa-button ${action === "reset" ? "secondary " : ""}small`}
             disabled={
               busy ||
               access.company_version !== company.version ||
               company.status === "suspended" ||
-              (!access.exists && !canCreate)
+              (needsProvision && !canCreate) ||
+              action === "none"
             }
             onClick={() =>
-              access.exists ? setConfirm(true) : void issue(false)
+              action === "reset" ? setConfirm(true) : void issue(false)
             }
           >
             {busy
               ? "Создаём…"
-              : access.exists
-                ? "Сбросить пароль"
-                : "Создать доступ"}
+              : action === "activate"
+                ? "Активировать доступ"
+                : action === "reset"
+                  ? "Сбросить пароль"
+                  : action === "none"
+                    ? "Доступ подключён"
+                    : "Создать доступ"}
           </button>
+          {action === "none" && (
+            <p className="sa-hint">
+              Пароль единой учётной записи меняет её владелец.
+            </p>
+          )}
           {access.exists && (
             <a
               className="sa-text-button sa-tenant-link"
@@ -215,22 +232,24 @@ export default function SaasAdminAccess({
             {issued ? (
               <>
                 <p>
-                  Сохраните данные сейчас. После закрытия временный пароль
-                  больше не отобразится. При входе администратор задаст свой
-                  пароль.
+                  {issued.temporary_password
+                    ? "Сохраните данные сейчас. После закрытия временный пароль больше не отобразится. При входе администратор задаст свой пароль."
+                    : "Компания подключена к существующей учётной записи RestControl. Используйте её email и прежний пароль."}
                 </p>
                 <label className="sa-field">
-                  Логин
+                  Email
                   <input readOnly value={issued.admin?.username || ""} />
                 </label>
-                <label className="sa-field">
-                  Временный пароль
-                  <input
-                    readOnly
-                    value={issued.temporary_password}
-                    autoComplete="off"
-                  />
-                </label>
+                {issued.temporary_password && (
+                  <label className="sa-field">
+                    Временный пароль
+                    <input
+                      readOnly
+                      value={issued.temporary_password}
+                      autoComplete="off"
+                    />
+                  </label>
+                )}
                 <a
                   className="sa-tenant-link"
                   href={path}
@@ -240,7 +259,9 @@ export default function SaasAdminAccess({
                   {window.location.origin}
                   {path} ↗
                 </a>
-                <p className="sa-hint">Пароль действует 72 часа.</p>
+                {issued.temporary_password && (
+                  <p className="sa-hint">Пароль действует 72 часа.</p>
+                )}
                 <div>
                   <button
                     autoFocus
@@ -248,7 +269,10 @@ export default function SaasAdminAccess({
                     onClick={async () => {
                       try {
                         await navigator.clipboard.writeText(
-                          `Вход: ${window.location.origin}${path}\nЛогин: ${issued.admin?.username}\nВременный пароль: ${issued.temporary_password}`,
+                          issuedAccessText(
+                            issued,
+                            `${window.location.origin}${path}`,
+                          ),
                         );
                         if (live.current) setCopied(true);
                       } catch {

@@ -1,4 +1,51 @@
-import type { CompanyWrite } from "./saasAdminModel";
+import { tenantSlugFromPath, type CompanyWrite } from "./saasAdminModel.ts";
+
+export type SaasContext = {
+  surface: "platform" | "tenant";
+  company: null | { id: string; slug: string; name: string };
+};
+export type SaasEntry =
+  | { surface: "platform" }
+  | { surface: "tenant"; slug: string; companyName?: string }
+  | { surface: "denied" };
+export async function loadSaasContext(): Promise<SaasContext> {
+  const response = await fetch("/api/saas-context", {
+    credentials: "same-origin",
+  });
+  if (!response.ok) throw new Error("Этот адрес не подключён к RestControl.");
+  const context: SaasContext = await response.json();
+  if (context.surface === "platform" && context.company === null)
+    return context;
+  if (
+    context.surface === "tenant" &&
+    context.company &&
+    typeof context.company.id === "string" &&
+    typeof context.company.name === "string" &&
+    typeof context.company.slug === "string" &&
+    tenantSlugFromPath(`/tenant/${context.company.slug}`) ===
+      context.company.slug
+  )
+    return context;
+  throw new Error("Не удалось определить компанию для этого адреса.");
+}
+export function resolveSaasEntry(
+  context: SaasContext,
+  path: string,
+): SaasEntry {
+  const slug = tenantSlugFromPath(path);
+  if (context.surface === "tenant") {
+    if (!context.company || (path !== "/" && slug !== context.company.slug))
+      return { surface: "denied" };
+    return {
+      surface: "tenant",
+      slug: context.company.slug,
+      companyName: context.company.name,
+    };
+  }
+  if (path.startsWith("/tenant/"))
+    return slug ? { surface: "tenant", slug } : { surface: "denied" };
+  return { surface: "platform" };
+}
 export type TenantSession = {
   user: {
     id: string;

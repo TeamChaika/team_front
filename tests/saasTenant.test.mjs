@@ -167,3 +167,151 @@ test("production workspace uses relative same-origin API and preserves pending b
   assert.equal(workspace.business_modules_ready, false);
   assert.equal(workspace.company.modules.analytics, true);
 });
+
+test("verified customer context opens only its own tenant and never owner panel", async () => {
+  const { resolveSaasEntry } = await import("../src/saasTenantApi.ts");
+  const context = {
+    surface: "tenant",
+    company: { id: "a", slug: "company-a", name: "Компания А" },
+  };
+  assert.deepEqual(resolveSaasEntry(context, "/"), {
+    surface: "tenant",
+    slug: "company-a",
+    companyName: "Компания А",
+  });
+  assert.equal(
+    resolveSaasEntry(context, "/tenant/company-a").surface,
+    "tenant",
+  );
+  for (const path of [
+    "/tenant/company-b",
+    "/companies",
+    "/saas-admin.html",
+    "/tenant/",
+    "/tenant/a%2Fb",
+  ])
+    assert.equal(resolveSaasEntry(context, path).surface, "denied");
+  assert.equal(
+    resolveSaasEntry({ surface: "platform", company: null }, "/").surface,
+    "platform",
+  );
+  assert.equal(
+    resolveSaasEntry(
+      { surface: "platform", company: null },
+      "/tenant/company-b",
+    ).slug,
+    "company-b",
+  );
+});
+
+test("host bootstrap stays same-origin and rejects unknown or malformed context", async (t) => {
+  const { loadSaasContext } = await import("../src/saasTenantApi.ts");
+  let payload = {
+    surface: "tenant",
+    company: { id: "a", slug: "company-a", name: "Компания А" },
+  };
+  let status = 200;
+  t.mock.method(globalThis, "fetch", async (path, options) => {
+    assert.equal(path, "/api/saas-context");
+    assert.equal(options.credentials, "same-origin");
+    return new Response(JSON.stringify(payload), { status });
+  });
+  assert.equal((await loadSaasContext()).company.slug, "company-a");
+  status = 404;
+  await assert.rejects(loadSaasContext());
+  status = 200;
+  for (const invalid of [
+    { surface: "tenant", company: null },
+    { surface: "unexpected", company: null },
+    { surface: "platform", company: payload.company },
+    { surface: "tenant", company: { ...payload.company, slug: "a/b" } },
+  ]) {
+    payload = invalid;
+    await assert.rejects(loadSaasContext());
+  }
+});
+
+test("existing centralized account handoff never invents a temporary password", async () => {
+  const { issuedAccessText } = await import("../src/saasAdminModel.ts");
+  const metadata = {
+    admin: { username: "person@example.ru" },
+    existing_account: true,
+    temporary_password: null,
+  };
+  const existing = issuedAccessText(
+    metadata,
+    "https://rc.chaika.team/tenant/a",
+  );
+  assert.match(existing, /person@example.ru/);
+  assert.doesNotMatch(existing, /Временный пароль|null/);
+  assert.match(
+    issuedAccessText(
+      { ...metadata, existing_account: false, temporary_password: "one-time" },
+      "https://rc.chaika.team/tenant/a",
+    ),
+    /Временный пароль: one-time/,
+  );
+});
+
+test("provision without a temporary password requires explicit existing-account success", async () => {
+  const { validateIssuedAccess } = await import("../src/saasAdminModel.ts");
+  assert.doesNotThrow(() =>
+    validateIssuedAccess({ temporary_password: null, existing_account: true }),
+  );
+  assert.doesNotThrow(() =>
+    validateIssuedAccess({
+      temporary_password: "issued-once",
+      existing_account: false,
+    }),
+  );
+  assert.throws(
+    () =>
+      validateIssuedAccess({
+        temporary_password: null,
+        existing_account: false,
+      }),
+    /активации/,
+  );
+  assert.throws(
+    () => validateIssuedAccess({ temporary_password: null }),
+    /активации/,
+  );
+});
+
+test("imported membership without Auth activates with provision rather than forbidden reset", async () => {
+  const { adminAccessAction } = await import("../src/saasAdminModel.ts");
+  const imported = {
+    company_version: 4,
+    exists: true,
+    can_reset_password: false,
+    login_path: "/tenant/ooo-chaika",
+    admin: {
+      id: "imported-membership",
+      username: "complexitorg@gmail.com",
+      display_name: "Администратор",
+      must_change_password: false,
+      temporary_expires_at: null,
+      status: "activation_required",
+    },
+  };
+  assert.equal(adminAccessAction(imported), "activate");
+  assert.equal(
+    adminAccessAction({
+      ...imported,
+      admin: { ...imported.admin, status: "active" },
+    }),
+    "none",
+  );
+  assert.equal(
+    adminAccessAction({
+      ...imported,
+      can_reset_password: true,
+      admin: { ...imported.admin, status: "active" },
+    }),
+    "reset",
+  );
+  assert.equal(
+    adminAccessAction({ ...imported, exists: false, admin: null }),
+    "create",
+  );
+});
