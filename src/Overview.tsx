@@ -890,14 +890,20 @@ export function Overview({ tenant = false }: { tenant?: boolean }) {
                                 }
                                 onClick={() => w.setDepartment(r.department_id)}
                                 className="overview-data-status"
-                                title="Результат загрузки и контрольной сверки продаж"
+                                title={
+                                  tenant
+                                    ? "Результат загрузки продаж из iiko"
+                                    : "Результат загрузки и контрольной сверки продаж"
+                                }
                               >
                                 <i
                                   className={
                                     status === "Сверено" ? "" : "amber"
                                   }
                                 />
-                                {status}
+                                {tenant && status === "Сверено"
+                                  ? "Загружено"
+                                  : status}
                               </Link>
                             </td>
                           </tr>
