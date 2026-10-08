@@ -285,3 +285,104 @@ test("server logout failure retains tenant CSRF for retry instead of pretending 
     ["tenant-retained-token", "tenant-retained-token"],
   );
 });
+
+test("tenant runtime serializes overview and sales while leaving session checks independent", async (t) => {
+  let active = 0,
+    maximum = 0,
+    release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (path) => {
+    calls.push(path);
+    if (
+      path.includes("/dashboard/overview") ||
+      path.includes("/dashboard/sales/")
+    ) {
+      active++;
+      maximum = Math.max(maximum, active);
+      if (
+        calls.filter((p) => p.includes("/dashboard/overview")).length === 1 &&
+        path.includes("/dashboard/overview")
+      )
+        await gate;
+      active--;
+    }
+    return new Response(JSON.stringify({ csrf_token: "own" }));
+  });
+  const client = createTenantApi("own");
+  const runtime = client.dashboardRuntime(
+    () => {},
+    () => {},
+  );
+  const first = runtime.request("/overview?start=2026-09-01");
+  const next = runtime.request("/sales/daily?start=2026-10-08");
+  await client.me();
+  assert.ok(calls.some((path) => path.endsWith("/auth/me")));
+  assert.ok(!calls.some((path) => path.includes("/dashboard/sales/")));
+  release();
+  await Promise.all([first, next]);
+  assert.equal(maximum, 1);
+});
+test("queued aborted report rejects promptly and skips fetch", async (t) => {
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (path) => {
+    calls.push(path);
+    await gate;
+    return new Response("{}");
+  });
+  const runtime = createTenantApi("own").dashboardRuntime(
+    () => {},
+    () => {},
+  );
+  const first = runtime.request("/overview");
+  const controller = new AbortController();
+  const queued = runtime.request("/sales/daily", { signal: controller.signal });
+  controller.abort();
+  await assert.rejects(queued, { name: "AbortError" });
+  release();
+  await first;
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls.length, 1);
+});
+test("failed tenant report does not poison the following queued report", async (t) => {
+  let calls = 0;
+  t.mock.method(globalThis, "fetch", async () =>
+    ++calls === 1
+      ? new Response(JSON.stringify({ detail: "iiko busy" }), { status: 503 })
+      : new Response("{}"),
+  );
+  const runtime = createTenantApi("own").dashboardRuntime(
+    () => {},
+    () => {},
+  );
+  const first = runtime.request("/overview");
+  const next = runtime.request("/sales/daily");
+  await assert.rejects(first, /iiko busy/);
+  assert.equal((await next).status, 200);
+  assert.equal(calls, 2);
+});
+
+import { canLoadRecentOverview } from "../src/dashboardRuntime.ts";
+test("tenant trend waits for selected period success and never admits stale or failed data", () => {
+  const selected = { start: "2026-10-08", end: "2026-10-08" };
+  assert.equal(canLoadRecentOverview(true, true, null, selected), false);
+  assert.equal(canLoadRecentOverview(true, true, selected, selected), false);
+  assert.equal(canLoadRecentOverview(true, false, null, selected), false);
+  assert.equal(
+    canLoadRecentOverview(
+      true,
+      false,
+      { start: "2026-10-07", end: "2026-10-07" },
+      selected,
+    ),
+    false,
+  );
+  assert.equal(canLoadRecentOverview(true, false, selected, selected), true);
+  assert.equal(canLoadRecentOverview(false, true, null, selected), true);
+});

@@ -1,4 +1,7 @@
-import type { DashboardRuntime } from "./dashboardRuntime.ts";
+import {
+  serializeTenantReports,
+  type DashboardRuntime,
+} from "./dashboardRuntime.ts";
 import { tenantSlugFromPath, type CompanyWrite } from "./saasAdminModel.ts";
 
 export type SaasContext = {
@@ -158,7 +161,7 @@ export function createTenantApi(slug: string, apiOrigin = "") {
       onSessionLost: () => void,
       onPasswordRequired: () => void,
     ): DashboardRuntime => ({
-      request: async (path, init = {}) => {
+      request: serializeTenantReports(async (path, init = {}) => {
         if (
           !/^\/(me|overview|sales\/(daily|dishes))(\?|$)/.test(path) ||
           (init.method && init.method !== "GET")
@@ -188,7 +191,7 @@ export function createTenantApi(slug: string, apiOrigin = "") {
           );
         }
         return response;
-      },
+      }),
       renew: async () => {
         try {
           const data = await session("/auth/me");

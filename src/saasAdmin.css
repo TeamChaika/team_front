@@ -1,4 +1,6 @@
-:root {
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) {
+  color-scheme: light;
+  box-sizing: border-box;
   font-family:
     Manrope,
     Inter,
@@ -11,81 +13,82 @@
   font-synthesis: none;
   font-size: 14px;
 }
-* {
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) * {
   box-sizing: border-box;
 }
-body {
+body:has(> #root > :is(.sa-auth, .sa-app)) {
   margin: 0;
 }
-button,
-input,
-select,
-textarea {
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) button,
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) input,
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) select,
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) textarea {
   font: inherit;
 }
-button,
-a,
-input,
-select,
-textarea {
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) button,
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) a,
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) input,
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) select,
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) textarea {
   -webkit-tap-highlight-color: transparent;
 }
-button {
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) button {
   cursor: pointer;
 }
-button:disabled {
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) button:disabled {
   cursor: default;
   opacity: 0.5;
 }
-button:focus-visible,
-a:focus-visible {
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace)
+  button:focus-visible,
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) a:focus-visible {
   outline: 3px solid #34bbbf;
   outline-offset: 3px;
 }
-input:focus,
-select:focus,
-textarea:focus {
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) input:focus,
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) select:focus,
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) textarea:focus {
   outline: 2px solid #0795a1;
   outline-offset: 1px;
 }
-button {
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) button {
   border: 0;
   background: none;
   color: inherit;
 }
-a {
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) a {
   color: inherit;
   text-decoration: none;
 }
-h1,
-h2,
-h3,
-h4,
-p {
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) h1,
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) h2,
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) h3,
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) h4,
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) p {
   margin: 0;
 }
-h1 {
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) h1 {
   font-size: 34px;
   line-height: 1.3;
   letter-spacing: -1.3px;
   font-weight: 800;
 }
-h2 {
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) h2 {
   font-size: 20px;
   font-weight: 800;
   letter-spacing: -0.5px;
 }
-h3 {
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) h3 {
   font-size: 14px;
   font-weight: 800;
   margin-bottom: 12px;
 }
-h4 {
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) h4 {
   font-size: 12px;
   color: #7b889d;
   margin: 18px 0 7px;
 }
-p {
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) p {
   line-height: 1.65;
 }
 .sa-shell {
@@ -341,13 +344,13 @@ p {
 .sa-table-scroll {
   overflow: auto;
 }
-table {
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) table {
   width: 100%;
   border-collapse: collapse;
   text-align: left;
   white-space: nowrap;
 }
-th {
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) th {
   background: #f9fbfd;
   border-bottom: 1px solid #e0e8f2;
   padding: 15px 13px;
@@ -355,19 +358,21 @@ th {
   color: #647694;
   font-weight: 750;
 }
-td {
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) td {
   padding: 15px 13px;
   border-bottom: 1px solid #e7edf5;
   font-size: 11px;
 }
-th:first-child,
-td:first-child {
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) th:first-child,
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) td:first-child {
   padding-left: 19px;
 }
-tr.selected {
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) tr.selected {
   background: #e9f7f8;
 }
-tr.selected td:first-child {
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace)
+  tr.selected
+  td:first-child {
   box-shadow: inset 3px 0 #0094a0;
 }
 .sa-company-button {
@@ -589,10 +594,10 @@ tr.selected td:first-child {
   gap: 10px;
   margin-top: 20px;
 }
-.danger {
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) .danger {
   color: #af4652 !important;
 }
-.danger-filled {
+:where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) .danger-filled {
   background: #b83e4a;
 }
 .sa-inspector-empty {
@@ -884,7 +889,7 @@ tr.selected td:first-child {
   .sa-inspector {
     padding: 35px 28px;
   }
-  td {
+  :where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) td {
     padding-top: 22px;
     padding-bottom: 22px;
   }
@@ -915,11 +920,11 @@ tr.selected td:first-child {
   .sa-inspector {
     padding: 25px 18px;
   }
-  h1 {
+  :where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) h1 {
     font-size: 30px;
   }
-  td,
-  th {
+  :where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) td,
+  :where(.sa-auth, .sa-app, .sa-overlay, .sa-tenant-workspace) th {
     padding-left: 10px;
     padding-right: 10px;
   }

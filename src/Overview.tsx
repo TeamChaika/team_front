@@ -1,4 +1,7 @@
-import { dashboardSectionAvailable } from "./dashboardRuntime";
+import {
+  canLoadRecentOverview,
+  dashboardSectionAvailable,
+} from "./dashboardRuntime";
 import { DataSourceNotice } from "./DataSourceNotice";
 import { useState } from "react";
 import { LiveDataNotice } from "./LiveDataNotice";
@@ -627,10 +630,16 @@ export function Overview({ tenant = false }: { tenant?: boolean }) {
   trendParams.set("start", trendPeriod.start);
   trendParams.set("end", trendPeriod.end);
   const samePeriod = w.start === trendPeriod.start && w.end === trendPeriod.end;
-  const recent = useData<OverviewData>(
-    samePeriod ? null : "/overview?" + trendParams.toString(),
-  );
   const state = useData<OverviewData>("/overview?" + w.query(true));
+  const recent = useData<OverviewData>(
+    samePeriod ||
+      !canLoadRecentOverview(tenant, state.loading, state.data?.current, {
+        start: w.start,
+        end: w.end,
+      })
+      ? null
+      : "/overview?" + trendParams.toString(),
+  );
   const prices = useData<PriceReport>(
     tenant
       ? null

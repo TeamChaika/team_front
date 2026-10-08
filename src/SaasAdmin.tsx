@@ -349,7 +349,7 @@ export default function SaasAdmin() {
       </main>
     );
   return (
-    <div className="sa-shell">
+    <div className="sa-shell sa-app">
       <aside className="sa-sidebar">
         <Brand />
         <nav aria-label="Разделы сервиса">
