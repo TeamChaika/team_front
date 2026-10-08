@@ -1,3 +1,4 @@
+import { getDashboardRuntime } from "./dashboardRuntime";
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -36,6 +37,7 @@ export function clearPasswordRequirement() {
 }
 if (sessionChannel)
   sessionChannel.onmessage = (event) => {
+    if (getDashboardRuntime()) return;
     if (event.data === "password-required") passwordRequired(false);
     else if (event.data === "password-updated")
       window.dispatchEvent(new Event("password-updated"));
@@ -49,6 +51,8 @@ async function authLock<T>(operation: () => Promise<T>): Promise<T> {
     : operation();
 }
 export function renewSession(): Promise<Response> {
+  const runtime = getDashboardRuntime();
+  if (runtime) return runtime.renew();
   if (!refresh)
     refresh = authLock(() =>
       fetch(apiBase + "/auth/refresh", {
@@ -80,6 +84,8 @@ async function request(
   init: RequestInit = {},
   retry = true,
 ): Promise<Response> {
+  const runtime = getDashboardRuntime();
+  if (runtime) return runtime.request(path, init);
   const send = () =>
     fetch(apiBase + path, {
       ...init,
@@ -171,12 +177,22 @@ export type PageData = {
   offset: number;
   limit: number;
 };
+export type DataStatus = {
+  source: "iiko_api";
+  status: "ready";
+  observed_at: string;
+  expires_at: string;
+  cache_seconds: number;
+  timezone?: string;
+};
 export type Meta = {
+  data_status?: DataStatus;
   warehouse_scope?: { mode: "all" | "selected"; warehouse_ids: string[] };
   warehouse_capabilities?: {
     supported_sections: string[];
     unsupported_sections: string[];
   };
+  supported_sales_kinds?: string[];
   documents_enabled?: boolean;
   sections?: string[];
   can_manage?: boolean;
@@ -216,6 +232,7 @@ export type SalesRow = {
   reviewed: boolean;
 };
 export type Sales = {
+  data_status?: DataStatus;
   live?: LiveSource;
   partial_days?: { date: string; observed_at: string }[];
   reconciliation_issues?: {

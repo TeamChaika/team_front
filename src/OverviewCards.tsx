@@ -106,12 +106,14 @@ export function OverviewNotifications({
   error,
   prices,
   onPrice,
+  statusAvailable = true,
 }: {
   data: OverviewData | null;
   loading: boolean;
   error: string;
   prices: Prices;
   onPrice: (row: PriceChange) => void;
+  statusAvailable?: boolean;
 }) {
   const alerts: {
     id: string;
@@ -188,12 +190,16 @@ export function OverviewNotifications({
             <span className="overview-alert-count">{alerts.length}</span>
           )}
         </h2>
-        <Link to="/status" aria-label="Статус данных" className="text-link">
-          <IconArrowRight size={17} />
-        </Link>
+        {statusAvailable && (
+          <Link to="/status" aria-label="Статус данных" className="text-link">
+            <IconArrowRight size={17} />
+          </Link>
+        )}
       </div>
       <div className="overview-alert-list">
         {alerts.map((alert) => {
+          if (!statusAvailable && alert.href === "/status")
+            alert = { ...alert, href: undefined };
           const content = (
             <>
               <span className="overview-alert-icon">
@@ -214,6 +220,10 @@ export function OverviewNotifications({
             >
               {content}
             </button>
+          ) : !alert.href ? (
+            <div key={alert.id} className="overview-alert">
+              {content}
+            </div>
           ) : (
             <Link key={alert.id} className="overview-alert" to={alert.href!}>
               {content}
@@ -222,7 +232,13 @@ export function OverviewNotifications({
         })}
         {(loading || prices.loading) && (
           <p className="section-note" role="status">
-            Проверяем {loading ? "продажи и цены" : "закупочные цены"}…
+            Проверяем{" "}
+            {loading
+              ? statusAvailable
+                ? "продажи и цены"
+                : "продажи"
+              : "закупочные цены"}
+            …
           </p>
         )}
         {prices.error && (

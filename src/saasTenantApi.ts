@@ -1,3 +1,4 @@
+import type { DashboardRuntime } from "./dashboardRuntime.ts";
 import { tenantSlugFromPath, type CompanyWrite } from "./saasAdminModel.ts";
 
 export type SaasContext = {
@@ -8,9 +9,9 @@ export type SaasEntry =
   | { surface: "platform" }
   | { surface: "tenant"; slug: string; companyName?: string }
   | { surface: "denied" };
-export async function loadSaasContext(): Promise<SaasContext> {
-  const response = await fetch("/api/saas-context", {
-    credentials: "same-origin",
+export async function loadSaasContext(apiOrigin = ""): Promise<SaasContext> {
+  const response = await fetch(apiOrigin + "/api/saas-context", {
+    credentials: apiOrigin ? "include" : "same-origin",
   });
   if (!response.ok) throw new Error("Этот адрес не подключён к RestControl.");
   const context: SaasContext = await response.json();
@@ -34,7 +35,10 @@ export function resolveSaasEntry(
 ): SaasEntry {
   const slug = tenantSlugFromPath(path);
   if (context.surface === "tenant") {
-    if (!context.company || (path !== "/" && slug !== context.company.slug))
+    if (
+      !context.company ||
+      (path !== "/" && path !== "/sales" && slug !== context.company.slug)
+    )
       return { surface: "denied" };
     return {
       surface: "tenant",
@@ -77,7 +81,17 @@ export class TenantApiError extends Error {
     this.code = code;
   }
 }
-export function createTenantApi(slug: string) {
+export function createTenantApi(slug: string, apiOrigin = "") {
+  if (apiOrigin) {
+    const origin = new URL(apiOrigin);
+    if (
+      origin.protocol !== "https:" ||
+      origin.origin !== apiOrigin ||
+      origin.username ||
+      origin.password
+    )
+      throw new Error("Неверный адрес API компании");
+  }
   let csrf = "";
   let sessionGeneration = 0;
   async function request<T>(
@@ -88,10 +102,10 @@ export function createTenantApi(slug: string) {
     let response: Response;
     try {
       response = await fetch(
-        `/api/saas-tenant/${encodeURIComponent(slug)}${path}`,
+        `${apiOrigin}/api/saas-tenant/${encodeURIComponent(slug)}${path}`,
         {
           method,
-          credentials: "same-origin",
+          credentials: apiOrigin ? "include" : "same-origin",
           headers: {
             ...(body ? { "Content-Type": "application/json" } : {}),
             ...(method !== "GET" ? { "X-CSRF-Token": csrf } : {}),
@@ -140,5 +154,52 @@ export function createTenantApi(slug: string) {
       csrf = "";
     },
     workspace: () => request<TenantWorkspace>("/workspace"),
+    dashboardRuntime: (
+      onSessionLost: () => void,
+      onPasswordRequired: () => void,
+    ): DashboardRuntime => ({
+      request: async (path, init = {}) => {
+        if (
+          !/^\/(me|overview|sales\/(daily|dishes))(\?|$)/.test(path) ||
+          (init.method && init.method !== "GET")
+        )
+          throw new TenantApiError(
+            "Раздел ещё не подключён для этой компании",
+            403,
+          );
+        const response = await fetch(
+          `${apiOrigin}/api/saas-tenant/${encodeURIComponent(slug)}/dashboard${path}`,
+          {
+            ...init,
+            credentials: apiOrigin ? "include" : "same-origin",
+          },
+        );
+        init.signal?.throwIfAborted();
+        if (!response.ok) {
+          const detail = (await response.json().catch(() => null))?.detail;
+          if (response.status === 401) onSessionLost();
+          if (detail?.code === "password_change_required") onPasswordRequired();
+          throw new TenantApiError(
+            typeof detail === "string"
+              ? detail
+              : detail?.message || "Не удалось получить данные компании",
+            response.status,
+            detail?.code,
+          );
+        }
+        return response;
+      },
+      renew: async () => {
+        try {
+          const data = await session("/auth/me");
+          if (data.must_change_password) onPasswordRequired();
+          return new Response(null, { status: 204 });
+        } catch (error) {
+          if (error instanceof TenantApiError && error.status === 401)
+            onSessionLost();
+          throw error;
+        }
+      },
+    }),
   };
 }

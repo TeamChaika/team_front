@@ -1,3 +1,5 @@
+import { dashboardSectionAvailable } from "./dashboardRuntime";
+import { DataSourceNotice } from "./DataSourceNotice";
 import { useState } from "react";
 import { LiveDataNotice } from "./LiveDataNotice";
 import { PartialDayNotice, type PartialDay } from "./PartialDayNotice";
@@ -72,6 +74,7 @@ type Dish = {
   change: Change;
 };
 export type OverviewData = {
+  data_status?: Sales["data_status"];
   live?: Sales["live"];
   current: Period;
   previous: Period;
@@ -139,6 +142,10 @@ function PeriodNotice({
   period: Period;
   previous?: boolean;
 }) {
+  const statusAvailable = dashboardSectionAvailable(
+    useWorkspace().meta.sections,
+    "status",
+  );
   const issues = period.reconciliation_issues;
   if (period.complete && !issues.length) return null;
   return (
@@ -179,7 +186,7 @@ function PeriodNotice({
           {issues.length > 20 && "Показаны первые 20 расхождений."}
         </details>
       )}
-      <Link to="/status">Статус загрузок</Link>
+      {statusAvailable && <Link to="/status">Статус загрузок</Link>}
     </Alert>
   );
 }
@@ -605,8 +612,10 @@ function TrendChart({
     </section>
   );
 }
-export function Overview() {
+export function Overview({ tenant = false }: { tenant?: boolean }) {
   const w = useWorkspace();
+  const canStatus =
+    !tenant && dashboardSectionAvailable(w.meta.sections, "status");
   const navigate = useNavigate();
   const [grain, setGrain] = useState("day");
   const [metric, setMetric] = useState<Metric>("revenue");
@@ -623,9 +632,11 @@ export function Overview() {
   );
   const state = useData<OverviewData>("/overview?" + w.query(true));
   const prices = useData<PriceReport>(
-    "/purchase-prices?" +
-      w.query() +
-      "&kind=unlinked&exclude_household=true&recent_only=true",
+    tenant
+      ? null
+      : "/purchase-prices?" +
+          w.query() +
+          "&kind=unlinked&exclude_household=true&recent_only=true",
   );
   const data =
     state.data?.current.start === w.start && state.data.current.end === w.end
@@ -742,6 +753,7 @@ export function Overview() {
           error={state.error}
           prices={prices}
           onPrice={setSelectedPrice}
+          statusAvailable={canStatus}
         />
       </OverviewPortal>
       <header className="overview-greeting">
@@ -758,6 +770,7 @@ export function Overview() {
       >
         {data && (
           <>
+            <DataSourceNotice status={data.data_status} />
             <LiveDataNotice source={data.live} onRefresh={state.reload} />
             {(!data.current.complete ||
               data.current.reconciliation_issues.length > 0 ||
@@ -860,7 +873,9 @@ export function Overview() {
                             <td>
                               <Link
                                 to={
-                                  status === "Сверено" || discrepancy
+                                  status === "Сверено" ||
+                                  discrepancy ||
+                                  !canStatus
                                     ? "/sales?kind=daily"
                                     : "/status"
                                 }
@@ -967,7 +982,9 @@ export function Overview() {
                     </p>
                   )}
                 </section>
-                <PriceLeaders prices={prices} onOpen={setSelectedPrice} />
+                {!tenant && (
+                  <PriceLeaders prices={prices} onOpen={setSelectedPrice} />
+                )}
               </div>
             </div>
             <p className="overview-coverage">
@@ -981,11 +998,13 @@ export function Overview() {
           </>
         )}
       </Feedback>
-      <OverviewPriceModal
-        row={selectedPrice}
-        scope={w.query()}
-        onClose={() => setSelectedPrice(null)}
-      />
+      {!tenant && (
+        <OverviewPriceModal
+          row={selectedPrice}
+          scope={w.query()}
+          onClose={() => setSelectedPrice(null)}
+        />
+      )}
     </>
   );
 }

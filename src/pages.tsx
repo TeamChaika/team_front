@@ -1,3 +1,5 @@
+import { dashboardSectionAvailable } from "./dashboardRuntime";
+import { DataSourceNotice } from "./DataSourceNotice";
 import { useState, type ReactNode } from "react";
 import { ScheduledSync } from "./ScheduledSync";
 import { CommercialPdfButton } from "./CommercialInvoices";
@@ -360,6 +362,10 @@ const salesNames: Record<string, string> = {
   hours: "По часам",
 };
 function ReviewNotice({ data }: { data: Sales }) {
+  const statusAvailable = dashboardSectionAvailable(
+    useWorkspace().meta.sections,
+    "status",
+  );
   const days =
     Math.round((Date.parse(data.end) - Date.parse(data.start)) / 86400000) + 1;
   if (!data.complete) {
@@ -374,7 +380,7 @@ function ReviewNotice({ data }: { data: Sales }) {
         <div>Не загружены: {data.missing_dates.map(dateText).join(", ")}.</div>
         <div>
           Сохранённые строки доступны в расшифровке.{" "}
-          <Link to="/status">Статус данных</Link>
+          {statusAvailable && <Link to="/status">Статус данных</Link>}
         </div>
       </Alert>
     );
@@ -710,9 +716,14 @@ function DiscountDepartment({
 export function SalesPage() {
   const w = useWorkspace(),
     [params, setParams] = useSearchParams();
-  const kind = salesNames[params.get("kind") ?? ""]
+  const availableKinds = Object.entries(salesNames).filter(
+    ([kind]) =>
+      !w.meta.supported_sales_kinds ||
+      w.meta.supported_sales_kinds.includes(kind),
+  );
+  const kind = availableKinds.some(([kind]) => kind === params.get("kind"))
     ? params.get("kind")!
-    : "daily";
+    : availableKinds[0]?.[0] || "daily";
   const dishFilter = new URLSearchParams();
   if (kind === "dishes") {
     for (const key of ["dish_id", "dish_name"]) {
@@ -733,10 +744,14 @@ export function SalesPage() {
     <>
       <PageTitle
         title="Продажи"
-        subtitle="Семь согласованных между собой разрезов OLAP. Час открытия и группа → тип оплаты."
+        subtitle={
+          w.meta.supported_sales_kinds
+            ? "Отчёты продаж из iiko"
+            : "Семь согласованных между собой разрезов OLAP. Час открытия и группа → тип оплаты."
+        }
       />
       <div className="tabs" role="tablist" aria-label="Отчёты продаж">
-        {Object.entries(salesNames).map(([k, title]) => (
+        {availableKinds.map(([k, title]) => (
           <button
             key={k}
             role="tab"
@@ -754,6 +769,7 @@ export function SalesPage() {
       <Feedback state={state}>
         {state.data && (
           <>
+            <DataSourceNotice status={state.data.data_status} />
             <ReviewNotice data={state.data} />
             {state.data.live ? (
               <LiveDataNotice

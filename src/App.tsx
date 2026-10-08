@@ -1,3 +1,4 @@
+import { tenantSections } from "./dashboardRuntime";
 import {
   useEffect,
   useState,
@@ -6,6 +7,8 @@ import {
   useRef,
   type FormEvent,
   Fragment,
+  lazy,
+  Suspense,
 } from "react";
 import {
   Routes,
@@ -59,23 +62,49 @@ import {
   StatusPage,
   TopologyPage,
 } from "./pages";
-import { BalancesPage } from "./BalancesPage";
+const BalancesPage = lazy(() =>
+  import("./BalancesPage").then((module) => ({ default: module.BalancesPage })),
+);
 import { Overview } from "./Overview";
-import { PurchasePrices } from "./PurchasePrices";
+const PurchasePrices = lazy(() =>
+  import("./PurchasePrices").then((module) => ({
+    default: module.PurchasePrices,
+  })),
+);
 import { AssistantProvider } from "./AssistantContext";
 import { AssistantLayout, AssistantToggle } from "./AssistantRail";
 import { RestaurantPicker } from "./RestaurantPicker";
-import { Indicators } from "./Indicators";
-import { DepositsPage } from "./DepositsPage";
-import { ManagementPage } from "./ManagementPage";
+const Indicators = lazy(() =>
+  import("./Indicators").then((module) => ({ default: module.Indicators })),
+);
+const DepositsPage = lazy(() =>
+  import("./DepositsPage").then((module) => ({ default: module.DepositsPage })),
+);
+const ManagementPage = lazy(() =>
+  import("./ManagementPage").then((module) => ({
+    default: module.ManagementPage,
+  })),
+);
 import { DocumentDataProvider } from "./DocumentData";
-import { DocumentsPage } from "./DocumentsPage";
-import { ProfilePage } from "./ProfilePage";
-import { PasswordForm } from "./PasswordForm";
+const DocumentsPage = lazy(() =>
+  import("./DocumentsPage").then((module) => ({
+    default: module.DocumentsPage,
+  })),
+);
+const ProfilePage = lazy(() =>
+  import("./ProfilePage").then((module) => ({ default: module.ProfilePage })),
+);
+const PasswordForm = lazy(() =>
+  import("./PasswordForm").then((module) => ({ default: module.PasswordForm })),
+);
 import { ForgotPassword, ResetPassword } from "./PasswordRecovery";
 import { checkForegroundPasswordRequirement } from "./foregroundPasswordCheck";
 import "./profile.css";
-import { CommercialInvoices } from "./CommercialInvoices";
+const CommercialInvoices = lazy(() =>
+  import("./CommercialInvoices").then((module) => ({
+    default: module.CommercialInvoices,
+  })),
+);
 export const sections = [
   { path: "/", title: "Обзор", icon: IconLayoutDashboard },
   { path: "/indicators", title: "Показатели", icon: IconActivity },
@@ -226,14 +255,21 @@ function Login({ onLogin }: { onLogin: () => void }) {
     </main>
   );
 }
-export default function App() {
+export type TenantDashboardOptions = {
+  companyName: string;
+  logout: () => Promise<void>;
+  error?: string;
+};
+export default function App({ tenant }: { tenant?: TenantDashboardOptions }) {
   const location = useLocation();
-  if (location.pathname === "/forgot-password") return <ForgotPassword />;
-  if (location.pathname === "/reset-password") return <ResetPassword />;
-  return <WorkspaceApp />;
+  if (!tenant && location.pathname === "/forgot-password")
+    return <ForgotPassword />;
+  if (!tenant && location.pathname === "/reset-password")
+    return <ResetPassword />;
+  return <WorkspaceApp tenant={tenant} />;
 }
 
-function WorkspaceApp() {
+function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
   const [meta, setMeta] = useState<Meta | null>(null),
     [checking, setChecking] = useState(true),
     [error, setError] = useState(""),
@@ -253,8 +289,9 @@ function WorkspaceApp() {
     let live = true;
     const requirementVersion = getPasswordRequirementVersion();
     const epoch = requestEpoch.current;
+    const controller = new AbortController();
     setChecking(true);
-    api<Meta>("/me")
+    api<Meta>("/me", { signal: controller.signal })
       .then((x) => {
         if (live && epoch === requestEpoch.current) {
           if (requirementVersion !== getPasswordRequirementVersion()) {
@@ -301,6 +338,7 @@ function WorkspaceApp() {
       });
     return () => {
       live = false;
+      controller.abort();
     };
   }, [revision]);
   useEffect(() => {
@@ -332,7 +370,7 @@ function WorkspaceApp() {
     };
   }, []);
   useEffect(() => {
-    if (!meta?.user.id) return;
+    if (tenant || !meta?.user.id) return;
     let lastAttempt = 0;
     const renew = () => {
       if (
@@ -356,7 +394,7 @@ function WorkspaceApp() {
     };
   }, [meta?.user.id]);
   useEffect(() => {
-    if (!meta?.user.id || passwordRequired) return;
+    if (tenant || !meta?.user.id || passwordRequired) return;
     const accountId = meta.user.id;
     let live = true;
     let lastCheck = Date.now();
@@ -402,6 +440,10 @@ function WorkspaceApp() {
     window.scrollTo(0, 0);
   }, [location.pathname]);
   async function logout() {
+    if (tenant) {
+      await tenant.logout();
+      return;
+    }
     requestEpoch.current += 1;
     try {
       await api("/auth/logout", { method: "POST" });
@@ -438,7 +480,9 @@ function WorkspaceApp() {
           <Brand />
           <h1>Задайте новый пароль</h1>
           <p>Смените временный пароль, чтобы продолжить работу.</p>
-          <PasswordForm required onSuccess={verifyPasswordChange} />
+          <Suspense fallback={<Loader />}>
+            <PasswordForm required onSuccess={verifyPasswordChange} />
+          </Suspense>
           <Button component={Link} to="/forgot-password" variant="subtle">
             Не помню текущий пароль
           </Button>
@@ -454,6 +498,14 @@ function WorkspaceApp() {
         <Loader />
         <span>Открываем рабочее пространство…</span>
       </div>
+    );
+  if (!meta && tenant)
+    return (
+      <Alert color="red">
+        {error || "Не удалось открыть данные компании"}
+        <Button onClick={() => setRevision((x) => x + 1)}>Повторить</Button>
+        <Button onClick={() => void logout()}>Выйти</Button>
+      </Alert>
     );
   if (!meta)
     return (
@@ -478,7 +530,7 @@ function WorkspaceApp() {
     (meta.user.role === "deposits"
       ? ["deposits"]
       : sections.map((s) => s.path.slice(1) || "overview"));
-  const allowed = assigned.filter(
+  const allowed = (tenant ? tenantSections(assigned) : assigned).filter(
     (section) =>
       !meta.warehouse_capabilities?.unsupported_sections.includes(section),
   );
@@ -491,13 +543,14 @@ function WorkspaceApp() {
     location.pathname === "/" ? "overview" : location.pathname.split("/")[1];
   const currentAllowed =
     currentSection === "profile"
-      ? true
+      ? !tenant
       : currentSection === "management"
         ? meta.can_manage
         : allowed.includes(currentSection);
   if (!currentAllowed && availableSections.length)
     return <Navigate to={availableSections[0].path} replace />;
   const canAssistant =
+    !tenant &&
     allowed.includes("purchase-prices") &&
     !["deposits", "management", "profile"].includes(currentSection);
   const ContentLayout = canAssistant ? AssistantLayout : Fragment;
@@ -550,6 +603,7 @@ function WorkspaceApp() {
           <div
             className={
               "app-shell" +
+              (tenant ? " tenant-dashboard" : "") +
               (location.pathname === "/" ? " is-overview" : "") +
               (location.pathname === "/indicators" ? " is-indicators" : "")
             }
@@ -563,10 +617,17 @@ function WorkspaceApp() {
             )}
             <aside className={"sidebar " + (mobile ? "is-open" : "")}>
               <Link to="/" className="brand-link">
-                <Brand />
+                {tenant ? (
+                  <div className="tenant-company-name">
+                    {tenant.companyName}
+                  </div>
+                ) : (
+                  <Brand />
+                )}
               </Link>
               <div className="workspace-label">
-                <IconBuildingStore size={16} /> Рестораны Chaika
+                <IconBuildingStore size={16} />{" "}
+                {tenant ? "Рестораны" : "Рестораны Chaika"}
               </div>
               <span className="nav-label">РАБОЧЕЕ ПРОСТРАНСТВО</span>
               <nav>
@@ -587,18 +648,22 @@ function WorkspaceApp() {
                 ))}
               </nav>
               <div className="sidebar-footer">
-                <NavLink to="/profile" className="profile-nav-link">
-                  <IconUserCircle size={18} stroke={1.6} />
-                  <span>Мой профиль</span>
-                </NavLink>
+                {!tenant && (
+                  <NavLink to="/profile" className="profile-nav-link">
+                    <IconUserCircle size={18} stroke={1.6} />
+                    <span>Мой профиль</span>
+                  </NavLink>
+                )}
                 <div className="connection">
-                  <i /> Данные из Supabase
+                  <i /> {tenant ? "Данные из iiko" : "Данные из Supabase"}
                 </div>
                 <div className="user-card">
                   <Link
-                    to="/profile"
+                    to={tenant ? "/" : "/profile"}
                     className="user-card-profile"
-                    aria-label="Открыть мой профиль"
+                    aria-label={
+                      tenant ? "Открыть обзор" : "Открыть мой профиль"
+                    }
                   >
                     <Avatar color="cyan" radius="md">
                       {meta.user.display_name[0]}
@@ -606,13 +671,15 @@ function WorkspaceApp() {
                     <span>
                       <strong>{meta.user.display_name}</strong>
                       <small>
-                        {meta.user.role === "owner"
-                          ? "Владелец"
-                          : meta.user.role === "manager"
-                            ? "Менеджер"
-                            : meta.user.role === "deposits"
-                              ? "Депозиты"
-                              : "Пользователь"}
+                        {meta.user.role === "company_admin"
+                          ? "Администратор компании"
+                          : meta.user.role === "owner"
+                            ? "Владелец"
+                            : meta.user.role === "manager"
+                              ? "Менеджер"
+                              : meta.user.role === "deposits"
+                                ? "Депозиты"
+                                : "Пользователь"}
                       </small>
                     </span>
                   </Link>
@@ -637,9 +704,11 @@ function WorkspaceApp() {
                 </div>
                 <div className="topbar-actions">
                   {canAssistant && <AssistantToggle />}
-                  <Badge variant="light" color="cyan">
-                    Первая версия
-                  </Badge>
+                  {!tenant && (
+                    <Badge variant="light" color="cyan">
+                      Первая версия
+                    </Badge>
+                  )}
                 </div>
               </header>
               {currentAllowed &&
@@ -699,18 +768,20 @@ function WorkspaceApp() {
                             onInput={(e) => setEnd(e.currentTarget.value)}
                           />
                         </div>
-                        <button
-                          className="reset-date"
-                          onClick={() => {
-                            const d = meta.sales_dates[0];
-                            if (d) {
-                              setStart(d);
-                              setEnd(d);
-                            }
-                          }}
-                        >
-                          Последний день OLAP
-                        </button>
+                        {meta.sales_dates.length > 0 && (
+                          <button
+                            className="reset-date"
+                            onClick={() => {
+                              const d = meta.sales_dates[0];
+                              if (d) {
+                                setStart(d);
+                                setEnd(d);
+                              }
+                            }}
+                          >
+                            Последний день OLAP
+                          </button>
+                        )}
                         {meta.live_sales_enabled &&
                           (location.pathname === "/" ||
                             location.pathname === "/sales") && (
@@ -733,145 +804,161 @@ function WorkspaceApp() {
                 )}
               <ContentLayout>
                 <main className="content">
+                  {tenant?.error && (
+                    <Alert color="red" role="alert" mb="md">
+                      {tenant.error}
+                    </Alert>
+                  )}
                   {!availableSections.length && currentSection !== "profile" ? (
                     <Alert>
                       Доступ к разделам пока не назначен. Обратитесь к
                       администратору.
                     </Alert>
                   ) : (
-                    <Routes>
-                      <Route
-                        path="/profile"
-                        element={
-                          <ProfilePage key={meta.user.id} user={meta.user} />
-                        }
-                      />
-                      <Route
-                        path="/"
-                        element={<Overview key={departments.join(",")} />}
-                      />
-                      <Route
-                        path="/management"
-                        element={
-                          <ManagementPage
-                            documentsEnabled={meta.documents_enabled}
-                            onChange={() => {
-                              api<Meta>("/me")
-                                .then(setMeta)
-                                .catch((e) => setError(e.message));
-                            }}
-                          />
-                        }
-                      />
-                      <Route path="/sales" element={<SalesPage />} />
-                      <Route
-                        path="/deposits"
-                        element={<DepositsPage key={meta.user.id} />}
-                      />
-                      <Route
-                        path="/indicators"
-                        element={<Indicators key={meta.user.id} />}
-                      />
-                      <Route
-                        path="/purchase-prices"
-                        element={<PurchasePrices />}
-                      />
-                      <Route path="/balances" element={<BalancesPage />} />
-                      <Route path="/status" element={<StatusPage />} />
-                      <Route
-                        path="/events/topology"
-                        element={<TopologyPage />}
-                      />
-                      {meta.documents_enabled &&
-                        ["transfers", "writeoffs"].map((resource) => (
-                          <Route
-                            key={resource}
-                            path={`/${resource}/*`}
-                            element={
-                              <DocumentsPage
-                                key={resource}
-                                kind={
-                                  resource === "transfers"
-                                    ? "waybill"
-                                    : "writeoff"
-                                }
-                              />
-                            }
-                          />
-                        ))}
-                      {sections
-                        .filter(
-                          (s) =>
-                            !(
-                              meta.documents_enabled &&
-                              ["/transfers", "/writeoffs"].includes(s.path)
-                            ) &&
-                            ![
-                              "/",
-                              "/sales",
-                              "/deposits",
-                              "/management",
-                              "/indicators",
-                              "/status",
-                              "/balances",
-                              "/purchase-prices",
-                            ].includes(s.path),
-                        )
-                        .map((s) => (
-                          <Route
-                            key={s.path}
-                            path={s.path}
-                            element={
-                              s.path === "/invoices" ||
-                              s.path === "/outgoing" ? (
-                                <CommercialInvoices
-                                  key={s.path}
+                    <Suspense fallback={<Loader />}>
+                      <Routes>
+                        <Route
+                          path="/profile"
+                          element={
+                            <ProfilePage key={meta.user.id} user={meta.user} />
+                          }
+                        />
+                        <Route
+                          path="/"
+                          element={
+                            <Overview
+                              key={departments.join(",")}
+                              tenant={Boolean(tenant)}
+                            />
+                          }
+                        />
+                        <Route
+                          path="/management"
+                          element={
+                            <ManagementPage
+                              documentsEnabled={meta.documents_enabled}
+                              onChange={() => {
+                                api<Meta>("/me")
+                                  .then(setMeta)
+                                  .catch((e) => setError(e.message));
+                              }}
+                            />
+                          }
+                        />
+                        <Route path="/sales" element={<SalesPage />} />
+                        <Route
+                          path="/deposits"
+                          element={<DepositsPage key={meta.user.id} />}
+                        />
+                        <Route
+                          path="/indicators"
+                          element={<Indicators key={meta.user.id} />}
+                        />
+                        <Route
+                          path="/purchase-prices"
+                          element={<PurchasePrices />}
+                        />
+                        <Route path="/balances" element={<BalancesPage />} />
+                        <Route path="/status" element={<StatusPage />} />
+                        <Route
+                          path="/events/topology"
+                          element={<TopologyPage />}
+                        />
+                        {meta.documents_enabled &&
+                          ["transfers", "writeoffs"].map((resource) => (
+                            <Route
+                              key={resource}
+                              path={`/${resource}/*`}
+                              element={
+                                <DocumentsPage
+                                  key={resource}
                                   kind={
-                                    s.path === "/invoices" ? "purchase" : "sale"
+                                    resource === "transfers"
+                                      ? "waybill"
+                                      : "writeoff"
                                   }
                                 />
-                              ) : (
-                                <ResourcePage
-                                  key={s.path}
-                                  resource={s.path.slice(1)}
-                                  title={s.title}
-                                />
-                              )
-                            }
+                              }
+                            />
+                          ))}
+                        {sections
+                          .filter(
+                            (s) =>
+                              !(
+                                meta.documents_enabled &&
+                                ["/transfers", "/writeoffs"].includes(s.path)
+                              ) &&
+                              ![
+                                "/",
+                                "/sales",
+                                "/deposits",
+                                "/management",
+                                "/indicators",
+                                "/status",
+                                "/balances",
+                                "/purchase-prices",
+                              ].includes(s.path),
+                          )
+                          .map((s) => (
+                            <Route
+                              key={s.path}
+                              path={s.path}
+                              element={
+                                s.path === "/invoices" ||
+                                s.path === "/outgoing" ? (
+                                  <CommercialInvoices
+                                    key={s.path}
+                                    kind={
+                                      s.path === "/invoices"
+                                        ? "purchase"
+                                        : "sale"
+                                    }
+                                  />
+                                ) : (
+                                  <ResourcePage
+                                    key={s.path}
+                                    resource={s.path.slice(1)}
+                                    title={s.title}
+                                  />
+                                )
+                              }
+                            />
+                          ))}
+                        {[
+                          "invoices",
+                          "outgoing",
+                          "transfers",
+                          "writeoffs",
+                          "products",
+                          "charts",
+                          "employees",
+                          "cash-shifts",
+                        ].map((r) => (
+                          <Route
+                            key={r}
+                            path={"/" + r + "/:id"}
+                            element={<DetailPage key={r} resource={r} />}
                           />
                         ))}
-                      {[
-                        "invoices",
-                        "outgoing",
-                        "transfers",
-                        "writeoffs",
-                        "products",
-                        "charts",
-                        "employees",
-                        "cash-shifts",
-                      ].map((r) => (
                         <Route
-                          key={r}
-                          path={"/" + r + "/:id"}
-                          element={<DetailPage key={r} resource={r} />}
+                          path="*"
+                          element={
+                            <div className="empty">
+                              <h2>Страница не найдена</h2>
+                              <Link to="/">Вернуться к обзору</Link>
+                            </div>
+                          }
                         />
-                      ))}
-                      <Route
-                        path="*"
-                        element={
-                          <div className="empty">
-                            <h2>Страница не найдена</h2>
-                            <Link to="/">Вернуться к обзору</Link>
-                          </div>
-                        }
-                      />
-                    </Routes>
+                      </Routes>
+                    </Suspense>
                   )}
                 </main>
               </ContentLayout>
-              <footer className="page-footer">
-                Chaika Team <span>Время: Крым, UTC+3 · Суммы в рублях</span>
-              </footer>
+              {!tenant && (
+                <footer className="page-footer">
+                  Chaika Team <span>Время: Крым, UTC+3 · Суммы в рублях</span>
+                </footer>
+              )}
             </div>
           </div>
         </AssistantProvider>

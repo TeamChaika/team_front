@@ -1,20 +1,47 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import {
   createTenantApi,
   TenantApiError,
   type TenantSession,
   type TenantWorkspace,
 } from "./saasTenantApi";
-import { moduleLabels, tenantPasswordError } from "./saasAdminModel";
+import "./saasAdmin.css";
+import { tenantPasswordError } from "./saasAdminModel";
+
+const TenantDashboard = lazy(() => import("./TenantDashboard"));
 
 export default function SaasTenant({
   slug,
   companyName,
+  apiOrigin = "",
 }: {
   slug: string;
   companyName?: string;
+  apiOrigin?: string;
 }) {
-  const api = useMemo(() => createTenantApi(slug), [slug]);
+  const api = useMemo(
+    () => createTenantApi(slug, apiOrigin),
+    [slug, apiOrigin],
+  );
+  const dashboardRuntime = useMemo(
+    () =>
+      api.dashboardRuntime(
+        () => {
+          setSession(null);
+          setWorkspace(null);
+        },
+        () => {
+          void api
+            .me()
+            .then(setSession)
+            .catch(() => {
+              setSession(null);
+              setWorkspace(null);
+            });
+        },
+      ),
+    [api],
+  );
   const [session, setSession] = useState<TenantSession | null>(null);
   const [workspace, setWorkspace] = useState<TenantWorkspace | null>(null);
   const [checking, setChecking] = useState(true);
@@ -27,6 +54,14 @@ export default function SaasTenant({
   const [confirmation, setConfirmation] = useState("");
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
   const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    const previous = document.title;
+    document.title =
+      session?.company.name || companyName || "Рабочее пространство";
+    return () => {
+      document.title = previous;
+    };
+  }, [companyName, session?.company.name]);
   function clearSecrets() {
     setPassword("");
     setCurrentPassword("");
@@ -139,7 +174,7 @@ export default function SaasTenant({
     return (
       <main className="sa-auth">
         <div className="sa-login">
-          <span className="sa-eyebrow">RESTCONTROL · ВХОД КОМПАНИИ</span>
+          <span className="sa-eyebrow">ВХОД КОМПАНИИ</span>
           <h1>{session ? "Задайте свой пароль" : "Вход администратора"}</h1>
           <p className="sa-hint">
             {session
@@ -236,28 +271,42 @@ export default function SaasTenant({
         </div>
       </main>
     );
+  if (workspace)
+    return (
+      <Suspense
+        fallback={
+          <main className="center-screen" role="status">
+            Открываем рабочее пространство…
+          </main>
+        }
+      >
+        <TenantDashboard
+          runtime={dashboardRuntime}
+          companyName={workspace.company.name}
+          logout={logout}
+          error={error}
+          basename={
+            window.location.pathname.startsWith(`/tenant/${slug}`)
+              ? `/tenant/${slug}`
+              : "/"
+          }
+        />
+      </Suspense>
+    );
   return (
-    <main className="sa-tenant-workspace">
-      <header>
-        <div>
-          <span className="sa-eyebrow">RESTCONTROL · КОМПАНИЯ</span>
-          <h1>{session.company.name}</h1>
-          <p className="sa-hint">
-            {session.user.display_name} · {session.user.username}
+    <main className="sa-auth">
+      <div className="sa-login">
+        <h1>{session.company.name}</h1>
+        {error ? (
+          <p className="sa-error" role="alert">
+            {error}
           </p>
-        </div>
-        <button
-          className="sa-button secondary"
-          disabled={busy}
-          onClick={() => void logout()}
-        >
-          Выйти
-        </button>
-      </header>
-      {error && (
-        <div className="sa-error" role="alert">
-          {error}
+        ) : (
+          <p role="status">Загружаем компанию…</p>
+        )}
+        {!workspaceLoading && (
           <button
+            className="sa-button"
             onClick={() => {
               setError("");
               setRetry((n) => n + 1);
@@ -265,34 +314,11 @@ export default function SaasTenant({
           >
             Повторить
           </button>
-        </div>
-      )}
-      {workspaceLoading && (
-        <p role="status" className="sa-hint">
-          Загружаем компанию…
-        </p>
-      )}
-      {workspace && (
-        <section className="sa-card">
-          <h2>Рабочее пространство</h2>
-          <p>
-            Вход настроен. Подключение модулей и данных компании ещё не
-            завершено.
-          </p>
-          <div className="sa-module-tags">
-            {Object.entries(workspace.company.modules)
-              .filter(([, enabled]) => enabled)
-              .map(([key]) => (
-                <span key={key}>
-                  {moduleLabels[key as keyof typeof moduleLabels]}
-                </span>
-              ))}
-          </div>
-          {!Object.values(workspace.company.modules).some(Boolean) && (
-            <p className="sa-hint">Модули пока не выбраны.</p>
-          )}
-        </section>
-      )}
+        )}
+        <button className="sa-text-button" onClick={() => void logout()}>
+          Выйти
+        </button>
+      </div>
     </main>
   );
 }
