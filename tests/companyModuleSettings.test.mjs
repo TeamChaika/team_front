@@ -57,3 +57,15 @@ test("own provider and agent metadata preserve the optimistic version", () => {
   assert.equal(result.assistant.key, "key");
   assert.equal(result.telegram.token, "token");
 });
+test("owner settings pin integrations revision to reject concurrent leader changes", () => {
+  const result = moduleSettingsWrite(
+    { ...settings, integrations_revision: 12 },
+    null,
+    "",
+    false,
+    "",
+    false,
+  );
+  assert.equal(result.expected_revision, 12);
+  assert.equal(result.expected_version, settings.company_version);
+});

@@ -12,6 +12,7 @@ export type Seller = Record<
 >;
 export type ModuleSettings = {
   company_version: number;
+  integrations_revision?: number;
   seller: Seller | null;
   telegram: { username: string; token_configured: boolean };
   assistant: {
@@ -34,6 +35,9 @@ export function moduleSettingsWrite(
     throw new Error("Нельзя одновременно заменить и удалить секрет");
   return {
     expected_version: settings.company_version,
+    ...(settings.integrations_revision !== undefined
+      ? { expected_revision: settings.integrations_revision }
+      : {}),
     seller,
     telegram: {
       username: settings.telegram.username,

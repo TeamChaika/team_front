@@ -221,6 +221,7 @@ export type Meta = {
   documents_enabled?: boolean;
   sections?: string[];
   can_manage?: boolean;
+  can_manage_integrations?: boolean;
   modules?: ("iiko" | "deposits")[];
   today?: string;
   live_sales_enabled?: boolean;

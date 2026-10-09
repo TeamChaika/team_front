@@ -1,3 +1,4 @@
+import { companyIntegrationsAllowed } from "./companyIntegrationsModel";
 import {
   tenantSectionReady,
   tenantSectionWriteReady,
@@ -554,11 +555,16 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
       !meta.warehouse_capabilities?.unsupported_sections.includes(section) &&
       tenantSectionReady(featureReadiness, section),
   );
+  const canManageIntegrations = companyIntegrationsAllowed(
+    Boolean(tenant),
+    meta.can_manage_integrations,
+  );
   const availableSections = sections.filter((s) =>
     tenant?.setupOnly
-      ? s.path === "/management" && meta.can_manage
+      ? s.path === "/management" && (meta.can_manage || canManageIntegrations)
       : s.path === "/management"
-        ? tenant?.ownerSetupAvailable ||
+        ? canManageIntegrations ||
+          tenant?.ownerSetupAvailable ||
           (meta.can_manage &&
             tenantSectionReady(featureReadiness, "management"))
         : allowed.includes(s.path.slice(1) || "overview"),
@@ -567,12 +573,14 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
     location.pathname === "/" ? "overview" : location.pathname.split("/")[1];
   const currentAllowed = tenant?.setupOnly
     ? currentSection === "profile" ||
-      (currentSection === "management" && meta.can_manage)
+      (currentSection === "management" &&
+        (meta.can_manage || canManageIntegrations))
     : currentSection === "profile"
       ? (!tenant || tenant.fullDashboard === true) &&
         tenantSectionReady(featureReadiness, "profile")
       : currentSection === "management"
-        ? tenant?.ownerSetupAvailable ||
+        ? canManageIntegrations ||
+          tenant?.ownerSetupAvailable ||
           (meta.can_manage &&
             tenantSectionReady(featureReadiness, "management"))
         : allowed.includes(currentSection);
@@ -860,7 +868,7 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
                     ].includes(currentSection) &&
                     !(
                       currentSection === "management" &&
-                      tenant.ownerSetupAvailable
+                      (tenant.ownerSetupAvailable || canManageIntegrations)
                     ) &&
                     (tenant.preserveHistoryReads ||
                       !tenantSectionWriteReady(
@@ -907,6 +915,12 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
                           element={
                             <ManagementPage
                               documentsEnabled={meta.documents_enabled}
+                              integrationsEnabled={canManageIntegrations}
+                              integrationsOnly={
+                                canManageIntegrations &&
+                                !meta.can_manage &&
+                                !tenant?.ownerSetupAvailable
+                              }
                               setupOnly={
                                 tenant?.setupOnly ||
                                 (Boolean(tenant) &&

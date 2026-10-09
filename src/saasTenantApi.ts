@@ -1,3 +1,7 @@
+import type {
+  CompanyIntegrations,
+  CompanyIntegrationsWrite,
+} from "./companyIntegrationsModel.ts";
 import {
   tenantMutationReady,
   tenantHistoryRequest,
@@ -128,6 +132,7 @@ export function resolveSaasEntry(
   return { surface: "platform" };
 }
 export type TenantSession = {
+  can_manage_integrations?: boolean;
   actor?: {
     kind: "platform_owner" | "company_member";
     auth_user_id: string;
@@ -258,6 +263,9 @@ export function createTenantApi(slug: string, apiOrigin = "") {
     ): DashboardRuntime => ({
       fullDashboard,
       featureReadiness,
+      integrationSettings: () => request<CompanyIntegrations>("/integrations"),
+      saveIntegrationSettings: (body: CompanyIntegrationsWrite) =>
+        request<CompanyIntegrations>("/integrations", "POST", body),
       request: serializeTenantReports(async (path, init = {}) => {
         if (
           fullDashboard

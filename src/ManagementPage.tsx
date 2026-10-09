@@ -20,6 +20,7 @@ import {
 import { IconBuildingStore, IconPlus, IconUsers } from "@tabler/icons-react";
 import { api } from "./api";
 import { DocumentAccess } from "./DocumentAccess";
+import { CompanyIntegrations } from "./CompanyIntegrations";
 import { CommercialInvoiceAccess } from "./CommercialInvoiceAccess";
 
 type Grant = { venue: string; can_create: boolean };
@@ -619,10 +620,14 @@ export function ManagementPage({
   onChange,
   documentsEnabled,
   setupOnly = false,
+  integrationsEnabled = false,
+  integrationsOnly = false,
 }: {
   onChange: () => void;
   documentsEnabled?: boolean;
   setupOnly?: boolean;
+  integrationsEnabled?: boolean;
+  integrationsOnly?: boolean;
 }) {
   const [directory, setDirectory] = useState<Directory | null>(null),
     [configuration, setConfiguration] = useState<Configuration | null>(null),
@@ -634,6 +639,7 @@ export function ManagementPage({
     [query, setQuery] = useState(""),
     [validatingTerminal, setValidatingTerminal] = useState<string | null>(null);
   async function load() {
+    if (integrationsOnly) return;
     const [a, v] = await Promise.all([
       setupOnly
         ? Promise.resolve<Directory>({
@@ -650,7 +656,7 @@ export function ManagementPage({
   }
   useEffect(() => {
     load().catch((e) => setError(e.message));
-  }, [setupOnly]);
+  }, [setupOnly, integrationsOnly]);
   async function validateTerminal(current: Terminal) {
     setValidatingTerminal(current.id);
     setError("");
@@ -708,15 +714,30 @@ export function ManagementPage({
           {notice}
         </Alert>
       )}
-      {!directory || !configuration ? (
-        <Loader />
+      {integrationsOnly ? (
+        integrationsEnabled && <CompanyIntegrations onChange={onChange} />
+      ) : !directory || !configuration ? (
+        integrationsEnabled && error ? (
+          <CompanyIntegrations onChange={onChange} />
+        ) : (
+          <Loader />
+        )
       ) : (
         <Tabs
           key={setupOnly ? "setup" : "full"}
-          defaultValue={setupOnly ? "venues" : "accounts"}
+          defaultValue={
+            integrationsEnabled
+              ? "integrations"
+              : setupOnly
+                ? "venues"
+                : "accounts"
+          }
           keepMounted={false}
         >
           <Tabs.List>
+            {integrationsEnabled && (
+              <Tabs.Tab value="integrations">Интеграции</Tabs.Tab>
+            )}
             {!setupOnly && (
               <Tabs.Tab value="accounts" leftSection={<IconUsers size={17} />}>
                 Сотрудники и доступы
@@ -735,6 +756,11 @@ export function ManagementPage({
               <Tabs.Tab value="commercial">Приход и реализация</Tabs.Tab>
             )}
           </Tabs.List>
+          {integrationsEnabled && (
+            <Tabs.Panel value="integrations" pt="lg">
+              <CompanyIntegrations onChange={onChange} />
+            </Tabs.Panel>
+          )}
           {documentsEnabled && (
             <Tabs.Panel value="documents" pt="lg">
               <DocumentAccess accounts={directory.users} />
