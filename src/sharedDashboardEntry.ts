@@ -4,10 +4,6 @@ import {
   type SaasEntry,
 } from "./saasTenantApi.ts";
 
-import { parseGuestDepositRoute } from "./tenantGuestPayment.ts";
-
-import { isTenantRecoveryPage } from "./tenantRecoveryRequest.ts";
-
 export type DashboardHost =
   | { surface: "primary" }
   | { surface: "tenant"; apiOrigin: string };
@@ -58,14 +54,30 @@ export async function loadSharedTenantEntry(
   search = "",
 ): Promise<SaasEntry> {
   validateTenantApiOrigin(origin, apiOrigin);
-  const context = await loadSaasContext(
-    apiOrigin,
-    parseGuestDepositRoute(path, search) !== null || isTenantRecoveryPage(path),
-  );
-  if (context.surface !== "tenant")
+  const context = await loadSaasContext(apiOrigin, true);
+  if (context.surface === "payment") {
+    const canonical = context.api_origin;
+    let valid = false;
+    try {
+      const url = new URL(canonical ?? "");
+      valid =
+        url.protocol === "https:" &&
+        url.origin === canonical &&
+        !url.username &&
+        !url.password &&
+        !url.port;
+    } catch {
+      /* Invalid server context closes the payment page. */
+    }
+    if (context.payment_origin !== origin || !valid)
+      throw new Error("Неверный адрес оплаты компании");
+  }
+  if (context.surface !== "tenant" && context.surface !== "payment")
     throw new Error("Этот адрес не подключён к компании");
   const entry = resolveSaasEntry(context, path, search);
   if (entry.surface !== "tenant")
     throw new Error("Страница компании не найдена");
-  return entry;
+  return context.surface === "payment"
+    ? { ...entry, guestApiOrigin: context.api_origin }
+    : entry;
 }

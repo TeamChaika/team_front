@@ -15,6 +15,7 @@ import {
   guestDepositRequest,
   safePaymentUrl,
   type GuestDeposit,
+  type GuestDepositRoute,
 } from "./tenantGuestPayment";
 import { tenantDateText } from "./tenantPaymentDates";
 
@@ -22,14 +23,12 @@ export function TenantGuestDeposit({
   apiOrigin,
   companyName,
   timezone = "Europe/Simferopol",
-  depositId,
-  token,
+  route,
 }: {
   apiOrigin: string;
   companyName: string;
   timezone?: string;
-  depositId: string;
-  token: string;
+  route: GuestDepositRoute;
 }) {
   const [deposit, setDeposit] = useState<GuestDeposit | null>(null);
   const [error, setError] = useState("");
@@ -52,13 +51,7 @@ export function TenantGuestDeposit({
   useEffect(() => {
     mounted.current = true;
     const abort = new AbortController();
-    guestDepositRequest(
-      apiOrigin,
-      { depositId, token },
-      undefined,
-      undefined,
-      abort.signal,
-    )
+    guestDepositRequest(apiOrigin, route, undefined, undefined, abort.signal)
       .then(update)
       .catch((e) => {
         if (!abort.signal.aborted) setError((e as Error).message);
@@ -67,7 +60,7 @@ export function TenantGuestDeposit({
       mounted.current = false;
       abort.abort();
     };
-  }, [apiOrigin, depositId, token, update]);
+  }, [apiOrigin, route, update]);
   const act = useCallback(
     async (action: "prepare" | "reconcile") => {
       if (operation.current) return;
@@ -77,7 +70,7 @@ export function TenantGuestDeposit({
       try {
         const next = await guestDepositRequest(
           apiOrigin,
-          { depositId, token },
+          route,
           action,
           action === "prepare" ? prepareId.current : reconcileId.current,
           AbortSignal.timeout(20_000),
@@ -91,7 +84,7 @@ export function TenantGuestDeposit({
         if (mounted.current) setBusy(false);
       }
     },
-    [apiOrigin, depositId, token, update],
+    [apiOrigin, route, update],
   );
   // Checking never creates a payment; pause when hidden and stop after five minutes.
   useEffect(() => {

@@ -1,8 +1,12 @@
-export type GuestDepositRoute = { depositId: string; token: string };
+export type GuestDepositRoute =
+  | { depositId: string; token: string }
+  | { code: string };
 export function parseGuestDepositRoute(
   path: string,
   search: string,
 ): GuestDepositRoute | null {
+  const short = /^\/d\/([A-Za-z0-9_-]{32})$/.exec(path);
+  if (short && !search) return { code: short[1] };
   const match =
     /^\/deposit\/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/i.exec(
       path,
@@ -33,9 +37,24 @@ export function depositGuestLink(
   guestUrl: unknown,
   tenant: boolean,
   origin: string,
+  approvedGuestOrigin?: unknown,
 ): string | null {
   const safe = safePaymentUrl(guestUrl);
-  if (safe && (!tenant || new URL(safe).origin === origin)) return safe;
+  if (safe) {
+    const url = new URL(safe);
+    const approved = safePaymentUrl(approvedGuestOrigin);
+    const exactApprovedOrigin =
+      approved && approved === new URL(approved).origin + "/"
+        ? new URL(approved).origin
+        : null;
+    if (
+      !tenant ||
+      ((url.origin === origin || url.origin === exactApprovedOrigin) &&
+        parseGuestDepositRoute(url.pathname, url.search) !== null &&
+        !url.hash)
+    )
+      return safe;
+  }
   if (tenant || guestUrl) return null;
   return `https://pay.chaika.team/deposit/${encodeURIComponent(id)}`;
 }
@@ -76,18 +95,27 @@ export async function guestDepositRequest(
     origin.password
   )
     throw new Error("Неверный адрес оплаты компании.");
-  const path = `${apiOrigin}/api/guest-deposits/${encodeURIComponent(route.depositId)}`;
+  const short = "code" in route;
+  const path = short
+    ? `${apiOrigin}/api/guest-links/${encodeURIComponent(route.code)}`
+    : `${apiOrigin}/api/guest-deposits/${encodeURIComponent(route.depositId)}`;
   const response = await fetch(
     action
       ? `${path}/${action}`
-      : `${path}?token=${encodeURIComponent(route.token)}`,
+      : short
+        ? path
+        : `${path}?token=${encodeURIComponent(route.token)}`,
     {
       method: action ? "POST" : "GET",
       credentials: "omit",
+      redirect: "error",
       referrerPolicy: "no-referrer",
       headers: { "Content-Type": "application/json" },
       body: action
-        ? JSON.stringify({ token: route.token, request_id: requestId })
+        ? JSON.stringify({
+            ...(!short ? { token: route.token } : {}),
+            request_id: requestId,
+          })
         : undefined,
       signal,
     },
@@ -100,7 +128,10 @@ export async function guestDepositRequest(
     );
   const data = (await response.json()) as GuestDeposit;
   if (
-    data.id !== route.depositId ||
+    (!short && data.id !== route.depositId) ||
+    !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(
+      data.id,
+    ) ||
     !Number.isSafeInteger(data.amount_minor) ||
     data.amount_minor < 1
   )

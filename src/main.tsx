@@ -92,12 +92,15 @@ function SharedDashboard() {
   if (entry.guestDeposit)
     return (
       <TenantGuestDeposit
-        key={entry.guestDeposit.depositId}
-        apiOrigin={host.apiOrigin}
+        key={
+          "code" in entry.guestDeposit
+            ? entry.guestDeposit.code
+            : entry.guestDeposit.depositId
+        }
+        apiOrigin={entry.guestApiOrigin ?? host.apiOrigin}
         companyName={entry.companyName ?? "Заведение"}
         timezone={entry.timezone}
-        depositId={entry.guestDeposit.depositId}
-        token={entry.guestDeposit.token}
+        route={entry.guestDeposit}
       />
     );
   return (

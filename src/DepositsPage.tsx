@@ -37,6 +37,7 @@ import "./deposits.css";
 type Deposit = {
   id: string;
   guest_url?: string | null;
+  guest_origin?: string | null;
   customer_name: string;
   phone: string;
   amount: number;
@@ -108,6 +109,7 @@ function DepositCard({
         item.guest_url,
         !!getDashboardRuntime(),
         window.location.origin,
+        item.guest_origin,
       )
     : null;
   const displayDate = (value: string | null) =>

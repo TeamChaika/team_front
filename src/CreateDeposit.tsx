@@ -45,6 +45,7 @@ export function CreateDeposit({
     amount: number;
     restaurant: string;
     guest_url?: string | null;
+    guest_origin?: string | null;
   } | null>(null);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
@@ -58,6 +59,7 @@ export function CreateDeposit({
         result.guest_url,
         !!getDashboardRuntime(),
         window.location.origin,
+        result.guest_origin,
       ) ?? "")
     : "";
   async function submit(event: FormEvent) {
@@ -81,6 +83,7 @@ export function CreateDeposit({
         amount: number;
         restaurant: string;
         guest_url?: string | null;
+        guest_origin?: string | null;
       }>("/deposits", {
         method: "POST",
         body: JSON.stringify({

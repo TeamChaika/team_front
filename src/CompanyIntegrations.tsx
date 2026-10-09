@@ -12,6 +12,7 @@ import {
   Text,
   TextInput,
 } from "@mantine/core";
+import { CompanyPaymentDomain } from "./CompanyPaymentDomain";
 import { getDashboardRuntime } from "./dashboardRuntime";
 import {
   companyIntegrationsWrite,
@@ -147,6 +148,16 @@ export function CompanyIntegrations({ onChange }: { onChange(): void }) {
     );
   return (
     <Stack maw={640}>
+      <CompanyPaymentDomain
+        onChange={() => {
+          ++sequence.current;
+          setApply(null);
+          setNotice(
+            "Домен сохранён. Обновите настройки перед сохранением Telegram и ИИ.",
+          );
+          onChange();
+        }}
+      />
       <Text size="sm" c="dimmed">
         Пустое поле сохраняет прежний секрет.
       </Text>

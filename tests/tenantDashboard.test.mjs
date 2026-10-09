@@ -162,7 +162,7 @@ test("shared tenant context failure closes entry and never falls back to primary
     calls.map(({ url }) => url),
     ["https://api.iiko.tdpay.ru/api/saas-context"],
   );
-  assert.equal(calls[0].init.credentials, "include");
+  assert.equal(calls[0].init.credentials, "omit");
 });
 test("explicit company API handles all auth, workspace and dashboard calls with its own CSRF", async (t) => {
   const calls = [];

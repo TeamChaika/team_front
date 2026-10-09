@@ -1,4 +1,8 @@
 import type {
+  PaymentDomainSettings,
+  PaymentDomainWrite,
+} from "./paymentDomainModel.ts";
+import type {
   CompanyIntegrations,
   CompanyIntegrationsWrite,
 } from "./companyIntegrationsModel.ts";
@@ -28,7 +32,9 @@ export type SaasContext = {
   full_dashboard_available?: boolean;
   setup_available?: boolean;
   platform_origin?: string;
-  surface: "platform" | "tenant";
+  surface: "platform" | "tenant" | "payment";
+  payment_origin?: string;
+  api_origin?: string;
   company: null | { id: string; slug: string; name: string; timezone?: string };
 };
 export type SaasEntry =
@@ -46,6 +52,8 @@ export type SaasEntry =
       fullDashboardAvailable?: boolean;
       setupAvailable?: boolean;
       guestDeposit?: GuestDepositRoute;
+      guestOnly?: boolean;
+      guestApiOrigin?: string;
     }
   | { surface: "denied" };
 export async function loadSaasContext(
@@ -54,13 +62,15 @@ export async function loadSaasContext(
 ): Promise<SaasContext> {
   const response = await fetch(apiOrigin + "/api/saas-context", {
     credentials: publicGuest ? "omit" : apiOrigin ? "include" : "same-origin",
+    referrerPolicy: "no-referrer",
+    redirect: "error",
   });
   if (!response.ok) throw new Error("Этот адрес не подключён к RestControl.");
   const context: SaasContext = await response.json();
   if (context.surface === "platform" && context.company === null)
     return context;
   if (
-    context.surface === "tenant" &&
+    ["tenant", "payment"].includes(context.surface) &&
     context.company &&
     typeof context.company.id === "string" &&
     typeof context.company.name === "string" &&
@@ -78,7 +88,9 @@ export function resolveSaasEntry(
 ): SaasEntry {
   const slug = tenantSlugFromPath(path);
   const guestDeposit = parseGuestDepositRoute(path, search);
-  if (context.surface === "tenant") {
+  if (context.surface === "tenant" || context.surface === "payment") {
+    if (context.surface === "payment" && !guestDeposit)
+      return { surface: "denied" };
     if (
       !context.company ||
       (path !== "/" &&
@@ -101,6 +113,7 @@ export function resolveSaasEntry(
     return {
       surface: "tenant",
       slug: context.company.slug,
+      ...(context.surface === "payment" ? { guestOnly: true } : {}),
       companyName: context.company.name,
       ...(typeof context.company.timezone === "string"
         ? { timezone: context.company.timezone }
@@ -263,6 +276,10 @@ export function createTenantApi(slug: string, apiOrigin = "") {
     ): DashboardRuntime => ({
       fullDashboard,
       featureReadiness,
+      paymentDomainSettings: () =>
+        request<PaymentDomainSettings>("/payment-domain"),
+      savePaymentDomainSettings: (body: PaymentDomainWrite) =>
+        request<PaymentDomainSettings>("/payment-domain", "POST", body),
       integrationSettings: () => request<CompanyIntegrations>("/integrations"),
       saveIntegrationSettings: (body: CompanyIntegrationsWrite) =>
         request<CompanyIntegrations>("/integrations", "POST", body),

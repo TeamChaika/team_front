@@ -189,3 +189,123 @@ test("public context loads without session cookies and cannot use another API or
     globalThis.fetch = original;
   }
 });
+
+test("short guest links require exact secure code and approved company origin", () => {
+  const code = "B".repeat(32);
+  const dashboard = "https://iiko.company.test";
+  const payment = "https://pay.company.test";
+  const link = `${payment}/d/${code}`;
+  assert.deepEqual(parseGuestDepositRoute(`/d/${code}`, ""), { code });
+  for (const [path, search] of [
+    [`/d/${code}/extra`, ""],
+    [`/d/${code.slice(1)}`, ""],
+    [`/d/${code}`, "?token=anything"],
+    ["/d/%42" + code.slice(1), ""],
+  ])
+    assert.equal(parseGuestDepositRoute(path, search), null);
+  assert.equal(depositGuestLink(id, link, true, dashboard), null);
+  assert.equal(depositGuestLink(id, link, true, dashboard, payment), link);
+  assert.equal(
+    depositGuestLink(id, link, true, dashboard, payment + "/fake"),
+    null,
+  );
+  assert.equal(
+    depositGuestLink(id, `${payment}/login`, true, dashboard, payment),
+    null,
+  );
+  assert.equal(
+    depositGuestLink(id, link + "#secret", true, dashboard, payment),
+    null,
+  );
+  assert.equal(
+    depositGuestLink(
+      id,
+      `https://other.company.test/d/${code}`,
+      true,
+      dashboard,
+      payment,
+    ),
+    null,
+  );
+});
+
+test("short transport never sends legacy token and pins authenticated deposit response", async (t) => {
+  const calls = [];
+  const code = "B".repeat(32);
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    calls.push({ url, init });
+    return new Response(JSON.stringify({ id, amount_minor: 100, revision: 1 }));
+  });
+  const api = "https://api.pay.company.test";
+  await guestDepositRequest(api, { code });
+  await guestDepositRequest(
+    api,
+    { code },
+    "prepare",
+    "abcdef00-1234-1234-1234-123456789abc",
+  );
+  assert.equal(calls[0].url, `${api}/api/guest-links/${code}`);
+  assert.equal(calls[1].url, `${api}/api/guest-links/${code}/prepare`);
+  assert.deepEqual(JSON.parse(calls[1].init.body), {
+    request_id: "abcdef00-1234-1234-1234-123456789abc",
+  });
+  for (const { init } of calls) {
+    assert.equal(init.credentials, "omit");
+    assert.equal(init.referrerPolicy, "no-referrer");
+  }
+});
+
+test("payment surface has no auth/dashboard entry and pins both public origins", async (t) => {
+  const { resolveSaasEntry } = await import("../src/saasTenantApi.ts");
+  const { loadSharedTenantEntry } = await import(
+    "../src/sharedDashboardEntry.ts"
+  );
+  const code = "C".repeat(32);
+  const origin = "https://pay.company.test";
+  const apiOrigin = "https://api.pay.company.test";
+  const context = {
+    surface: "payment",
+    payment_origin: origin,
+    api_origin: apiOrigin,
+    company: { id: "a", slug: "company-a", name: "Company A" },
+    full_dashboard_ready: true,
+  };
+  for (const path of [
+    "/",
+    "/management",
+    "/forgot-password",
+    "/tenant/company-a",
+    "/login",
+  ])
+    assert.equal(resolveSaasEntry(context, path).surface, "denied");
+  assert.equal(resolveSaasEntry(context, `/d/${code}`).guestOnly, true);
+  let responseContext = {
+    ...context,
+    api_origin: "https://api.iiko.company.test",
+  };
+  t.mock.method(globalThis, "fetch", async (url, init) => {
+    assert.equal(init.credentials, "omit");
+    assert.equal(init.referrerPolicy, "no-referrer");
+    return new Response(JSON.stringify(responseContext));
+  });
+  assert.equal(
+    (await loadSharedTenantEntry(origin, apiOrigin, `/d/${code}`)).guestOnly,
+    true,
+  );
+  const canonicalEntry = await loadSharedTenantEntry(
+    origin,
+    apiOrigin,
+    `/d/${code}`,
+  );
+  assert.equal(canonicalEntry.guestApiOrigin, "https://api.iiko.company.test");
+  responseContext = {
+    ...context,
+    payment_origin: "https://other.company.test",
+  };
+  await assert.rejects(loadSharedTenantEntry(origin, apiOrigin, `/d/${code}`));
+  responseContext = {
+    ...context,
+    api_origin: "http://api.other.company.test",
+  };
+  await assert.rejects(loadSharedTenantEntry(origin, apiOrigin, `/d/${code}`));
+});
