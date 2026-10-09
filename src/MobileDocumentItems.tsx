@@ -1,12 +1,15 @@
 import {
-  useEffect,
   useImperativeHandle,
   useLayoutEffect,
   useRef,
   useState,
   type Ref,
 } from "react";
-import { api } from "./api";
+import { useProductSearch } from "./useProductSearch";
+import {
+  productSearchMetadata,
+  type SearchProduct,
+} from "./productSearchModel";
 import type { DocumentItem, DocumentKind } from "./documentModel";
 import {
   formatMobileDocumentAmount,
@@ -14,7 +17,7 @@ import {
 } from "./mobileDocumentAmount";
 import "./mobileDocumentItems.css";
 
-type Product = { id: string; name: string; unit_name?: string };
+type Product = SearchProduct;
 type Step = "draft" | "search" | "quantity";
 export type MobileItemsNavigation = { back: () => boolean };
 
@@ -35,12 +38,6 @@ export function MobileDocumentItems({
 }) {
   const [step, setStep] = useState<Step>("draft");
   const [search, setSearch] = useState("");
-  const [result, setResult] = useState<{
-    query: string;
-    rows: Product[];
-  } | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
   const [selected, setSelected] = useState<Product | null>(null);
   const [amount, setAmount] = useState("");
@@ -74,36 +71,14 @@ export function MobileDocumentItems({
       committedProduct.current = null;
     }
   }, [step]);
-  useEffect(() => {
-    if (step !== "search" || query.length < 2) {
-      setLoading(false);
-      return;
-    }
-    let live = true;
-    const controller = new AbortController();
-    setLoading(true);
-    setError("");
-    const timer = setTimeout(() => {
-      api<{ rows: Product[] }>(
-        `/documents/${kind}/products?query=${encodeURIComponent(query)}`,
-        { signal: controller.signal },
-      )
-        .then((data) => {
-          if (live) setResult({ query, rows: data.rows });
-        })
-        .catch((e: Error) => {
-          if (live && e.name !== "AbortError") setError(e.message);
-        })
-        .finally(() => {
-          if (live) setLoading(false);
-        });
-    }, 250);
-    return () => {
-      live = false;
-      clearTimeout(timer);
-      controller.abort();
-    };
-  }, [kind, query, retry, step]);
+  const found = useProductSearch(
+    `/documents/${kind}/products`,
+    search,
+    "query",
+    step === "search",
+    retry,
+  );
+  const { loading, error } = found;
   function select(product: Product) {
     if (
       disabled ||
@@ -150,12 +125,11 @@ export function MobileDocumentItems({
     setSearch("");
     go("draft");
   }
-  const pendingSearch =
-    query.length >= 2 && (loading || result?.query !== query);
+  const pendingSearch = query.length >= 2 && loading;
   const rows =
     query.length >= 2
-      ? !pendingSearch && !error
-        ? result?.rows || []
+      ? !error
+        ? found.rows
         : []
       : query.length === 0
         ? recent
@@ -266,12 +240,11 @@ export function MobileDocumentItems({
           <input
             ref={input}
             type="search"
-            aria-label="Найти по названию"
-            placeholder="Найти по названию"
+            aria-label="Название или артикул"
+            placeholder="Название или артикул"
             value={search}
             onChange={(e) => {
               setSearch(e.currentTarget.value);
-              setError("");
             }}
             autoComplete="off"
           />
@@ -324,9 +297,9 @@ export function MobileDocumentItems({
                   }
                 >
                   <span className="mobile-item-name">{product.name}</span>
-                  {product.unit_name && (
+                  {productSearchMetadata(product) && (
                     <span className="mobile-item-meta">
-                      {product.unit_name}
+                      {productSearchMetadata(product)}
                     </span>
                   )}
                   {existing && (

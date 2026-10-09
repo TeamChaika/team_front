@@ -20,6 +20,12 @@ import {
 import { IconDownload, IconPlus, IconTrash } from "@tabler/icons-react";
 import { api, apiPdf, dateText, money } from "./api";
 import { useData } from "./useData";
+import { useProductSearch } from "./useProductSearch";
+import {
+  productSearchMetadata,
+  serverRankedProductOptions,
+  type SearchProduct,
+} from "./productSearchModel";
 import { useWorkspace } from "./App";
 import { DocumentPanel } from "./DocumentPanel";
 import { CommercialCounterpartyCreate } from "./CommercialCounterpartyCreate";
@@ -108,20 +114,9 @@ function ItemRow({
   rates: string[];
   index: number;
 }) {
-  const [search, setSearch] = useState(""),
-    [query, setQuery] = useState("");
-  useEffect(() => {
-    const timer = setTimeout(() => setQuery(search), 250);
-    return () => clearTimeout(timer);
-  }, [search]);
-  const found = useData<{
-    items: { id: string; name: string; unit?: string }[];
-  }>(
-    query.length >= 2
-      ? `${base(kind)}/products?q=${encodeURIComponent(query)}`
-      : null,
-  );
-  const rows = new Map((found.data?.items || []).map((p) => [p.id, p]));
+  const [search, setSearch] = useState("");
+  const found = useProductSearch(`${base(kind)}/products`, search, "q");
+  const rows = new Map(found.rows.map((p) => [p.id, p]));
   if (item.product_id && !rows.has(item.product_id))
     rows.set(item.product_id, {
       id: item.product_id,
@@ -140,12 +135,34 @@ function ItemRow({
           searchValue={search}
           onSearchChange={setSearch}
           data={[...rows.values()].map((p) => ({ value: p.id, label: p.name }))}
+          filter={({ options }) =>
+            serverRankedProductOptions({
+              options,
+              ids: found.rows.map((p) => p.id),
+            })
+          }
+          autoSelectOnBlur={false}
+          renderOption={({ option }) => {
+            const metadata = productSearchMetadata(
+              rows.get(option.value) as SearchProduct,
+            );
+            return (
+              <div>
+                <Text size="sm">{option.label}</Text>
+                {metadata && (
+                  <Text size="xs" c="dimmed">
+                    {metadata}
+                  </Text>
+                )}
+              </div>
+            );
+          }}
           onChange={(id) =>
             change({
               ...item,
               product_id: id || "",
               name: rows.get(id || "")?.name,
-              unit: rows.get(id || "")?.unit,
+              unit: rows.get(id || "")?.unit_name || rows.get(id || "")?.unit,
             })
           }
           disabled={disabled}
