@@ -5,10 +5,15 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
-import { Link } from "react-router-dom";
 import { Alert, Button, PasswordInput, Stack, Text } from "@mantine/core";
 import { IconBrandTelegram, IconShieldLock } from "@tabler/icons-react";
 import { api, ApiError } from "./api";
+
+export type RecoveryRequest = typeof api;
+type RecoveryOptions = {
+  request?: RecoveryRequest;
+  companyName?: string;
+};
 import { newPasswordValidationError, telegramUrl } from "./profileRules";
 import {
   recoveryCanRetry,
@@ -18,7 +23,9 @@ import {
 function RecoveryCard({
   title,
   children,
+  companyName,
 }: {
+  companyName?: string;
   title: string;
   children: ReactNode;
 }) {
@@ -26,7 +33,7 @@ function RecoveryCard({
     <main className="password-gate">
       <section className="password-gate-card" aria-labelledby="recovery-title">
         <span className="recovery-brand">
-          <IconShieldLock size={24} /> Chaika
+          <IconShieldLock size={24} /> {companyName ?? "Chaika"}
         </span>
         <h1 id="recovery-title">{title}</h1>
         {children}
@@ -35,7 +42,10 @@ function RecoveryCard({
   );
 }
 
-export function ForgotPassword() {
+export function ForgotPassword({
+  request = api,
+  companyName,
+}: RecoveryOptions = {}) {
   const [url, setUrl] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
@@ -43,7 +53,7 @@ export function ForgotPassword() {
     const controller = new AbortController();
     setError("");
     setUrl(null);
-    void api<{ url: string }>("/auth/recovery/telegram", {
+    void request<{ url: string }>("/auth/recovery/telegram", {
       signal: controller.signal,
     })
       .then((result) => {
@@ -56,9 +66,9 @@ export function ForgotPassword() {
         if (!controller.signal.aborted) setError((cause as Error).message);
       });
     return () => controller.abort();
-  }, [revision]);
+  }, [revision, request]);
   return (
-    <RecoveryCard title="Забыли пароль?">
+    <RecoveryCard title="Забыли пароль?" companyName={companyName}>
       <Stack gap="lg">
         <Text c="dimmed" size="sm">
           Откройте нашего бота в Telegram, который вы подключили в «Мой
@@ -91,7 +101,7 @@ export function ForgotPassword() {
           Если Telegram ещё не подключён или доступ к нему потерян, обратитесь к
           администратору.
         </Text>
-        <Button component={Link} to="/" variant="subtle">
+        <Button component="a" href="/" variant="subtle">
           Вернуться ко входу
         </Button>
       </Stack>
@@ -99,7 +109,10 @@ export function ForgotPassword() {
   );
 }
 
-export function ResetPassword() {
+export function ResetPassword({
+  request = api,
+  companyName,
+}: RecoveryOptions = {}) {
   const [token, setToken] = useState(() =>
     recoveryTokenFromHash(window.location.hash),
   );
@@ -145,7 +158,7 @@ export function ResetPassword() {
     setBusy(true);
     setError("");
     try {
-      await api("/auth/recovery/reset", {
+      await request("/auth/recovery/reset", {
         method: "POST",
         body: JSON.stringify({ token, new_password: password }),
       });
@@ -168,7 +181,10 @@ export function ResetPassword() {
   }
 
   return (
-    <RecoveryCard title={done ? "Пароль изменён" : "Новый пароль"}>
+    <RecoveryCard
+      title={done ? "Пароль изменён" : "Новый пароль"}
+      companyName={companyName}
+    >
       <Stack gap="lg">
         {done ? (
           <Text role="status">Теперь войдите с новым паролем.</Text>
@@ -212,14 +228,14 @@ export function ResetPassword() {
               {error ||
                 "Откройте одноразовую ссылку из нашего бота в Telegram."}
             </Alert>
-            <Button component={Link} to="/forgot-password">
+            <Button component="a" href="/forgot-password">
               Получить новую ссылку
             </Button>
           </>
         )}
         <Button
-          component={Link}
-          to="/"
+          component="a"
+          href="/"
           variant={done ? "filled" : "subtle"}
           disabled={busy}
         >

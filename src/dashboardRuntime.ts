@@ -3,6 +3,8 @@
 export type DashboardRuntime = {
   request: (path: string, init?: RequestInit) => Promise<Response>;
   renew: () => Promise<Response>;
+  fullDashboard?: boolean;
+  companyId?: string;
 };
 let runtime: DashboardRuntime | null = null;
 export function getDashboardRuntime() {
@@ -15,7 +17,8 @@ export function installDashboardRuntime(next: DashboardRuntime) {
   };
 }
 export const tenantDashboardSections = ["overview", "sales"];
-export function tenantSections(assigned: string[] = []) {
+export function tenantSections(assigned: string[] = [], fullDashboard = false) {
+  if (fullDashboard) return assigned;
   return assigned.filter((section) =>
     tenantDashboardSections.includes(section),
   );
@@ -72,5 +75,73 @@ export function canLoadRecentOverview(
     (!loading &&
       current?.start === selected.start &&
       current.end === selected.end)
+  );
+}
+
+const fullPortalRoots = new Set([
+  "me",
+  "overview",
+  "sales",
+  "indicators",
+  "purchase-prices",
+  "assistant",
+  "discount-details",
+  "balance-products",
+  "employees",
+  "resources",
+  "commercial-invoices",
+  "topology",
+  "status",
+  "management",
+  "profile",
+  "documents",
+  "deposits",
+  "payment-settings",
+]);
+export function fullPortalPathAllowed(path: string): boolean {
+  if (
+    path.includes("#") ||
+    !path.startsWith("/") ||
+    path.startsWith("//") ||
+    /[\\\x00-\x20]/.test(path)
+  )
+    return false;
+  const pathname = path.split("?")[0];
+  if (
+    pathname.includes("%") ||
+    pathname.split("/").some((part) => part === "." || part === "..")
+  )
+    return false;
+  const root = pathname.split("/")[1];
+  if (root === "me" || root === "overview") return pathname === "/" + root;
+  return fullPortalRoots.has(root);
+}
+const fullUiRoots = new Set([
+  "sales",
+  "indicators",
+  "deposits",
+  "payment-settings",
+  "cash-shifts",
+  "invoices",
+  "purchase-prices",
+  "outgoing",
+  "transfers",
+  "writeoffs",
+  "products",
+  "charts",
+  "balances",
+  "employees",
+  "events",
+  "status",
+  "management",
+  "profile",
+]);
+export function fullDashboardPageAllowed(path: string): boolean {
+  return (
+    path === "/" ||
+    (!path.includes("%") &&
+      !path.includes("\\") &&
+      !path.split("/").some((part) => part === "." || part === "..") &&
+      fullUiRoots.has(path.split("/")[1]))
   );
 }

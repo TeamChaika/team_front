@@ -257,6 +257,9 @@ function Login({ onLogin }: { onLogin: () => void }) {
 }
 export type TenantDashboardOptions = {
   companyName: string;
+  companyId: string;
+  fullDashboard?: boolean;
+  setupOnly?: boolean;
   logout: () => Promise<void>;
   error?: string;
 };
@@ -370,7 +373,7 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
     };
   }, []);
   useEffect(() => {
-    if (tenant || !meta?.user.id) return;
+    if ((tenant && !tenant.fullDashboard) || !meta?.user.id) return;
     let lastAttempt = 0;
     const renew = () => {
       if (
@@ -394,7 +397,8 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
     };
   }, [meta?.user.id]);
   useEffect(() => {
-    if (tenant || !meta?.user.id || passwordRequired) return;
+    if ((tenant && !tenant.fullDashboard) || !meta?.user.id || passwordRequired)
+      return;
     const accountId = meta.user.id;
     let live = true;
     let lastCheck = Date.now();
@@ -530,27 +534,33 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
     (meta.user.role === "deposits"
       ? ["deposits"]
       : sections.map((s) => s.path.slice(1) || "overview"));
-  const allowed = (tenant ? tenantSections(assigned) : assigned).filter(
+  const allowed = (
+    tenant ? tenantSections(assigned, tenant.fullDashboard === true) : assigned
+  ).filter(
     (section) =>
       !meta.warehouse_capabilities?.unsupported_sections.includes(section),
   );
   const availableSections = sections.filter((s) =>
-    s.path === "/management"
-      ? meta.can_manage
-      : allowed.includes(s.path.slice(1) || "overview"),
+    tenant?.setupOnly
+      ? s.path === "/management" && meta.can_manage
+      : s.path === "/management"
+        ? meta.can_manage
+        : allowed.includes(s.path.slice(1) || "overview"),
   );
   const currentSection =
     location.pathname === "/" ? "overview" : location.pathname.split("/")[1];
-  const currentAllowed =
-    currentSection === "profile"
-      ? !tenant
+  const currentAllowed = tenant?.setupOnly
+    ? currentSection === "profile" ||
+      (currentSection === "management" && meta.can_manage)
+    : currentSection === "profile"
+      ? !tenant || tenant.fullDashboard === true
       : currentSection === "management"
         ? meta.can_manage
         : allowed.includes(currentSection);
   if (!currentAllowed && availableSections.length)
     return <Navigate to={availableSections[0].path} replace />;
   const canAssistant =
-    !tenant &&
+    (!tenant || tenant.fullDashboard === true) &&
     allowed.includes("purchase-prices") &&
     !["deposits", "management", "profile"].includes(currentSection);
   const ContentLayout = canAssistant ? AssistantLayout : Fragment;
@@ -598,8 +608,12 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
         },
       }}
     >
-      <DocumentDataProvider key={meta.user.id}>
-        <AssistantProvider key={meta.user.id}>
+      <DocumentDataProvider
+        key={tenant ? `${tenant.companyId}:${meta.user.id}` : meta.user.id}
+      >
+        <AssistantProvider
+          key={tenant ? `${tenant.companyId}:${meta.user.id}` : meta.user.id}
+        >
           <div
             className={
               "app-shell" +
@@ -648,7 +662,7 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
                 ))}
               </nav>
               <div className="sidebar-footer">
-                {!tenant && (
+                {(!tenant || tenant.fullDashboard === true) && (
                   <NavLink to="/profile" className="profile-nav-link">
                     <IconUserCircle size={18} stroke={1.6} />
                     <span>Мой профиль</span>
@@ -659,10 +673,12 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
                 </div>
                 <div className="user-card">
                   <Link
-                    to={tenant ? "/" : "/profile"}
+                    to={tenant && !tenant.fullDashboard ? "/" : "/profile"}
                     className="user-card-profile"
                     aria-label={
-                      tenant ? "Открыть обзор" : "Открыть мой профиль"
+                      tenant && !tenant.fullDashboard
+                        ? "Открыть обзор"
+                        : "Открыть мой профиль"
                     }
                   >
                     <Avatar color="cyan" radius="md">
@@ -820,7 +836,14 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
                         <Route
                           path="/profile"
                           element={
-                            <ProfilePage key={meta.user.id} user={meta.user} />
+                            <ProfilePage
+                              key={
+                                tenant
+                                  ? `${tenant.companyId}:${meta.user.id}`
+                                  : meta.user.id
+                              }
+                              user={meta.user}
+                            />
                           }
                         />
                         <Route
@@ -837,6 +860,7 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
                           element={
                             <ManagementPage
                               documentsEnabled={meta.documents_enabled}
+                              setupOnly={tenant?.setupOnly}
                               onChange={() => {
                                 api<Meta>("/me")
                                   .then(setMeta)
@@ -848,11 +872,27 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
                         <Route path="/sales" element={<SalesPage />} />
                         <Route
                           path="/deposits"
-                          element={<DepositsPage key={meta.user.id} />}
+                          element={
+                            <DepositsPage
+                              key={
+                                tenant
+                                  ? `${tenant.companyId}:${meta.user.id}`
+                                  : meta.user.id
+                              }
+                            />
+                          }
                         />
                         <Route
                           path="/indicators"
-                          element={<Indicators key={meta.user.id} />}
+                          element={
+                            <Indicators
+                              key={
+                                tenant
+                                  ? `${tenant.companyId}:${meta.user.id}`
+                                  : meta.user.id
+                              }
+                            />
+                          }
                         />
                         <Route
                           path="/purchase-prices"
@@ -954,7 +994,9 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
                   )}
                 </main>
               </ContentLayout>
-              {!tenant && (
+              {tenant ? (
+                <footer className="page-footer">{tenant.companyName}</footer>
+              ) : (
                 <footer className="page-footer">
                   Chaika Team <span>Время: Крым, UTC+3 · Суммы в рублях</span>
                 </footer>

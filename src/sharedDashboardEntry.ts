@@ -4,6 +4,10 @@ import {
   type SaasEntry,
 } from "./saasTenantApi.ts";
 
+import { parseGuestDepositRoute } from "./tenantGuestPayment.ts";
+
+import { isTenantRecoveryPage } from "./tenantRecoveryRequest.ts";
+
 export type DashboardHost =
   | { surface: "primary" }
   | { surface: "tenant"; apiOrigin: string };
@@ -51,12 +55,16 @@ export async function loadSharedTenantEntry(
   origin: string,
   apiOrigin: string,
   path: string,
+  search = "",
 ): Promise<SaasEntry> {
   validateTenantApiOrigin(origin, apiOrigin);
-  const context = await loadSaasContext(apiOrigin);
+  const context = await loadSaasContext(
+    apiOrigin,
+    parseGuestDepositRoute(path, search) !== null || isTenantRecoveryPage(path),
+  );
   if (context.surface !== "tenant")
     throw new Error("Этот адрес не подключён к компании");
-  const entry = resolveSaasEntry(context, path);
+  const entry = resolveSaasEntry(context, path, search);
   if (entry.surface !== "tenant")
     throw new Error("Страница компании не найдена");
   return entry;

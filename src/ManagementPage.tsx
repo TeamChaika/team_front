@@ -58,11 +58,17 @@ type Terminal = {
   venue_id: string;
   name: string;
   qrt_uuid: string | null;
+  mode?: "sandbox" | "live";
+  merchant_id?: string | null;
   active: boolean;
   revision?: number;
   key_configured?: boolean;
 };
-type Configuration = { venues: Venue[]; terminals: Terminal[] };
+type Configuration = {
+  venues: Venue[];
+  terminals: Terminal[];
+  tenant_payments?: boolean;
+};
 const emptyAccount = (): Account => ({
   id: crypto.randomUUID(),
   email: "",
@@ -459,11 +465,13 @@ function VenueEditor({
 }
 
 function TerminalEditor({
+  tenantPayments = false,
   terminal,
   venue,
   close,
   saved,
 }: {
+  tenantPayments?: boolean;
   terminal: Terminal;
   venue: Venue;
   close: () => void;
@@ -496,6 +504,12 @@ function TerminalEditor({
               body: JSON.stringify({
                 name: value.name,
                 qrt_uuid: value.qrt_uuid || null,
+                ...(tenantPayments
+                  ? {
+                      mode: value.mode ?? "sandbox",
+                      merchant_id: value.merchant_id || null,
+                    }
+                  : {}),
                 active: value.active,
                 make_default: selected,
                 revision: value.revision,
@@ -528,6 +542,36 @@ function TerminalEditor({
             onChange={(e) => set({ ...value, qrt_uuid: e.currentTarget.value })}
             maxLength={36}
           />
+          {tenantPayments && (
+            <>
+              <Select
+                label="Режим оплаты"
+                value={value.mode ?? "sandbox"}
+                data={[
+                  { value: "sandbox", label: "Тестовый режим" },
+                  {
+                    value: "live",
+                    label: "Рабочий режим",
+                  },
+                ]}
+                onChange={(mode) =>
+                  set({ ...value, mode: mode === "live" ? "live" : "sandbox" })
+                }
+              />
+              <TextInput
+                label="Идентификатор продавца"
+                value={value.merchant_id ?? ""}
+                maxLength={200}
+                onChange={(e) =>
+                  set({ ...value, merchant_id: e.currentTarget.value })
+                }
+              />
+              <Alert color="yellow">
+                Тестовый режим проверяет сценарий оплаты. Рабочие платежи
+                доступны после подключения провайдера.
+              </Alert>
+            </>
+          )}
           <PasswordInput
             label={terminal.revision ? "Новый API-ключ" : "API-ключ QR Manager"}
             description={
@@ -574,9 +618,11 @@ function TerminalEditor({
 export function ManagementPage({
   onChange,
   documentsEnabled,
+  setupOnly = false,
 }: {
   onChange: () => void;
   documentsEnabled?: boolean;
+  setupOnly?: boolean;
 }) {
   const [directory, setDirectory] = useState<Directory | null>(null),
     [configuration, setConfiguration] = useState<Configuration | null>(null),
@@ -585,7 +631,8 @@ export function ManagementPage({
     [account, setAccount] = useState<Account | null>(null),
     [venue, setVenue] = useState<Venue | null>(null),
     [terminal, setTerminal] = useState<Terminal | null>(null),
-    [query, setQuery] = useState("");
+    [query, setQuery] = useState(""),
+    [validatingTerminal, setValidatingTerminal] = useState<string | null>(null);
   async function load() {
     const [a, v] = await Promise.all([
       api<Directory>("/management/accounts"),
@@ -597,6 +644,29 @@ export function ManagementPage({
   useEffect(() => {
     load().catch((e) => setError(e.message));
   }, []);
+  async function validateTerminal(current: Terminal) {
+    setValidatingTerminal(current.id);
+    setError("");
+    try {
+      const result = await api<{
+        ready: boolean;
+        qrt_name: string;
+        merchant_id: string;
+      }>(
+        `/payment-settings/venues/${current.venue_id}/terminals/${current.id}/validate`,
+        { method: "POST" },
+      );
+      setNotice(
+        result.ready
+          ? `Терминал «${result.qrt_name}» проверен. Получатель: ${result.merchant_id}.`
+          : "Терминал найден, но для оплаты требуется действующая подписка, режим оплаты физических лиц и поддерживаемые настройки чеков.",
+      );
+    } catch (reason) {
+      setError((reason as Error).message);
+    } finally {
+      setValidatingTerminal(null);
+    }
+  }
   async function saved() {
     setNotice("Изменения сохранены.");
     await load();
@@ -634,21 +704,28 @@ export function ManagementPage({
       {!directory || !configuration ? (
         <Loader />
       ) : (
-        <Tabs defaultValue="accounts" keepMounted={false}>
+        <Tabs
+          defaultValue={setupOnly ? "venues" : "accounts"}
+          keepMounted={false}
+        >
           <Tabs.List>
-            <Tabs.Tab value="accounts" leftSection={<IconUsers size={17} />}>
-              Сотрудники и доступы
-            </Tabs.Tab>
+            {!setupOnly && (
+              <Tabs.Tab value="accounts" leftSection={<IconUsers size={17} />}>
+                Сотрудники и доступы
+              </Tabs.Tab>
+            )}
             <Tabs.Tab
               value="venues"
               leftSection={<IconBuildingStore size={17} />}
             >
               Заведения и терминалы
             </Tabs.Tab>
-            {documentsEnabled && (
+            {documentsEnabled && !setupOnly && (
               <Tabs.Tab value="documents">Документы и склады</Tabs.Tab>
             )}
-            <Tabs.Tab value="commercial">Приход и реализация</Tabs.Tab>
+            {!setupOnly && (
+              <Tabs.Tab value="commercial">Приход и реализация</Tabs.Tab>
+            )}
           </Tabs.List>
           {documentsEnabled && (
             <Tabs.Panel value="documents" pt="lg">
@@ -758,7 +835,11 @@ export function ManagementPage({
                                 {t.name}
                               </Text>
                               {v.default_terminal_id === t.id ? (
-                                <Badge color="blue">Принимает оплату</Badge>
+                                <Badge color="blue">
+                                  {configuration.tenant_payments
+                                    ? "Основной терминал"
+                                    : "Принимает оплату"}
+                                </Badge>
                               ) : (
                                 <Badge color="gray">
                                   {t.active ? "Резервный" : "Отключён"}
@@ -766,12 +847,28 @@ export function ManagementPage({
                               )}
                             </Group>
                             <Text size="xs" c="dimmed">
-                              {t.qrt_uuid || "UUID не указан"} ·{" "}
+                              {configuration.tenant_payments
+                                ? t.mode === "live"
+                                  ? "Рабочий режим"
+                                  : "Тестовый режим"
+                                : t.qrt_uuid || "UUID не указан"}{" "}
+                              ·{" "}
                               {t.key_configured
                                 ? "Ключ сохранён"
                                 : "Ключ не задан"}
                             </Text>
                           </div>
+                          {configuration.tenant_payments && (
+                            <Button
+                              size="xs"
+                              variant="default"
+                              loading={validatingTerminal === t.id}
+                              disabled={validatingTerminal !== null}
+                              onClick={() => void validateTerminal(t)}
+                            >
+                              Проверить терминал
+                            </Button>
+                          )}
                           <Button
                             size="xs"
                             variant="light"
@@ -789,6 +886,9 @@ export function ManagementPage({
                           venue_id: v.id,
                           name: "",
                           qrt_uuid: null,
+                          ...(configuration?.tenant_payments
+                            ? { mode: "sandbox" as const, merchant_id: null }
+                            : {}),
                           active: true,
                         })
                       }
@@ -823,6 +923,7 @@ export function ManagementPage({
         <TerminalEditor
           key={terminal.id}
           terminal={terminal}
+          tenantPayments={configuration?.tenant_payments === true}
           venue={parent}
           close={() => setTerminal(null)}
           saved={saved}

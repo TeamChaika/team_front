@@ -6,10 +6,17 @@ import "@mantine/core/styles.css";
 import "./styles.css";
 import { dashboardTheme } from "./dashboardTheme";
 import { dashboardHost, loadSharedTenantEntry } from "./sharedDashboardEntry";
+import { isTenantRecoveryPage } from "./tenantRecoveryRequest";
 import type { SaasEntry } from "./saasTenantApi";
 
+const TenantPasswordRecovery = lazy(() => import("./TenantPasswordRecovery"));
 const App = lazy(() => import("./App"));
 const SaasTenant = lazy(() => import("./SaasTenant"));
+const TenantGuestDeposit = lazy(() =>
+  import("./TenantGuestDeposit").then((module) => ({
+    default: module.TenantGuestDeposit,
+  })),
+);
 const opening = (
   <main className="center-screen" role="status">
     Открываем рабочее пространство…
@@ -42,6 +49,7 @@ function SharedDashboard() {
       window.location.origin,
       host.apiOrigin,
       window.location.pathname,
+      window.location.search,
     );
     tenantEntryRequest
       .then((value) => {
@@ -73,11 +81,42 @@ function SharedDashboard() {
     host.surface !== "tenant"
   )
     return opening;
+  if (isTenantRecoveryPage(window.location.pathname))
+    return (
+      <TenantPasswordRecovery
+        apiOrigin={host.apiOrigin}
+        companyName={entry.companyName ?? "Компания"}
+        path={window.location.pathname}
+      />
+    );
+  if (entry.guestDeposit)
+    return (
+      <TenantGuestDeposit
+        key={entry.guestDeposit.depositId}
+        apiOrigin={host.apiOrigin}
+        companyName={entry.companyName ?? "Заведение"}
+        timezone={entry.timezone}
+        depositId={entry.guestDeposit.depositId}
+        token={entry.guestDeposit.token}
+      />
+    );
   return (
     <SaasTenant
       slug={entry.slug}
       companyName={entry.companyName}
+      companyId={entry.companyId}
+      platformOrigin={entry.platformOrigin}
       apiOrigin={host.apiOrigin}
+      fullDashboardReady={
+        entry.fullDashboardReady === true ||
+        entry.fullDashboardAvailable === true ||
+        entry.setupAvailable === true
+      }
+      setupOnly={
+        entry.setupAvailable === true &&
+        !entry.fullDashboardReady &&
+        !entry.fullDashboardAvailable
+      }
     />
   );
 }

@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import SaasAdmin from "./SaasAdmin";
 import "./saasAdmin.css";
 import SaasTenant from "./SaasTenant";
+import PlatformSsoAuthorize from "./PlatformSsoAuthorize";
 import {
   loadSaasContext,
   resolveSaasEntry,
@@ -45,6 +46,11 @@ function SaasEntryPage() {
         Определяем компанию…
       </main>
     );
+  if (
+    entry.surface === "platform" &&
+    window.location.pathname === "/sso/authorize"
+  )
+    return <PlatformSsoAuthorize />;
   return entry.surface === "platform" ? (
     <SaasAdmin />
   ) : (
@@ -52,6 +58,18 @@ function SaasEntryPage() {
       key={entry.slug}
       slug={entry.slug}
       companyName={entry.companyName}
+      companyId={entry.companyId}
+      platformOrigin={entry.platformOrigin}
+      fullDashboardReady={
+        entry.fullDashboardReady === true ||
+        entry.fullDashboardAvailable === true ||
+        entry.setupAvailable === true
+      }
+      setupOnly={
+        entry.setupAvailable === true &&
+        !entry.fullDashboardReady &&
+        !entry.fullDashboardAvailable
+      }
     />
   );
 }

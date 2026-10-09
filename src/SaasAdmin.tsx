@@ -1,3 +1,4 @@
+import SaasProvisioning from "./SaasProvisioning";
 import { useEffect, useState } from "react";
 import {
   IconBuilding,
@@ -690,6 +691,7 @@ export default function SaasAdmin() {
                 <p className="sa-muted">Не задан</p>
               )}
             </section>
+            <SaasProvisioning key={`${selected.id}-${selected.version}`} company={selected} />
             <SaasAdminAccess
               key={selected.id}
               company={selected}

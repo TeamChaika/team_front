@@ -6,6 +6,7 @@ import {
   type TenantWorkspace,
 } from "./saasTenantApi";
 import "./saasAdmin.css";
+import { completePlatformLogin, startPlatformLogin } from "./platformSso";
 import { tenantPasswordError } from "./saasAdminModel";
 
 const TenantDashboard = lazy(() => import("./TenantDashboard"));
@@ -13,11 +14,19 @@ const TenantDashboard = lazy(() => import("./TenantDashboard"));
 export default function SaasTenant({
   slug,
   companyName,
+  companyId,
+  platformOrigin,
   apiOrigin = "",
+  fullDashboardReady = false,
+  setupOnly = false,
 }: {
   slug: string;
   companyName?: string;
+  companyId?: string;
+  platformOrigin?: string;
   apiOrigin?: string;
+  fullDashboardReady?: boolean;
+  setupOnly?: boolean;
 }) {
   const api = useMemo(
     () => createTenantApi(slug, apiOrigin),
@@ -39,8 +48,9 @@ export default function SaasTenant({
               setWorkspace(null);
             });
         },
+        fullDashboardReady,
       ),
-    [api],
+    [api, fullDashboardReady],
   );
   const [session, setSession] = useState<TenantSession | null>(null);
   const [workspace, setWorkspace] = useState<TenantWorkspace | null>(null);
@@ -70,8 +80,18 @@ export default function SaasTenant({
   }
   useEffect(() => {
     let live = true;
-    api
-      .me()
+    Promise.resolve()
+      .then(async () => {
+        if (companyId) await completePlatformLogin(slug, companyId, apiOrigin);
+        if (
+          companyId &&
+          platformOrigin &&
+          new URLSearchParams(window.location.search).get("owner_login") === "1"
+        ) {
+          await startPlatformLogin(companyId, platformOrigin);
+        }
+        return api.me();
+      })
       .then((data) => {
         if (live) setSession(data);
       })
@@ -175,7 +195,7 @@ export default function SaasTenant({
       <main className="sa-auth">
         <div className="sa-login">
           <span className="sa-eyebrow">ВХОД КОМПАНИИ</span>
-          <h1>{session ? "Задайте свой пароль" : "Вход администратора"}</h1>
+          <h1>{session ? "Задайте свой пароль" : "Вход в компанию"}</h1>
           <p className="sa-hint">
             {session
               ? session.company.name
@@ -266,32 +286,70 @@ export default function SaasTenant({
               Выйти
             </button>
           ) : (
-            <p className="sa-hint">Данные для входа выдаёт владелец сервиса.</p>
+            <>
+              <a className="sa-text-button" href="/forgot-password">
+                Забыли пароль?
+              </a>
+              <p className="sa-hint">
+                Данные для входа выдаёт владелец сервиса.
+              </p>
+              {companyId && platformOrigin && (
+                <button
+                  className="sa-text-button"
+                  onClick={() =>
+                    void startPlatformLogin(companyId, platformOrigin).catch(
+                      (e) => setError(e.message),
+                    )
+                  }
+                >
+                  Вход владельца сервиса
+                </button>
+              )}
+            </>
           )}
         </div>
       </main>
     );
   if (workspace)
     return (
-      <Suspense
-        fallback={
-          <main className="center-screen" role="status">
-            Открываем рабочее пространство…
-          </main>
-        }
-      >
-        <TenantDashboard
-          runtime={dashboardRuntime}
-          companyName={workspace.company.name}
-          logout={logout}
-          error={error}
-          basename={
-            window.location.pathname.startsWith(`/tenant/${slug}`)
-              ? `/tenant/${slug}`
-              : "/"
+      <>
+        {session?.actor?.kind === "platform_owner" && (
+          <aside
+            className="tenant-owner-banner"
+            aria-label="Контекст владельца"
+          >
+            <span>{workspace.company.name} · Владелец сервиса</span>
+            <a href={platformOrigin}>В SaaS ↗</a>
+          </aside>
+        )}
+        {setupOnly && (
+          <p className="tenant-setup-notice">
+            Настройка компании. Рабочие разделы появятся после завершения
+            проверки.
+          </p>
+        )}
+        <Suspense
+          fallback={
+            <main className="center-screen" role="status">
+              Открываем рабочее пространство…
+            </main>
           }
-        />
-      </Suspense>
+        >
+          <TenantDashboard
+            runtime={dashboardRuntime}
+            setupOnly={setupOnly}
+            companyName={workspace.company.name}
+            companyId={workspace.company.id}
+            logout={logout}
+            error={error}
+            basename={
+              window.location.pathname.startsWith(`/tenant/${slug}`)
+                ? `/tenant/${slug}`
+                : "/"
+            }
+          />
+        </Suspense>
+      </>
     );
   return (
     <main className="sa-auth">

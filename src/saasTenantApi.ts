@@ -1,20 +1,45 @@
 import {
   serializeTenantReports,
+  fullPortalPathAllowed,
+  fullDashboardPageAllowed,
   type DashboardRuntime,
 } from "./dashboardRuntime.ts";
+import { isTenantRecoveryPage } from "./tenantRecoveryRequest.ts";
 import { tenantSlugFromPath, type CompanyWrite } from "./saasAdminModel.ts";
+import {
+  parseGuestDepositRoute,
+  type GuestDepositRoute,
+} from "./tenantGuestPayment.ts";
 
 export type SaasContext = {
+  full_dashboard_ready?: boolean;
+  full_dashboard_available?: boolean;
+  setup_available?: boolean;
+  platform_origin?: string;
   surface: "platform" | "tenant";
-  company: null | { id: string; slug: string; name: string };
+  company: null | { id: string; slug: string; name: string; timezone?: string };
 };
 export type SaasEntry =
   | { surface: "platform" }
-  | { surface: "tenant"; slug: string; companyName?: string }
+  | {
+      surface: "tenant";
+      slug: string;
+      companyName?: string;
+      timezone?: string;
+      companyId?: string;
+      platformOrigin?: string;
+      fullDashboardReady?: boolean;
+      fullDashboardAvailable?: boolean;
+      setupAvailable?: boolean;
+      guestDeposit?: GuestDepositRoute;
+    }
   | { surface: "denied" };
-export async function loadSaasContext(apiOrigin = ""): Promise<SaasContext> {
+export async function loadSaasContext(
+  apiOrigin = "",
+  publicGuest = false,
+): Promise<SaasContext> {
   const response = await fetch(apiOrigin + "/api/saas-context", {
-    credentials: apiOrigin ? "include" : "same-origin",
+    credentials: publicGuest ? "omit" : apiOrigin ? "include" : "same-origin",
   });
   if (!response.ok) throw new Error("Этот адрес не подключён к RestControl.");
   const context: SaasContext = await response.json();
@@ -35,18 +60,50 @@ export async function loadSaasContext(apiOrigin = ""): Promise<SaasContext> {
 export function resolveSaasEntry(
   context: SaasContext,
   path: string,
+  search = "",
 ): SaasEntry {
   const slug = tenantSlugFromPath(path);
+  const guestDeposit = parseGuestDepositRoute(path, search);
   if (context.surface === "tenant") {
     if (
       !context.company ||
-      (path !== "/" && path !== "/sales" && slug !== context.company.slug)
+      (path !== "/" &&
+        path !== "/sales" &&
+        slug !== context.company.slug &&
+        !isTenantRecoveryPage(path) &&
+        guestDeposit === null &&
+        !(
+          context.setup_available === true &&
+          ["/management", "/profile"].includes(path)
+        ) &&
+        !(
+          (context.full_dashboard_ready === true ||
+            context.full_dashboard_available === true) &&
+          fullDashboardPageAllowed(path)
+        ))
     )
       return { surface: "denied" };
     return {
       surface: "tenant",
       slug: context.company.slug,
       companyName: context.company.name,
+      ...(typeof context.company.timezone === "string"
+        ? { timezone: context.company.timezone }
+        : {}),
+      ...(guestDeposit ? { guestDeposit } : {}),
+      ...(context.full_dashboard_ready === true
+        ? { fullDashboardReady: true }
+        : {}),
+      ...(context.full_dashboard_available === true
+        ? { fullDashboardAvailable: true }
+        : {}),
+      ...(context.setup_available === true ? { setupAvailable: true } : {}),
+      ...(context.platform_origin
+        ? {
+            companyId: context.company.id,
+            platformOrigin: context.platform_origin,
+          }
+        : {}),
     };
   }
   if (path.startsWith("/tenant/"))
@@ -54,6 +111,11 @@ export function resolveSaasEntry(
   return { surface: "platform" };
 }
 export type TenantSession = {
+  actor?: {
+    kind: "platform_owner" | "company_member";
+    auth_user_id: string;
+    company_id: string;
+  };
   user: {
     id: string;
     username: string;
@@ -74,14 +136,22 @@ export type TenantWorkspace = {
   admin: { id: string; username: string; display_name: string };
   mode: "local" | "production";
   business_modules_ready: boolean;
+  full_dashboard_ready?: boolean;
 };
 export class TenantApiError extends Error {
   status: number;
   code?: string;
-  constructor(message: string, status: number, code?: string) {
+  detail?: unknown;
+  constructor(
+    message: string,
+    status: number,
+    code?: string,
+    detail?: unknown,
+  ) {
     super(message);
     this.status = status;
     this.code = code;
+    this.detail = detail;
   }
 }
 export function createTenantApi(slug: string, apiOrigin = "") {
@@ -160,24 +230,61 @@ export function createTenantApi(slug: string, apiOrigin = "") {
     dashboardRuntime: (
       onSessionLost: () => void,
       onPasswordRequired: () => void,
+      fullDashboard = false,
     ): DashboardRuntime => ({
+      fullDashboard,
       request: serializeTenantReports(async (path, init = {}) => {
         if (
-          !/^\/(me|overview|sales\/(daily|dishes))(\?|$)/.test(path) ||
-          (init.method && init.method !== "GET")
+          fullDashboard
+            ? !fullPortalPathAllowed(path) ||
+              !["GET", "HEAD", "POST", "PATCH", "PUT", "DELETE"].includes(
+                init.method || "GET",
+              )
+            : !/^\/(me|overview|sales\/(daily|dishes))(\?|$)/.test(path) ||
+              (init.method && init.method !== "GET")
         )
           throw new TenantApiError(
             "Раздел ещё не подключён для этой компании",
             403,
           );
         const response = await fetch(
-          `${apiOrigin}/api/saas-tenant/${encodeURIComponent(slug)}/dashboard${path}`,
+          fullDashboard
+            ? `${apiOrigin}/api${path}`
+            : `${apiOrigin}/api/saas-tenant/${encodeURIComponent(slug)}/dashboard${path}`,
           {
             ...init,
             credentials: apiOrigin ? "include" : "same-origin",
+            redirect: "error",
+            headers: {
+              "Content-Type": "application/json",
+              ...Object.fromEntries(new Headers(init.headers).entries()),
+              ...(fullDashboard &&
+              !["GET", "HEAD"].includes(init.method || "GET")
+                ? { "X-CSRF-Token": csrf }
+                : {}),
+            },
           },
         );
         init.signal?.throwIfAborted();
+        if (
+          fullDashboard &&
+          path === "/profile/password" &&
+          [200, 503].includes(response.status)
+        ) {
+          const update = await response
+            .clone()
+            .json()
+            .catch(() => null);
+          if (
+            typeof update?.csrf_token === "string" &&
+            update.csrf_token.length > 0
+          ) {
+            // Password changes rotate the opaque cookie, including partial success.
+            // Prevent an older in-flight session read from restoring its old CSRF.
+            ++sessionGeneration;
+            csrf = update.csrf_token;
+          }
+        }
         if (!response.ok) {
           const detail = (await response.json().catch(() => null))?.detail;
           if (response.status === 401) onSessionLost();
@@ -188,6 +295,7 @@ export function createTenantApi(slug: string, apiOrigin = "") {
               : detail?.message || "Не удалось получить данные компании",
             response.status,
             detail?.code,
+            detail,
           );
         }
         return response;

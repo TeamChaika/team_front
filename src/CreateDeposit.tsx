@@ -14,13 +14,18 @@ import {
 import { IconCopy } from "@tabler/icons-react";
 import { IMaskInput } from "react-imask";
 import { api, ApiError, money } from "./api";
+import { getDashboardRuntime } from "./dashboardRuntime";
+import { depositGuestLink } from "./tenantGuestPayment";
+import { tenantDateTime } from "./tenantPaymentDates";
 
 export function CreateDeposit({
   venues,
+  timezone = "Europe/Simferopol",
   onClose,
   onCreated,
 }: {
   venues: string[];
+  timezone?: string;
   onClose: () => void;
   onCreated: () => void;
 }) {
@@ -39,6 +44,7 @@ export function CreateDeposit({
     id: string;
     amount: number;
     restaurant: string;
+    guest_url?: string | null;
   } | null>(null);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
@@ -47,7 +53,12 @@ export function CreateDeposit({
   const field = (key: keyof typeof draft, value: string) =>
     setDraft((old) => ({ ...old, [key]: value }));
   const link = result
-    ? `https://pay.chaika.team/deposit/${encodeURIComponent(result.id)}`
+    ? (depositGuestLink(
+        result.id,
+        result.guest_url,
+        !!getDashboardRuntime(),
+        window.location.origin,
+      ) ?? "")
     : "";
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -69,6 +80,7 @@ export function CreateDeposit({
         id: string;
         amount: number;
         restaurant: string;
+        guest_url?: string | null;
       }>("/deposits", {
         method: "POST",
         body: JSON.stringify({
@@ -78,7 +90,7 @@ export function CreateDeposit({
           amount: Number(draft.amount),
           restaurant: draft.venue,
           reservation_date: draft.date
-            ? `${draft.date}T${draft.time || "12:00"}:00+03:00`
+            ? tenantDateTime(draft.date, draft.time || "12:00", timezone)
             : null,
           notes: draft.notes.trim() || null,
         }),
@@ -126,8 +138,10 @@ export function CreateDeposit({
       {result ? (
         <Stack>
           <Alert color="teal">
-            Ссылка для гостя готова. {result.restaurant} ·{" "}
-            {money(result.amount)} ₽
+            {link
+              ? "Ссылка для гостя готова."
+              : "Депозит сохранён. Ссылка для оплаты недоступна; обратитесь к администратору."}{" "}
+            {result.restaurant} · {money(result.amount)} ₽
           </Alert>
           <TextInput
             label="Ссылка для оплаты"
@@ -135,11 +149,17 @@ export function CreateDeposit({
             readOnly
             onFocus={(e) => e.currentTarget.select()}
           />
-          <Button leftSection={<IconCopy size={16} />} onClick={copy}>
+          <Button
+            leftSection={<IconCopy size={16} />}
+            onClick={copy}
+            disabled={!link}
+          >
             {copied ? "Ссылка скопирована" : "Скопировать ссылку гостю"}
           </Button>
           <Text size="sm" c="dimmed">
-            Отправьте ссылку гостю. Оплата откроется на pay.chaika.team.
+            {link
+              ? "Отправьте эту ссылку гостю для оплаты депозита."
+              : "Проверьте настройки оплаты компании."}
           </Text>
           <Group>
             <Button
@@ -237,7 +257,7 @@ export function CreateDeposit({
               />
               <TextInput
                 label="Время бронирования"
-                description="Крым, UTC+3"
+                description={timezone}
                 type="time"
                 value={draft.time}
                 onChange={(e) => field("time", e.currentTarget.value)}

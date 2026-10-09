@@ -205,12 +205,43 @@ small {
   border-top: 1px solid var(--border);
   padding: 18px 8px;
 }
-.user-card-profile { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; color: inherit; text-decoration: none; border-radius: 7px; }
-.user-card-profile:hover, .user-card-profile:focus-visible { color: #d9e9f7; }
-.user-card-profile > span { min-width: 0; }
-.user-card-profile strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.profile-nav-link { display: flex; align-items: center; gap: 10px; padding: 11px 12px; border-radius: 7px; color: #96a9c1; font-size: 12px; text-decoration: none; }
-.profile-nav-link:hover, .profile-nav-link.active { background: #193246; color: #75dbef; }
+.user-card-profile {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 7px;
+}
+.user-card-profile:hover,
+.user-card-profile:focus-visible {
+  color: #d9e9f7;
+}
+.user-card-profile > span {
+  min-width: 0;
+}
+.user-card-profile strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.profile-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  border-radius: 7px;
+  color: #96a9c1;
+  font-size: 12px;
+  text-decoration: none;
+}
+.profile-nav-link:hover,
+.profile-nav-link.active {
+  background: #193246;
+  color: #75dbef;
+}
 .user-card strong {
   display: block;
   font-size: 11px;
@@ -1399,4 +1430,44 @@ pre {
   line-height: 1.3;
   overflow-wrap: anywhere;
   color: var(--text);
+}
+
+.tenant-owner-banner {
+  position: sticky;
+  top: 0;
+  z-index: 45;
+  min-height: 40px;
+  padding: 8px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: #12303d;
+  color: #daf3f3;
+  font-size: 12px;
+}
+.tenant-setup-notice {
+  margin: 0;
+  padding: 12px 20px;
+  background: #303023;
+  color: #efe0b5;
+  font-size: 13px;
+}
+@media (min-width: 721px) {
+  .tenant-setup-notice {
+    padding-left: 278px;
+  }
+}
+.tenant-owner-banner > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tenant-owner-banner a {
+  flex-shrink: 0;
+  color: #82e1e5;
+}
+body:has(.tenant-owner-banner) .tenant-dashboard .sidebar {
+  top: 40px;
 }

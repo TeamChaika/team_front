@@ -1,3 +1,4 @@
+import SaasCompanyModuleSettings from "./SaasCompanyModuleSettings";
 import { useEffect, useRef, useState } from "react";
 import { api } from "./saasAdminApi";
 import {
@@ -110,6 +111,16 @@ export default function SaasAdminAccess({
     !!company.primary_admin?.email.trim();
   return (
     <section className="sa-admin-access">
+      {company.domain && (
+        <a
+          className="sa-text-button"
+          href={`https://${company.domain}/?owner_login=1`}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Открыть кабинет клиента
+        </a>
+      )}
       <h3>Доступ администратора</h3>
       {loading ? (
         <p className="sa-hint" role="status">
@@ -318,6 +329,12 @@ export default function SaasAdminAccess({
           </div>
         </div>
       )}
+      <SaasCompanyModuleSettings
+        key={company.id}
+        companyId={company.id}
+        version={company.version}
+        onVersion={onVersion}
+      />
     </section>
   );
 }

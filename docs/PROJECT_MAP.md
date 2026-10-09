@@ -8,6 +8,7 @@
 | --- | --- |
 | Маршруты, меню, доступ к разделам, сессия | [App.tsx](../src/App.tsx), [interface.md](CODEMAPS/interface.md) |
 | Личный кабинет, пароль и Telegram | [ProfilePage.tsx](../src/ProfilePage.tsx), [PasswordForm.tsx](../src/PasswordForm.tsx), [App.tsx](../src/App.tsx), [api.ts](../src/api.ts) |
+| Tenant: восстановление до входа | `main.tsx`, `TenantPasswordRecovery.tsx`, `tenantRecoveryRequest.ts`; только точные `/forgot-password` и `/reset-password` после company context + full readiness, свои API/бот, запросы без cookies, бренд компании |
 | Забытый пароль через Telegram | [PasswordRecovery.tsx](../src/PasswordRecovery.tsx), [passwordRecoveryRules.ts](../src/passwordRecoveryRules.ts); публичные `/forgot-password`, `/reset-password`, API `/auth/recovery/*` |
 | Общие фильтры заведений и дат | [App.tsx](../src/App.tsx), [RestaurantPicker.tsx](../src/RestaurantPicker.tsx) |
 | Обзор и карточки | [Overview.tsx](../src/Overview.tsx), [interface.md](CODEMAPS/interface.md) |
@@ -64,6 +65,7 @@
 ### Доступ администратора компании (08.10.2026)
 
 - [SaasAdminAccess.tsx](../src/SaasAdminAccess.tsx): отдельная секция карточки «Доступ администратора». GET `/companies/{id}/admin-access`, явный POST создания по сохранённому контакту, POST `/reset` с подтверждением завершения прежних сеансов. Обе записи используют `expected_version`, новая версия обновляет карточку/историю; сохранение контакта само по себе аккаунт не создаёт.
+- [SaasCompanyModuleSettings.tsx](../src/SaasCompanyModuleSettings.tsx): настройки собственного продавца, Telegram-бота и ИИ в карточке компании. Owner-only GET/PATCH `/companies/{id}/module-settings`, оптимистичная версия; секреты вводятся для замены, пустое поле сохраняет прежний секрет, отдельная команда удаляет его. Ключи не возвращаются и не сохраняются браузером; смена провайдера удаляет старый ключ. Сохранение требует повторной проверки запуска компании.
 - Временный пароль возвращается только после создания/сброса, показывается в закрываемом диалоге вместе с логином, ссылкой входа и копированием. Он хранится только в состоянии компонента; закрытие диалога, смена компании и выход уничтожают это состояние. В браузерные хранилища пароль не записывается. Срок 72 часа, при первом входе обязательна смена.
 - [SaasAdminMain.tsx](../src/SaasAdminMain.tsx) выбирает отдельный [SaasTenant.tsx](../src/SaasTenant.tsx) для `/tenant/{slug}`. Ссылка владельца открывает вход в новой вкладке на текущем origin сервиса; зарегистрированный удалённый домен не считается готовым tenant-сервисом.
 - [saasTenantApi.ts](../src/saasTenantApi.ts): только `/api/saas-tenant/{slug}/auth/{login,me,password,logout}` и `/workspace`, свой CSRF и отдельная серверная cookie. API владельца для tenant-входа не вызывается. `must_change_password` допускает только смену пароля или выход; постоянный пароль от 8 символов, с подтверждением. Workspace получает только имя/идентификатор своей компании и выбранные модули, показывает ожидающее подключение данных. Production dashboard и учебные бизнес-данные не подключаются.
@@ -100,3 +102,66 @@
 - Стили light SaaS из `saasAdmin.css` ограничены собственными `.sa-auth`, `.sa-app` (корень owner shell), `.sa-overlay` и историческим `.sa-tenant-workspace`. Базовые заголовки, controls, таблицы и media-правила не затрагивают общий тёмный App после входа; body margin меняется только при непосредственном SaaS-корне. `tests/saasStyleIsolation.test.mjs` запрещает глобальные SaaS-селекторы и проверяет owner theme root.
 - Tenant runtime последовательно отправляет GET overview/sales одной компании, чтобы параллельные текущий обзор и 30-дневный тренд не конкурировали за iiko connection lock. Очередь принадлежит конкретному runtime; auth не ожидает отчётов, отменённые ожидающие запросы не выполняются, ошибка одного отчёта не блокирует следующий. Это локальная очередь браузера; backend остаётся ответственным за кеш и конкуренцию между вкладками.
 - Для tenant Overview сначала получает выбранный период; 30-дневный тренд запрашивается лишь после успешного ответа, совпадающего с текущими датами. Ошибка или смена периода не запускают тренд по старому ответу. Обычный dashboard сохраняет параллельную загрузку, совпадение выбранного и трендового периода по-прежнему использует один запрос.
+
+### Подписка и возможности (локальная основа, 08.10.2026)
+
+`SaasEntitlements.tsx` — редактор подписки для служебной карточки компании:
+серверный каталог `/api/saas-admin/entitlements/catalog`, выбор именованного плана,
+статус, даты/часовой пояс и раскрываемые исключения возможностей с UTC сроком.
+Сохраняется через существующий versioned save карточки, без клиентского каталога
+или прямой записи в БД. `saasEntitlementsModel.ts` формирует изменения;
+`saasAdminModel.ts` сохраняет дополнительные поля при normalizeCompany.
+Старые карточки сохраняют legacy до явного выбора плана; новая форма предлагает
+analytics. Пять модульных переключателей остаются верхней границей доступа.
+`tests/saasEntitlements.test.mjs` проверяет сохранение политики и исключений,
+удаление исключения при inherit и отсутствие скрытого перехода legacy.
+
+### Глобальный владелец SaaS (локальная подготовка)
+
+- `platformSso.ts`: target-side state/nonce/PKCE, временный browser proof, очистка fragment до обмена, одноразовый POST своему API. Пароль/JWT/refresh/code в storage не записываются.
+- `PlatformSsoAuthorize.tsx` → `/sso/authorize` на центральном origin: подтверждение owner session либо единый вход владельца, авторизация по CSRF, возврат только на server-derived зарегистрированный origin.
+- `SaasAdminAccess.tsx`: «Открыть кабинет клиента» запускает вход через frontend клиента. `SaasTenant.tsx`: кнопка центрального входа, обмен callback и постоянный видимый company/owner context + возврат в SaaS. `main.tsx`/`SaasAdminMain.tsx` передают company UUID и platform origin из проверенного context.
+- `tests/platformSso.test.mjs`: proof uniqueness, StrictMode single start/exchange, state/nonce/company rejection, own API + credentials, очистка URL. Это локальная проверка; полный business runtime и реальный cross-domain переход проверяются отдельно.
+
+### Полный tenant adapter — локальная интеграция 08.10.2026
+
+Серверный context `full_dashboard_ready` включает полный адаптер в
+`saasTenantApi.ts`/`SaasTenant.tsx`; `full_dashboard_available` сохраняет тот же
+интерфейс истории после изменения настроек, когда новая готовность ещё не
+подтверждена. `setup_available` открывает platform owner только «Управление» и
+профиль для первоначальной настройки. Эти значения передают обе точки входа:
+`main.tsx` и `SaasAdminMain.tsx`. Без них остаётся ограниченный Overview/Sales.
+Полный адаптер направляет существующий `api.ts`
+в свой `/api/*`, сохраняет body/AbortSignal, принудительно использует точный API
+origin компании, credentials, собственный текущий CSRF для изменений и запрещает
+redirect. `dashboardRuntime.ts` закрывает SaaS/чужой tenant/auth namespaces,
+неизвестные API roots и обход пути. Сервер обязан независимо проверить те же
+границы, сотрудника/склады и купленные возможности.
+
+`TenantDashboard.tsx` подключает тот же App. В полном режиме App использует
+разделы/права `/me`, включает существующие профиль/помощник и проверку сессии;
+старый ограниченный режим сохраняется. Компания отображается вместо бренда
+Чайки, provider/page keys включают компанию и пользователя. Ошибки tenant
+транспорта переводятся `api.ts` в прежний ApiError с detail/employee_pending,
+чтобы экраны документов/сотрудников сохраняли прежние проверки. Tests:
+`tenantFullDashboard.test.mjs`, прежний `tenantDashboard.test.mjs`.
+
+В `SaasAdminForm.tsx` редактор SaasEntitlements встроен в третью вкладку после
+модульных переключателей. Новый POST компании требует `plans_v1`/существующий
+server plan; прежние записи допускают legacy при изменении. Каталог требует
+входа владельца. Наличие UI полного adapter не доказывает готовность серверных
+модулей/реальных подключений и не включает production readiness автоматически.
+
+SaaS onboarding status in company card: `SaasProvisioning.tsx` →
+`saasAdminApi.ts` → owner GET `companies/{id}/provisioning`, versioned POST
+`…/start` / `…/retry`. Shows durable stage progress, safe error, operator-configured
+DNS records and explicit terminal readiness; polls while pending/running.
+
+Tenant управление терминалами: `ManagementPage.tsx` содержит проверку сохранённого ключа через `/payment-settings/venues/{uuid}/terminals/{uuid}/validate` без создания платежа. Тестовый/рабочий режим обозначен отдельно; основной терминал не означает подтверждённую готовность реального платежа.
+
+`ManagementPage setupOnly` показывает только свои заведения и терминалы;
+`App` ограничивает меню и прямые маршруты, сервер повторяет ограничения независимо.
+Постоянный banner глобального владельца учитывается при позиционировании sidebar
+и на мобильном экране. Собранный frontend проверяется в
+`tests/browser/tenantDashboard.smoke.mjs`; запуск и границы синтетической проверки
+описаны в `tests/browser/README.md`.

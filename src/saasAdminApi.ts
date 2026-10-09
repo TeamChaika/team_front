@@ -1,3 +1,5 @@
+import type { ModuleSettings } from "./companyModuleSettingsModel";
+import type { ProvisioningStatus } from "./SaasProvisioning";
 import { normalizeCompany } from "./saasAdminModel";
 import type {
   AuditEvent,
@@ -63,6 +65,28 @@ async function request<T>(
   return response.status === 204 ? (undefined as T) : await response.json();
 }
 export const api = {
+  moduleSettings: (id: string, signal?: AbortSignal) =>
+    request<ModuleSettings>(
+      `/companies/${id}/module-settings`,
+      "GET",
+      undefined,
+      signal,
+    ),
+  saveModuleSettings: (id: string, body: unknown) =>
+    request<ModuleSettings>(`/companies/${id}/module-settings`, "PATCH", body),
+  provisioning: (id: string, signal?: AbortSignal) =>
+    request<ProvisioningStatus>(
+      `/companies/${id}/provisioning`,
+      "GET",
+      undefined,
+      signal,
+    ),
+  startProvisioning: (id: string, version: number, retry = false) =>
+    request<ProvisioningStatus>(
+      `/companies/${id}/provisioning/${retry ? "retry" : "start"}`,
+      "POST",
+      { expected_version: version },
+    ),
   me: () => request<{ user: User; csrf_token: string }>("/auth/me"),
   login: (username: string, password: string) =>
     request<{ user: User; csrf_token: string }>("/auth/login", "POST", {

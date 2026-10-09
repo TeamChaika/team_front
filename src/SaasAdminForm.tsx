@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { IconPlus, IconX, IconTrash } from "@tabler/icons-react";
+import SaasEntitlements from "./SaasEntitlements";
 import { ConnectionEditor } from "./SaasAdminConnection";
 import { api, ApiError } from "./saasAdminApi";
 import {
@@ -432,41 +433,13 @@ export default function SaasAdminForm({
                     </label>
                   ))}
                 </div>
-                <h3>Подписка</h3>
-                <label className="sa-field">
-                  План
-                  <input
-                    value={value.subscription.plan}
-                    placeholder="Название плана"
-                    onChange={(e) =>
-                      change("subscription", {
-                        ...value.subscription,
-                        plan: e.target.value,
-                      })
-                    }
-                  />
-                </label>
-                <div className="sa-form-grid">
-                  {(["start_date", "end_date"] as const).map((key, i) => (
-                    <label className="sa-field" key={key}>
-                      {i ? "Дата окончания" : "Дата начала"}
-                      <input
-                        type="date"
-                        aria-invalid={!!errors[key]}
-                        value={value.subscription[key] || ""}
-                        onChange={(e) =>
-                          change("subscription", {
-                            ...value.subscription,
-                            [key]: e.target.value || null,
-                          })
-                        }
-                      />
-                      {errors[key] && (
-                        <span className="sa-field-error">{errors[key]}</span>
-                      )}
-                    </label>
-                  ))}
-                </div>
+                <SaasEntitlements
+                  value={value}
+                  onChange={(subscription) =>
+                    change("subscription", subscription)
+                  }
+                  disabled={saving}
+                />
               </>
             )}
           </div>

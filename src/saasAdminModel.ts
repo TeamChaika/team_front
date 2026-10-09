@@ -31,6 +31,14 @@ export type CompanyWrite = {
   };
   subscription: {
     plan: string;
+    policy?: "legacy" | "plans_v1";
+    plan_id?: string | null;
+    status?: "active" | "suspended" | "cancelled";
+    timezone?: string;
+    overrides?: Record<
+      string,
+      { mode: "allow" | "deny" | "inherit"; expires_at: string | null }
+    >;
     start_date: string | null;
     end_date: string | null;
   };
@@ -42,7 +50,13 @@ export type Company = CompanyWrite & {
   created_at: string;
   updated_at: string;
   archived_at: string | null;
-  subscription_state: "not_set" | "scheduled" | "active" | "expired";
+  subscription_state:
+    | "not_set"
+    | "scheduled"
+    | "active"
+    | "expired"
+    | "suspended"
+    | "cancelled";
   integration_state: "not_configured" | "not_checked" | "ok" | "failed";
 };
 export type User = { id: string; username: string; display_name: string };
@@ -60,6 +74,8 @@ export const statusLabels: Record<Status, string> = {
   suspended: "Приостановлена",
 };
 export const subscriptionLabels = {
+  suspended: "Приостановлена",
+  cancelled: "Отменена",
   not_set: "Не задана",
   scheduled: "Запланирована",
   active: "Активна",
@@ -93,7 +109,16 @@ export const emptyCompany = (): CompanyWrite => ({
     finance: false,
     deposits: false,
   },
-  subscription: { plan: "", start_date: null, end_date: null },
+  subscription: {
+    plan: "",
+    policy: "plans_v1",
+    plan_id: "analytics",
+    status: "active",
+    timezone: "Europe/Simferopol",
+    overrides: {},
+    start_date: null,
+    end_date: null,
+  },
   notes: "",
 });
 export function normalizeCompany(value: CompanyWrite): CompanyWrite {
@@ -144,6 +169,30 @@ export function normalizeCompany(value: CompanyWrite): CompanyWrite {
       deposits: value.modules.deposits,
     },
     subscription: {
+      ...(value.subscription.policy !== undefined
+        ? { policy: value.subscription.policy }
+        : {}),
+      ...(value.subscription.plan_id !== undefined
+        ? { plan_id: value.subscription.plan_id }
+        : {}),
+      ...(value.subscription.status !== undefined
+        ? { status: value.subscription.status }
+        : {}),
+      ...(value.subscription.timezone !== undefined
+        ? { timezone: value.subscription.timezone }
+        : {}),
+      ...(value.subscription.overrides !== undefined
+        ? {
+            overrides: Object.fromEntries(
+              Object.entries(value.subscription.overrides).map(
+                ([id, override]) => [
+                  id,
+                  { mode: override.mode, expires_at: override.expires_at },
+                ],
+              ),
+            ),
+          }
+        : {}),
       start_date: value.subscription.start_date,
       end_date: value.subscription.end_date,
       plan: value.subscription.plan.trim(),

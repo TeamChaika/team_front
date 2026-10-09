@@ -13,20 +13,31 @@ import "./styles.css";
 export default function TenantDashboard({
   runtime,
   companyName,
+  companyId,
   logout,
   error,
   basename,
+  setupOnly = false,
 }: {
   runtime: DashboardRuntime;
   companyName: string;
+  companyId: string;
   logout: () => Promise<void>;
   error?: string;
   basename: string;
+  setupOnly?: boolean;
 }) {
   const [ready, setReady] = useState(false);
   const tenant = useMemo(
-    () => ({ companyName, logout, error }),
-    [companyName, logout, error],
+    () => ({
+      companyName,
+      companyId,
+      logout,
+      error,
+      fullDashboard: runtime.fullDashboard === true,
+      setupOnly,
+    }),
+    [companyName, companyId, logout, error, runtime.fullDashboard, setupOnly],
   );
   useEffect(() => {
     const dispose = installDashboardRuntime(runtime);

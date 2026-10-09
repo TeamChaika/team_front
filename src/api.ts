@@ -85,7 +85,30 @@ async function request(
   retry = true,
 ): Promise<Response> {
   const runtime = getDashboardRuntime();
-  if (runtime) return runtime.request(path, init);
+  if (runtime) {
+    try {
+      return await runtime.request(path, init);
+    } catch (error) {
+      // Existing business screens retain their error contracts with tenant transport.
+      if (
+        error instanceof Error &&
+        "status" in error &&
+        typeof error.status === "number"
+      ) {
+        const detail = "detail" in error ? error.detail : undefined;
+        throw new ApiError(
+          error.message,
+          error.status,
+          !!detail &&
+            typeof detail === "object" &&
+            "employee_pending" in detail &&
+            detail.employee_pending === true,
+          detail,
+        );
+      }
+      throw error;
+    }
+  }
   const send = () =>
     fetch(apiBase + path, {
       ...init,

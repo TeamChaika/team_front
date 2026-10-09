@@ -25,10 +25,18 @@ import { Feedback, PageTitle } from "./pages";
 import { useData } from "./useData";
 import { CreateDeposit } from "./CreateDeposit";
 import { todayReservation } from "./depositDates";
+import { getDashboardRuntime } from "./dashboardRuntime";
+import { depositGuestLink } from "./tenantGuestPayment";
+import {
+  tenantDateTime,
+  tenantToday,
+  tenantDateText,
+} from "./tenantPaymentDates";
 import "./deposits.css";
 
 type Deposit = {
   id: string;
+  guest_url?: string | null;
   customer_name: string;
   phone: string;
   amount: number;
@@ -80,17 +88,33 @@ function Status({ value }: { value: string }) {
     </Badge>
   );
 }
-const guestLink = (id: string) =>
-  `https://pay.chaika.team/deposit/${encodeURIComponent(id)}`;
 
-function DepositCard({ id, onClose }: { id: string; onClose: () => void }) {
+function DepositCard({
+  id,
+  onClose,
+  timezone,
+}: {
+  id: string;
+  onClose: () => void;
+  timezone: string;
+}) {
   const state = useData<Deposit>(`/deposits/${encodeURIComponent(id)}`);
   const [copied, setCopied] = useState(false),
     [error, setError] = useState("");
   const item = state.data;
+  const link = item
+    ? depositGuestLink(
+        item.id,
+        item.guest_url,
+        !!getDashboardRuntime(),
+        window.location.origin,
+      )
+    : null;
+  const displayDate = (value: string | null) =>
+    getDashboardRuntime() ? tenantDateText(value, timezone) : dateText(value);
   async function copy() {
     try {
-      await navigator.clipboard.writeText(guestLink(id));
+      await navigator.clipboard.writeText(link ?? "");
       setCopied(true);
       setError("");
     } catch {
@@ -122,11 +146,11 @@ function DepositCard({ id, onClose }: { id: string; onClose: () => void }) {
               <dt>Заведение</dt>
               <dd>{item.restaurant}</dd>
               <dt>Бронирование</dt>
-              <dd>{dateText(item.reservation_date)}</dd>
+              <dd>{displayDate(item.reservation_date)}</dd>
               <dt>Создан</dt>
-              <dd>{dateText(item.created_at)}</dd>
+              <dd>{displayDate(item.created_at)}</dd>
               <dt>Оплачен</dt>
-              <dd>{dateText(item.paid_at)}</dd>
+              <dd>{displayDate(item.paid_at)}</dd>
               <dt>Комментарий</dt>
               <dd className="deposit-note">{item.notes || "—"}</dd>
             </dl>
@@ -140,18 +164,20 @@ function DepositCard({ id, onClose }: { id: string; onClose: () => void }) {
                 variant="light"
                 leftSection={<IconCopy size={16} />}
                 onClick={copy}
+                disabled={!link}
               >
                 {copied ? "Ссылка скопирована" : "Скопировать ссылку гостю"}
               </Button>
               <Button
                 component="a"
-                href={guestLink(id)}
+                href={link ?? undefined}
+                disabled={!link}
                 target="_blank"
                 rel="noopener noreferrer"
                 variant="subtle"
                 leftSection={<IconExternalLink size={16} />}
               >
-                Открыть на pay.chaika.team
+                Открыть оплату
               </Button>
             </Group>
           </Stack>
@@ -174,18 +200,31 @@ export function DepositsPage() {
     [notice, setNotice] = useState("");
   const venues = useData<string[]>("/deposits/venues");
   const creationVenues = useData<string[]>("/deposits/creation-venues");
-  const permissions = useData<{ can_manage_access: boolean }>(
-    "/deposits/permissions",
-  );
+  const permissions = useData<{
+    can_manage_access: boolean;
+    timezone?: string;
+    today?: string;
+  }>("/deposits/permissions");
+  const timezone = permissions.data?.timezone ?? "Europe/Simferopol";
+  const tenant = !!getDashboardRuntime();
+  const displayDate = (value: string | null) =>
+    tenant ? tenantDateText(value, timezone) : dateText(value);
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) {
     if (value)
       params.set(
         key,
         key === "date_from"
-          ? `${value}T00:00:00+03:00`
+          ? tenant
+            ? tenantDateTime(value, "00:00", timezone)
+            : `${value}T00:00:00+03:00`
           : key === "date_to"
-            ? `${value}T23:59:59.999999+03:00`
+            ? tenant
+              ? tenantDateTime(value, "23:59", timezone).replace(
+                  ":00.000Z",
+                  ":59.999Z",
+                )
+              : `${value}T23:59:59.999999+03:00`
             : value,
       );
   }
@@ -233,7 +272,9 @@ export function DepositsPage() {
     applyFilters(draft);
   }
   function showToday() {
-    const today = todayReservation();
+    const today =
+      permissions.data?.today ??
+      (tenant ? tenantToday(timezone) : todayReservation());
     applyFilters({
       ...draft,
       date_from: "",
@@ -310,8 +351,8 @@ export function DepositsPage() {
         }
       />
       <Text size="sm" c="dimmed" mb="lg">
-        Здесь показаны доступные вам заведения. Гости оплачивают по прежним
-        ссылкам на pay.chaika.team.
+        Здесь показаны доступные вам заведения и сохранённые ссылки для оплаты
+        гостями.
       </Text>
       {(error || permissions.error || venues.error || creationVenues.error) && (
         <Alert color="red" role="alert" mb="md">
@@ -469,7 +510,7 @@ export function DepositsPage() {
               <tbody>
                 {state.data.items.map((d) => (
                   <tr key={d.id}>
-                    <td>{dateText(d.created_at)}</td>
+                    <td>{displayDate(d.created_at)}</td>
                     <td>
                       <button
                         className="deposit-guest"
@@ -484,8 +525,8 @@ export function DepositsPage() {
                     <td>
                       <Status value={d.status} />
                     </td>
-                    <td>{dateText(d.reservation_date)}</td>
-                    <td>{dateText(d.paid_at)}</td>
+                    <td>{displayDate(d.reservation_date)}</td>
+                    <td>{displayDate(d.paid_at)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -535,12 +576,14 @@ export function DepositsPage() {
         <DepositCard
           key={selected}
           id={selected}
+          timezone={timezone}
           onClose={() => setSelected(null)}
         />
       )}
       {creating && (
         <CreateDeposit
           venues={creationVenues.data ?? []}
+          timezone={timezone}
           onClose={() => setCreating(false)}
           onCreated={state.reload}
         />
