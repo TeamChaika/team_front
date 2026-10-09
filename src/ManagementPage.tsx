@@ -635,7 +635,14 @@ export function ManagementPage({
     [validatingTerminal, setValidatingTerminal] = useState<string | null>(null);
   async function load() {
     const [a, v] = await Promise.all([
-      api<Directory>("/management/accounts"),
+      setupOnly
+        ? Promise.resolve<Directory>({
+            users: [],
+            sections: [],
+            departments: [],
+            venues: [],
+          })
+        : api<Directory>("/management/accounts"),
       api<Configuration>("/management/venues"),
     ]);
     setDirectory(a);
@@ -643,7 +650,7 @@ export function ManagementPage({
   }
   useEffect(() => {
     load().catch((e) => setError(e.message));
-  }, []);
+  }, [setupOnly]);
   async function validateTerminal(current: Terminal) {
     setValidatingTerminal(current.id);
     setError("");
@@ -705,6 +712,7 @@ export function ManagementPage({
         <Loader />
       ) : (
         <Tabs
+          key={setupOnly ? "setup" : "full"}
           defaultValue={setupOnly ? "venues" : "accounts"}
           keepMounted={false}
         >

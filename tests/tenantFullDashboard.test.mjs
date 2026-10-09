@@ -269,3 +269,91 @@ test("history fallback remains readable but never permits new mutations", async 
     (error) => error.code === "feature_setup_required",
   );
 });
+
+test("report POST requests use read readiness without permitting mutations", async (t) => {
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (url) => {
+    calls.push(url);
+    return Response.json({});
+  });
+  const readiness = {
+    "analytics.indicators": {
+      state: "ready",
+      read: true,
+      write: false,
+      reasons: [],
+    },
+    "analytics.sales": {
+      state: "ready",
+      read: true,
+      write: false,
+      reasons: [],
+    },
+  };
+  const adapter = createTenantApi("working").dashboardRuntime(
+    () => {},
+    () => {},
+    true,
+    readiness,
+  );
+  for (const path of [
+    "/discount-details",
+    "/indicators/query",
+    "/indicators/metric/revenue",
+    "/indicators/options/payment",
+  ])
+    await adapter.request(path, { method: "POST" });
+  await assert.rejects(
+    adapter.request("/indicators/unknown", { method: "POST" }),
+  );
+  assert.equal(calls.length, 4);
+  const history = createTenantApi("history").dashboardRuntime(
+    () => {},
+    () => {},
+    true,
+    readiness,
+    true,
+  );
+  await history.request("/indicators/query", { method: "POST" });
+});
+
+test("owner setup bypass is limited to exact configuration routes", async (t) => {
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (url) => {
+    calls.push(url);
+    return Response.json({});
+  });
+  const owner = createTenantApi("working").dashboardRuntime(
+    () => {},
+    () => {},
+    true,
+    {},
+    false,
+    true,
+  );
+  const uuid = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  await owner.request(`/management/venues/${uuid}`, { method: "POST" });
+  await owner.request(
+    `/payment-settings/venues/${uuid}/terminals/${uuid}/validate`,
+    { method: "POST" },
+  );
+  await assert.rejects(
+    owner.request("/management/accounts", { method: "POST" }),
+  );
+  await assert.rejects(
+    owner.request(
+      `/payment-settings/venues/${uuid}/terminals/${uuid}/unknown`,
+      { method: "POST" },
+    ),
+  );
+  const member = createTenantApi("working").dashboardRuntime(
+    () => {},
+    () => {},
+    true,
+    {},
+  );
+  await assert.rejects(
+    member.request(`/management/venues/${uuid}`, { method: "POST" }),
+  );
+  assert.equal(calls.length, 2);
+});

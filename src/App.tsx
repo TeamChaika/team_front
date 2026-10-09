@@ -267,6 +267,7 @@ export type TenantDashboardOptions = {
   fullDashboard?: boolean;
   featureReadiness?: FeatureReadiness;
   preserveHistoryReads?: boolean;
+  ownerSetupAvailable?: boolean;
   setupOnly?: boolean;
   logout: () => Promise<void>;
   error?: string;
@@ -557,7 +558,9 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
     tenant?.setupOnly
       ? s.path === "/management" && meta.can_manage
       : s.path === "/management"
-        ? meta.can_manage && tenantSectionReady(featureReadiness, "management")
+        ? tenant?.ownerSetupAvailable ||
+          (meta.can_manage &&
+            tenantSectionReady(featureReadiness, "management"))
         : allowed.includes(s.path.slice(1) || "overview"),
   );
   const currentSection =
@@ -569,7 +572,9 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
       ? (!tenant || tenant.fullDashboard === true) &&
         tenantSectionReady(featureReadiness, "profile")
       : currentSection === "management"
-        ? meta.can_manage && tenantSectionReady(featureReadiness, "management")
+        ? tenant?.ownerSetupAvailable ||
+          (meta.can_manage &&
+            tenantSectionReady(featureReadiness, "management"))
         : allowed.includes(currentSection);
   if (!currentAllowed && availableSections.length)
     return <Navigate to={availableSections[0].path} replace />;
@@ -853,6 +858,10 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
                       "deposits",
                       "management",
                     ].includes(currentSection) &&
+                    !(
+                      currentSection === "management" &&
+                      tenant.ownerSetupAvailable
+                    ) &&
                     (tenant.preserveHistoryReads ||
                       !tenantSectionWriteReady(
                         featureReadiness,
@@ -898,7 +907,16 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
                           element={
                             <ManagementPage
                               documentsEnabled={meta.documents_enabled}
-                              setupOnly={tenant?.setupOnly}
+                              setupOnly={
+                                tenant?.setupOnly ||
+                                (Boolean(tenant) &&
+                                  (!meta.can_manage ||
+                                    !tenantFeatureAllowed(
+                                      featureReadiness,
+                                      "management.users",
+                                      "read",
+                                    )))
+                              }
                               onChange={() => {
                                 api<Meta>("/me")
                                   .then(setMeta)

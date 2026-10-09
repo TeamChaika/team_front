@@ -23,6 +23,7 @@ export default function SaasTenant({
   fullDashboardAvailable = false,
   featureReadiness,
   setupOnly = false,
+  setupAvailable = false,
 }: {
   slug: string;
   companyName?: string;
@@ -34,6 +35,7 @@ export default function SaasTenant({
   fullDashboardAvailable?: boolean;
   featureReadiness?: FeatureReadiness;
   setupOnly?: boolean;
+  setupAvailable?: boolean;
 }) {
   const api = useMemo(
     () => createTenantApi(slug, apiOrigin),
@@ -49,6 +51,10 @@ export default function SaasTenant({
   const preserveHistoryReads = fullAvailable && !workingAvailable && !fullReady;
   const effectiveSetupOnly =
     setupOnly && !workingAvailable && !fullReady && !fullAvailable;
+  const ownerSetupAvailable =
+    (workspace?.setup_available ?? setupAvailable) &&
+    session?.actor?.kind === "platform_owner" &&
+    !preserveHistoryReads;
   const readiness = effectiveSetupOnly
     ? undefined
     : (workspace?.feature_readiness ??
@@ -73,6 +79,7 @@ export default function SaasTenant({
         fullReady || workingAvailable || fullAvailable || effectiveSetupOnly,
         readiness,
         preserveHistoryReads,
+        ownerSetupAvailable,
       ),
     [
       api,
@@ -82,6 +89,7 @@ export default function SaasTenant({
       workingAvailable,
       readiness,
       preserveHistoryReads,
+      ownerSetupAvailable,
     ],
   );
   const [checking, setChecking] = useState(true);
@@ -368,6 +376,7 @@ export default function SaasTenant({
           <TenantDashboard
             runtime={dashboardRuntime}
             preserveHistoryReads={preserveHistoryReads}
+            ownerSetupAvailable={ownerSetupAvailable}
             setupOnly={effectiveSetupOnly}
             companyName={workspace.company.name}
             companyId={workspace.company.id}

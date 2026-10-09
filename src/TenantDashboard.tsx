@@ -19,6 +19,7 @@ export default function TenantDashboard({
   basename,
   setupOnly = false,
   preserveHistoryReads = false,
+  ownerSetupAvailable = false,
 }: {
   runtime: DashboardRuntime;
   companyName: string;
@@ -28,6 +29,7 @@ export default function TenantDashboard({
   basename: string;
   setupOnly?: boolean;
   preserveHistoryReads?: boolean;
+  ownerSetupAvailable?: boolean;
 }) {
   const [ready, setReady] = useState(false);
   const tenant = useMemo(
@@ -39,6 +41,7 @@ export default function TenantDashboard({
       fullDashboard: runtime.fullDashboard === true,
       featureReadiness: runtime.featureReadiness,
       preserveHistoryReads,
+      ownerSetupAvailable,
       setupOnly,
     }),
     [
@@ -49,6 +52,7 @@ export default function TenantDashboard({
       runtime.fullDashboard,
       runtime.featureReadiness,
       preserveHistoryReads,
+      ownerSetupAvailable,
       setupOnly,
     ],
   );

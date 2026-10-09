@@ -1,5 +1,7 @@
 import {
   tenantMutationReady,
+  tenantHistoryRequest,
+  tenantOwnerSetupMutation,
   type FeatureReadiness,
 } from "./tenantFeatureReadiness.ts";
 import {
@@ -151,6 +153,7 @@ export type TenantWorkspace = {
   admin: { id: string; username: string; display_name: string };
   mode: "local" | "production";
   business_modules_ready: boolean;
+  setup_available?: boolean;
   full_dashboard_available?: boolean;
   full_dashboard_ready?: boolean;
   working_dashboard_available?: boolean;
@@ -251,6 +254,7 @@ export function createTenantApi(slug: string, apiOrigin = "") {
       fullDashboard = false,
       featureReadiness?: FeatureReadiness,
       historyReadOnly = false,
+      ownerSetupAvailable = false,
     ): DashboardRuntime => ({
       fullDashboard,
       featureReadiness,
@@ -268,10 +272,13 @@ export function createTenantApi(slug: string, apiOrigin = "") {
             "Раздел ещё не подключён для этой компании",
             403,
           );
+        const method = init.method || "GET";
+        const ownerConfiguration =
+          ownerSetupAvailable && tenantOwnerSetupMutation(path, method);
         if (
-          (historyReadOnly &&
-            !["GET", "HEAD"].includes(init.method || "GET")) ||
-          !tenantMutationReady(featureReadiness, path, init.method || "GET")
+          (historyReadOnly && !tenantHistoryRequest(path, method)) ||
+          (!ownerConfiguration &&
+            !tenantMutationReady(featureReadiness, path, method))
         )
           throw new TenantApiError(
             "Для этого действия нужно завершить настройку раздела.",

@@ -151,17 +151,42 @@ export function tenantRouteFeatures(path: string, method: string): string[] {
   }
   return [];
 }
+export function tenantHistoryRequest(path: string, method: string) {
+  const pathname = path.split("?")[0];
+  return (
+    ["GET", "HEAD"].includes(method) ||
+    (method === "POST" &&
+      (pathname === "/discount-details" ||
+        /^\/indicators\/(query|metric\/[^/]+|options\/[^/]+)$/.test(pathname)))
+  );
+}
+export function tenantOwnerSetupMutation(path: string, method: string) {
+  if (method !== "POST") return false;
+  const pathname = path.split("?")[0];
+  if (pathname === "/profile/password") return true;
+  const uuid =
+    "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
+  return (
+    new RegExp(
+      `^/(?:payment-settings|management)/venues/${uuid}(?:/terminals/${uuid})?$`,
+    ).test(pathname) ||
+    new RegExp(
+      `^/payment-settings/venues/${uuid}/terminals/${uuid}/validate$`,
+    ).test(pathname)
+  );
+}
 export function tenantMutationReady(
   readiness: FeatureReadiness | undefined,
   path: string,
   method: string,
 ) {
   if (readiness === undefined || ["GET", "HEAD"].includes(method)) return true;
+  const operation = tenantHistoryRequest(path, method) ? "read" : "write";
   const features = tenantRouteFeatures(path, method);
   return (
     features.length > 0 &&
     features.every((feature) =>
-      tenantFeatureAllowed(readiness, feature, "write"),
+      tenantFeatureAllowed(readiness, feature, operation),
     )
   );
 }

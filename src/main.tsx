@@ -111,6 +111,7 @@ function SharedDashboard() {
       workingDashboardAvailable={entry.workingDashboardAvailable}
       featureReadiness={entry.featureReadiness}
       fullDashboardReady={entry.fullDashboardReady === true}
+      setupAvailable={entry.setupAvailable}
       setupOnly={
         entry.setupAvailable === true &&
         !entry.workingDashboardAvailable &&

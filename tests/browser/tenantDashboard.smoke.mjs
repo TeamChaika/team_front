@@ -55,6 +55,8 @@ let setupAvailable = false;
 let loggedIn = true;
 let workingAvailable;
 let contextWorkingOverride;
+let canManage = true;
+let actorKind = "platform_owner";
 let featureReadiness;
 try {
   const context = await browser.newContext({
@@ -111,7 +113,7 @@ try {
               user,
               company,
               actor: {
-                kind: "platform_owner",
+                kind: actorKind,
                 company_id: company.id,
                 auth_user_id: user.id,
               },
@@ -140,7 +142,7 @@ try {
           sales_dates: [],
           balance_dates: [],
           sections,
-          can_manage: true,
+          can_manage: canManage,
           feature_readiness: featureReadiness,
           documents_enabled: true,
           modules: ["iiko", "deposits"],
@@ -278,6 +280,65 @@ try {
   );
   assert.equal(await page.locator(".tenant-setup-notice").count(), 0);
   contextWorkingOverride = undefined;
+  canManage = false;
+  featureReadiness["management.settings"] = {
+    state: "not_checked",
+    read: false,
+    write: false,
+    reasons: ["probe"],
+  };
+  featureReadiness["management.users"] = {
+    state: "not_checked",
+    read: false,
+    write: false,
+    reasons: ["probe"],
+  };
+  await page.goto("https://client.example.test/management");
+  await page.getByRole("tab", { name: "Заведения и терминалы" }).waitFor();
+  assert.equal(
+    await page.getByRole("link", { name: "Управление", exact: true }).count(),
+    1,
+  );
+  assert.equal(
+    await page.getByRole("link", { name: "Списания", exact: true }).count(),
+    1,
+  );
+  assert.equal(
+    await page.getByRole("tab", { name: "Сотрудники и доступы" }).count(),
+    0,
+  );
+  // A ready settings feature does not grant the separate user administration feature.
+  featureReadiness["management.settings"] = {
+    state: "ready",
+    read: true,
+    write: true,
+    reasons: [],
+  };
+  canManage = true;
+  await page.reload();
+  await page.getByRole("tab", { name: "Заведения и терминалы" }).waitFor();
+  assert.equal(
+    await page.getByRole("tab", { name: "Сотрудники и доступы" }).count(),
+    0,
+  );
+  featureReadiness["management.settings"] = {
+    state: "not_checked",
+    read: false,
+    write: false,
+    reasons: ["probe"],
+  };
+  canManage = false;
+  actorKind = "company_member";
+  await page.goto("https://client.example.test/profile");
+  await page
+    .getByRole("heading", { name: "Мой профиль", exact: true })
+    .waitFor();
+  assert.equal(
+    await page.getByRole("link", { name: "Управление", exact: true }).count(),
+    0,
+  );
+  actorKind = "platform_owner";
+  canManage = true;
   workingAvailable = false;
   featureReadiness = undefined;
   available = false;
