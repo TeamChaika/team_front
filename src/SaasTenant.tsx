@@ -1,3 +1,4 @@
+import type { FeatureReadiness } from "./tenantFeatureReadiness";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import {
   createTenantApi,
@@ -18,6 +19,9 @@ export default function SaasTenant({
   platformOrigin,
   apiOrigin = "",
   fullDashboardReady = false,
+  workingDashboardAvailable = false,
+  fullDashboardAvailable = false,
+  featureReadiness,
   setupOnly = false,
 }: {
   slug: string;
@@ -26,12 +30,30 @@ export default function SaasTenant({
   platformOrigin?: string;
   apiOrigin?: string;
   fullDashboardReady?: boolean;
+  workingDashboardAvailable?: boolean;
+  fullDashboardAvailable?: boolean;
+  featureReadiness?: FeatureReadiness;
   setupOnly?: boolean;
 }) {
   const api = useMemo(
     () => createTenantApi(slug, apiOrigin),
     [slug, apiOrigin],
   );
+  const [session, setSession] = useState<TenantSession | null>(null);
+  const [workspace, setWorkspace] = useState<TenantWorkspace | null>(null);
+  const workingAvailable =
+    workspace?.working_dashboard_available ?? workingDashboardAvailable;
+  const fullReady = workspace?.full_dashboard_ready ?? fullDashboardReady;
+  const fullAvailable =
+    workspace?.full_dashboard_available ?? fullDashboardAvailable;
+  const preserveHistoryReads = fullAvailable && !workingAvailable && !fullReady;
+  const effectiveSetupOnly =
+    setupOnly && !workingAvailable && !fullReady && !fullAvailable;
+  const readiness = effectiveSetupOnly
+    ? undefined
+    : (workspace?.feature_readiness ??
+      featureReadiness ??
+      (workingAvailable ? {} : undefined));
   const dashboardRuntime = useMemo(
     () =>
       api.dashboardRuntime(
@@ -48,12 +70,20 @@ export default function SaasTenant({
               setWorkspace(null);
             });
         },
-        fullDashboardReady,
+        fullReady || workingAvailable || fullAvailable || effectiveSetupOnly,
+        readiness,
+        preserveHistoryReads,
       ),
-    [api, fullDashboardReady],
+    [
+      api,
+      fullReady,
+      fullAvailable,
+      effectiveSetupOnly,
+      workingAvailable,
+      readiness,
+      preserveHistoryReads,
+    ],
   );
-  const [session, setSession] = useState<TenantSession | null>(null);
-  const [workspace, setWorkspace] = useState<TenantWorkspace | null>(null);
   const [checking, setChecking] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -322,7 +352,7 @@ export default function SaasTenant({
             <a href={platformOrigin}>В SaaS ↗</a>
           </aside>
         )}
-        {setupOnly && (
+        {effectiveSetupOnly && (
           <p className="tenant-setup-notice">
             Настройка компании. Рабочие разделы появятся после завершения
             проверки.
@@ -337,7 +367,8 @@ export default function SaasTenant({
         >
           <TenantDashboard
             runtime={dashboardRuntime}
-            setupOnly={setupOnly}
+            preserveHistoryReads={preserveHistoryReads}
+            setupOnly={effectiveSetupOnly}
             companyName={workspace.company.name}
             companyId={workspace.company.id}
             logout={logout}

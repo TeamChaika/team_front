@@ -18,6 +18,7 @@ export default function TenantDashboard({
   error,
   basename,
   setupOnly = false,
+  preserveHistoryReads = false,
 }: {
   runtime: DashboardRuntime;
   companyName: string;
@@ -26,6 +27,7 @@ export default function TenantDashboard({
   error?: string;
   basename: string;
   setupOnly?: boolean;
+  preserveHistoryReads?: boolean;
 }) {
   const [ready, setReady] = useState(false);
   const tenant = useMemo(
@@ -35,9 +37,20 @@ export default function TenantDashboard({
       logout,
       error,
       fullDashboard: runtime.fullDashboard === true,
+      featureReadiness: runtime.featureReadiness,
+      preserveHistoryReads,
       setupOnly,
     }),
-    [companyName, companyId, logout, error, runtime.fullDashboard, setupOnly],
+    [
+      companyName,
+      companyId,
+      logout,
+      error,
+      runtime.fullDashboard,
+      runtime.featureReadiness,
+      preserveHistoryReads,
+      setupOnly,
+    ],
   );
   useEffect(() => {
     const dispose = installDashboardRuntime(runtime);

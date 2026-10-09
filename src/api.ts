@@ -1,3 +1,4 @@
+import type { FeatureReadiness } from "./tenantFeatureReadiness";
 import { getDashboardRuntime } from "./dashboardRuntime";
 export class ApiError extends Error {
   constructor(
@@ -209,6 +210,7 @@ export type DataStatus = {
   timezone?: string;
 };
 export type Meta = {
+  feature_readiness?: FeatureReadiness;
   data_status?: DataStatus;
   warehouse_scope?: { mode: "all" | "selected"; warehouse_ids: string[] };
   warehouse_capabilities?: {

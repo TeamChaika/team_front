@@ -53,6 +53,9 @@ let fullReady = true;
 let available = true;
 let setupAvailable = false;
 let loggedIn = true;
+let workingAvailable;
+let contextWorkingOverride;
+let featureReadiness;
 try {
   const context = await browser.newContext({
     viewport: { width: 1440, height: 1000 },
@@ -96,6 +99,9 @@ try {
           company,
           platform_origin: "https://platform.example.test",
           full_dashboard_ready: fullReady,
+          working_dashboard_available:
+            contextWorkingOverride ?? workingAvailable,
+          feature_readiness: featureReadiness,
           full_dashboard_available: available,
           setup_available: setupAvailable,
         });
@@ -122,7 +128,10 @@ try {
           admin: user,
           mode: "production",
           business_modules_ready: true,
+          full_dashboard_available: available,
           full_dashboard_ready: fullReady,
+          working_dashboard_available: workingAvailable,
+          feature_readiness: featureReadiness,
         });
       case "/api/me":
         return json({
@@ -132,6 +141,7 @@ try {
           balance_dates: [],
           sections,
           can_manage: true,
+          feature_readiness: featureReadiness,
           documents_enabled: true,
           modules: ["iiko", "deposits"],
           today: "2026-10-09",
@@ -205,6 +215,71 @@ try {
     path: path.join(artifacts, "tenant-mobile.png"),
     fullPage: true,
   });
+  // The base runtime works while optional bot, AI and payments are unconfigured.
+  workingAvailable = true;
+  available = false;
+  featureReadiness = Object.fromEntries(
+    [
+      "analytics.overview",
+      "analytics.sales",
+      "analytics.indicators",
+      "inventory.catalog",
+      "inventory.balances",
+      "purchases.prices",
+      "iiko.cash_shifts",
+      "iiko.order_events",
+      "documents.waybills",
+      "documents.writeoffs",
+      "commercial.incoming",
+      "commercial.outgoing",
+      "employees.management",
+      "management.users",
+      "management.settings",
+      "profile.account",
+      "operations.sync",
+    ].map((feature) => [
+      feature,
+      { state: "ready", read: true, write: true, reasons: [] },
+    ]),
+  );
+  featureReadiness["assistant.chat"] = {
+    state: "blocked",
+    read: false,
+    write: false,
+    reasons: ["ai"],
+  };
+  await page.goto("https://client.example.test/profile");
+  await page
+    .getByRole("heading", { name: "Мой профиль", exact: true })
+    .waitFor();
+  for (const label of ["Списания", "Управление", "Продажи"])
+    assert.equal(
+      await page.getByRole("link", { name: label, exact: true }).count(),
+      1,
+      label,
+    );
+  assert.equal(
+    await page.getByRole("link", { name: "Депозиты", exact: true }).count(),
+    0,
+  );
+  assert.equal(await page.locator(".tenant-setup-notice").count(), 0);
+  await page.screenshot({
+    path: path.join(artifacts, "tenant-working-partial.png"),
+    fullPage: true,
+  });
+  // A newer authenticated workspace upgrades a stale public setup snapshot.
+  setupAvailable = true;
+  contextWorkingOverride = false;
+  await page.goto("https://client.example.test/management");
+  await page.getByRole("tab", { name: "Заведения и терминалы" }).waitFor();
+  assert.equal(
+    await page.getByRole("link", { name: "Списания", exact: true }).count(),
+    1,
+  );
+  assert.equal(await page.locator(".tenant-setup-notice").count(), 0);
+  contextWorkingOverride = undefined;
+  workingAvailable = false;
+  featureReadiness = undefined;
   available = false;
   setupAvailable = true;
   await page.goto("https://client.example.test/");
@@ -239,7 +314,7 @@ try {
   assert.deepEqual(pageErrors, []);
   assert.deepEqual(unexpected, []);
   console.log(
-    "PASS: built tenant shell, full menu, owner identity, stale-ready history UI, mobile, public recovery, no cross-host traffic",
+    "PASS: built tenant shell, full menu, owner identity, stale-ready history UI, working partial readiness, mobile, public recovery, no cross-host traffic",
   );
 } finally {
   await browser.close();

@@ -138,3 +138,134 @@ test("full UI mode is explicitly server ready, assigned sections preserve server
     "overview",
   ]);
 });
+
+test("working dashboard opens all known routes without all optional integrations", () => {
+  const readiness = {
+    "analytics.overview": {
+      state: "ready",
+      read: true,
+      write: false,
+      reasons: [],
+    },
+    "assistant.chat": {
+      state: "blocked",
+      read: false,
+      write: false,
+      reasons: ["ai_config"],
+    },
+  };
+  const entry = resolveSaasEntry(
+    {
+      surface: "tenant",
+      company: { id: "company", slug: "working", name: "Working" },
+      working_dashboard_available: true,
+      feature_readiness: readiness,
+      full_dashboard_ready: false,
+    },
+    "/invoices",
+  );
+  assert.equal(entry.surface, "tenant");
+  assert.equal(entry.workingDashboardAvailable, true);
+  assert.deepEqual(entry.featureReadiness, readiness);
+  assert.equal(entry.fullDashboardReady, undefined);
+});
+
+test("partial readiness preserves reads and blocks writes to unknown or blocked features", async (t) => {
+  const calls = [];
+  t.mock.method(globalThis, "fetch", async (url) => {
+    calls.push(url);
+    return Response.json({});
+  });
+  const readiness = {
+    "analytics.overview": {
+      state: "ready",
+      read: true,
+      write: false,
+      reasons: [],
+    },
+    "commercial.incoming": {
+      state: "ready",
+      read: true,
+      write: true,
+      reasons: [],
+    },
+    "documents.waybills": {
+      state: "ready",
+      read: true,
+      write: true,
+      reasons: [],
+    },
+    "documents.approval": {
+      state: "ready",
+      read: true,
+      write: true,
+      reasons: [],
+    },
+    "documents.dispatch": {
+      state: "blocked",
+      read: true,
+      write: false,
+      reasons: ["worker"],
+    },
+  };
+  const adapter = createTenantApi("working").dashboardRuntime(
+    () => {},
+    () => {},
+    true,
+    readiness,
+  );
+  await adapter.request("/overview");
+  await adapter.request("/commercial-invoices/incoming", { method: "POST" });
+  for (const path of [
+    "/assistant/chat",
+    "/profile/password",
+    "/documents/waybill/id/receive",
+    "/commercial-invoices/incoming/counterparties",
+  ]) {
+    await assert.rejects(
+      adapter.request(path, { method: "POST" }),
+      (error) => error.code === "feature_setup_required",
+    );
+  }
+  assert.equal(calls.length, 2);
+});
+
+test("authenticated me refresh closes mutations if current readiness is removed", async (t) => {
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json({ feature_readiness: {} }),
+  );
+  const adapter = createTenantApi("working").dashboardRuntime(
+    () => {},
+    () => {},
+    true,
+    {
+      "profile.account": {
+        state: "ready",
+        read: true,
+        write: true,
+        reasons: [],
+      },
+    },
+  );
+  await adapter.request("/me");
+  await assert.rejects(
+    adapter.request("/profile/password", { method: "POST" }),
+    (error) => error.status === 403,
+  );
+});
+
+test("history fallback remains readable but never permits new mutations", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => Response.json({}));
+  const adapter = createTenantApi("history").dashboardRuntime(
+    () => {},
+    () => {},
+    true,
+    undefined,
+    true,
+  );
+  await adapter.request("/commercial-invoices/outgoing");
+  await assert.rejects(
+    adapter.request("/commercial-invoices/outgoing", { method: "POST" }),
+    (error) => error.code === "feature_setup_required",
+  );
+});

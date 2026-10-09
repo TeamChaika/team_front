@@ -1,9 +1,12 @@
+import type { FeatureReadiness } from "./tenantFeatureReadiness.ts";
 // The adapter is installed before mounting dashboard consumers. Each request captures
 // its own adapter so a late response cannot fall through to another API origin.
 export type DashboardRuntime = {
   request: (path: string, init?: RequestInit) => Promise<Response>;
   renew: () => Promise<Response>;
   fullDashboard?: boolean;
+  featureReadiness?: FeatureReadiness;
+  preserveHistoryReads?: boolean;
   companyId?: string;
 };
 let runtime: DashboardRuntime | null = null;

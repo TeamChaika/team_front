@@ -1,3 +1,9 @@
+import {
+  tenantSectionReady,
+  tenantSectionWriteReady,
+  tenantFeatureAllowed,
+  type FeatureReadiness,
+} from "./tenantFeatureReadiness";
 import { tenantSections } from "./dashboardRuntime";
 import {
   useEffect,
@@ -259,6 +265,8 @@ export type TenantDashboardOptions = {
   companyName: string;
   companyId: string;
   fullDashboard?: boolean;
+  featureReadiness?: FeatureReadiness;
+  preserveHistoryReads?: boolean;
   setupOnly?: boolean;
   logout: () => Promise<void>;
   error?: string;
@@ -529,6 +537,10 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
         <Login onLogin={() => setRevision((x) => x + 1)} />
       </>
     );
+  const featureReadiness =
+    tenant && !tenant.preserveHistoryReads
+      ? (meta.feature_readiness ?? tenant.featureReadiness)
+      : undefined;
   const assigned =
     meta.sections ??
     (meta.user.role === "deposits"
@@ -538,13 +550,14 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
     tenant ? tenantSections(assigned, tenant.fullDashboard === true) : assigned
   ).filter(
     (section) =>
-      !meta.warehouse_capabilities?.unsupported_sections.includes(section),
+      !meta.warehouse_capabilities?.unsupported_sections.includes(section) &&
+      tenantSectionReady(featureReadiness, section),
   );
   const availableSections = sections.filter((s) =>
     tenant?.setupOnly
       ? s.path === "/management" && meta.can_manage
       : s.path === "/management"
-        ? meta.can_manage
+        ? meta.can_manage && tenantSectionReady(featureReadiness, "management")
         : allowed.includes(s.path.slice(1) || "overview"),
   );
   const currentSection =
@@ -553,15 +566,19 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
     ? currentSection === "profile" ||
       (currentSection === "management" && meta.can_manage)
     : currentSection === "profile"
-      ? !tenant || tenant.fullDashboard === true
+      ? (!tenant || tenant.fullDashboard === true) &&
+        tenantSectionReady(featureReadiness, "profile")
       : currentSection === "management"
-        ? meta.can_manage
+        ? meta.can_manage && tenantSectionReady(featureReadiness, "management")
         : allowed.includes(currentSection);
   if (!currentAllowed && availableSections.length)
     return <Navigate to={availableSections[0].path} replace />;
   const canAssistant =
     (!tenant || tenant.fullDashboard === true) &&
     allowed.includes("purchase-prices") &&
+    !tenant?.preserveHistoryReads &&
+    tenantFeatureAllowed(featureReadiness, "assistant.chat", "read") &&
+    tenantFeatureAllowed(featureReadiness, "assistant.chat", "write") &&
     !["deposits", "management", "profile"].includes(currentSection);
   const ContentLayout = canAssistant ? AssistantLayout : Fragment;
   const title =
@@ -825,6 +842,27 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
                       {tenant.error}
                     </Alert>
                   )}
+                  {tenant &&
+                    !tenant.setupOnly &&
+                    [
+                      "invoices",
+                      "outgoing",
+                      "transfers",
+                      "writeoffs",
+                      "employees",
+                      "deposits",
+                      "management",
+                    ].includes(currentSection) &&
+                    (tenant.preserveHistoryReads ||
+                      !tenantSectionWriteReady(
+                        featureReadiness,
+                        currentSection,
+                      )) && (
+                      <Alert mb="md">
+                        Раздел доступен для просмотра. Для изменений нужно
+                        завершить настройку.
+                      </Alert>
+                    )}
                   {!availableSections.length && currentSection !== "profile" ? (
                     <Alert>
                       Доступ к разделам пока не назначен. Обратитесь к

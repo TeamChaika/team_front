@@ -1,4 +1,8 @@
 import {
+  tenantMutationReady,
+  type FeatureReadiness,
+} from "./tenantFeatureReadiness.ts";
+import {
   serializeTenantReports,
   fullPortalPathAllowed,
   fullDashboardPageAllowed,
@@ -13,6 +17,8 @@ import {
 
 export type SaasContext = {
   full_dashboard_ready?: boolean;
+  working_dashboard_available?: boolean;
+  feature_readiness?: FeatureReadiness;
   full_dashboard_available?: boolean;
   setup_available?: boolean;
   platform_origin?: string;
@@ -29,6 +35,8 @@ export type SaasEntry =
       companyId?: string;
       platformOrigin?: string;
       fullDashboardReady?: boolean;
+      workingDashboardAvailable?: boolean;
+      featureReadiness?: FeatureReadiness;
       fullDashboardAvailable?: boolean;
       setupAvailable?: boolean;
       guestDeposit?: GuestDepositRoute;
@@ -77,7 +85,8 @@ export function resolveSaasEntry(
           ["/management", "/profile"].includes(path)
         ) &&
         !(
-          (context.full_dashboard_ready === true ||
+          (context.working_dashboard_available === true ||
+            context.full_dashboard_ready === true ||
             context.full_dashboard_available === true) &&
           fullDashboardPageAllowed(path)
         ))
@@ -91,6 +100,12 @@ export function resolveSaasEntry(
         ? { timezone: context.company.timezone }
         : {}),
       ...(guestDeposit ? { guestDeposit } : {}),
+      ...(context.working_dashboard_available === true
+        ? { workingDashboardAvailable: true }
+        : {}),
+      ...(context.feature_readiness !== undefined
+        ? { featureReadiness: context.feature_readiness }
+        : {}),
       ...(context.full_dashboard_ready === true
         ? { fullDashboardReady: true }
         : {}),
@@ -136,7 +151,10 @@ export type TenantWorkspace = {
   admin: { id: string; username: string; display_name: string };
   mode: "local" | "production";
   business_modules_ready: boolean;
+  full_dashboard_available?: boolean;
   full_dashboard_ready?: boolean;
+  working_dashboard_available?: boolean;
+  feature_readiness?: FeatureReadiness;
 };
 export class TenantApiError extends Error {
   status: number;
@@ -231,8 +249,11 @@ export function createTenantApi(slug: string, apiOrigin = "") {
       onSessionLost: () => void,
       onPasswordRequired: () => void,
       fullDashboard = false,
+      featureReadiness?: FeatureReadiness,
+      historyReadOnly = false,
     ): DashboardRuntime => ({
       fullDashboard,
+      featureReadiness,
       request: serializeTenantReports(async (path, init = {}) => {
         if (
           fullDashboard
@@ -246,6 +267,16 @@ export function createTenantApi(slug: string, apiOrigin = "") {
           throw new TenantApiError(
             "Раздел ещё не подключён для этой компании",
             403,
+          );
+        if (
+          (historyReadOnly &&
+            !["GET", "HEAD"].includes(init.method || "GET")) ||
+          !tenantMutationReady(featureReadiness, path, init.method || "GET")
+        )
+          throw new TenantApiError(
+            "Для этого действия нужно завершить настройку раздела.",
+            403,
+            "feature_setup_required",
           );
         const response = await fetch(
           fullDashboard
@@ -297,6 +328,17 @@ export function createTenantApi(slug: string, apiOrigin = "") {
             detail?.code,
             detail,
           );
+        }
+        if (
+          fullDashboard &&
+          path.split("?")[0] === "/me" &&
+          featureReadiness !== undefined
+        ) {
+          const latest = await response
+            .clone()
+            .json()
+            .catch(() => null);
+          featureReadiness = latest?.feature_readiness ?? {};
         }
         return response;
       }),

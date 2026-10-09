@@ -107,13 +107,13 @@ function SharedDashboard() {
       companyId={entry.companyId}
       platformOrigin={entry.platformOrigin}
       apiOrigin={host.apiOrigin}
-      fullDashboardReady={
-        entry.fullDashboardReady === true ||
-        entry.fullDashboardAvailable === true ||
-        entry.setupAvailable === true
-      }
+      fullDashboardAvailable={entry.fullDashboardAvailable}
+      workingDashboardAvailable={entry.workingDashboardAvailable}
+      featureReadiness={entry.featureReadiness}
+      fullDashboardReady={entry.fullDashboardReady === true}
       setupOnly={
         entry.setupAvailable === true &&
+        !entry.workingDashboardAvailable &&
         !entry.fullDashboardReady &&
         !entry.fullDashboardAvailable
       }
