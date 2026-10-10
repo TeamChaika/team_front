@@ -49,8 +49,9 @@ export default function SaasTenant({
   const fullAvailable =
     workspace?.full_dashboard_available ?? fullDashboardAvailable;
   const preserveHistoryReads = fullAvailable && !workingAvailable && !fullReady;
+  const runtimePending = !workingAvailable && !fullReady && !fullAvailable;
   const effectiveSetupOnly =
-    setupOnly && !workingAvailable && !fullReady && !fullAvailable;
+    (workspace?.setup_available ?? setupOnly) && runtimePending;
   const ownerSetupAvailable =
     (workspace?.setup_available ?? setupAvailable) &&
     session?.actor?.kind === "platform_owner" &&
@@ -360,7 +361,7 @@ export default function SaasTenant({
             <a href={platformOrigin}>В SaaS ↗</a>
           </aside>
         )}
-        {effectiveSetupOnly && (
+        {runtimePending && (
           <p className="tenant-setup-notice">
             Настройка компании. Рабочие разделы появятся после завершения
             проверки.
@@ -378,6 +379,7 @@ export default function SaasTenant({
             preserveHistoryReads={preserveHistoryReads}
             ownerSetupAvailable={ownerSetupAvailable}
             setupOnly={effectiveSetupOnly}
+            runtimePending={runtimePending}
             companyName={workspace.company.name}
             companyId={workspace.company.id}
             logout={logout}

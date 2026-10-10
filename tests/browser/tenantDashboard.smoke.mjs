@@ -57,6 +57,7 @@ let loggedIn = true;
 let workingAvailable;
 let contextWorkingOverride;
 let canManage = true;
+let assignedSections = sections;
 let actorKind = "platform_owner";
 let featureReadiness;
 let paymentSurface = false;
@@ -154,6 +155,7 @@ try {
           full_dashboard_available: available,
           full_dashboard_ready: fullReady,
           working_dashboard_available: workingAvailable,
+          setup_available: setupAvailable,
           feature_readiness: featureReadiness,
         });
       case "/api/me":
@@ -162,7 +164,7 @@ try {
           departments: [],
           sales_dates: [],
           balance_dates: [],
-          sections,
+          sections: assignedSections,
           can_manage: canManage,
           feature_readiness: featureReadiness,
           documents_enabled: true,
@@ -359,7 +361,7 @@ try {
     0,
   );
   actorKind = "platform_owner";
-  canManage = true;
+  canManage = false;
   workingAvailable = false;
   featureReadiness = undefined;
   available = false;
@@ -380,6 +382,72 @@ try {
     path: path.join(artifacts, "tenant-setup.png"),
     fullPage: true,
   });
+  // A company member receives truthful pending state without owner setup access.
+  actorKind = "company_member";
+  assignedSections = [];
+  await page.goto("https://client.example.test/");
+  await page
+    .getByText(
+      "Компания ещё запускается. Рабочие разделы появятся после завершения первоначальной настройки.",
+    )
+    .waitFor();
+  assert.equal(
+    await page.getByRole("link", { name: "Управление", exact: true }).count(),
+    0,
+  );
+  assert.equal(
+    await page.getByRole("link", { name: "В SaaS ↗", exact: true }).count(),
+    0,
+  );
+  // Empty assigned ACL remains a permissions message once the runtime is ready.
+  actorKind = "company_member";
+  setupAvailable = false;
+  workingAvailable = true;
+  assignedSections = [];
+  await page.goto("https://client.example.test/");
+  await page
+    .getByText(
+      "Доступ к разделам пока не назначен. Обратитесь к администратору.",
+    )
+    .waitFor();
+  assert.equal(
+    await page.getByRole("link", { name: "Управление", exact: true }).count(),
+    0,
+  );
+  assert.equal(await page.locator(".tenant-setup-notice").count(), 0);
+  // Assigned sections awaiting probes are setup, not missing grants.
+  assignedSections = ["overview"];
+  featureReadiness = {};
+  await page.reload();
+  await page
+    .getByText(
+      "Рабочие разделы появятся после завершения проверки их готовности.",
+    )
+    .waitFor();
+  featureReadiness = {
+    "analytics.overview": {
+      state: "ready",
+      read: true,
+      write: false,
+      reasons: [],
+    },
+    "profile.account": {
+      state: "ready",
+      read: true,
+      write: false,
+      reasons: [],
+    },
+  };
+  await page.goto("https://client.example.test/profile");
+  await page.getByRole("link", { name: "Обзор", exact: true }).waitFor();
+  assert.equal(
+    await page
+      .getByText(
+        "Доступ к разделам пока не назначен. Обратитесь к администратору.",
+      )
+      .count(),
+    0,
+  );
   loggedIn = false;
   await page.goto("https://client.example.test/forgot-password");
   await page
