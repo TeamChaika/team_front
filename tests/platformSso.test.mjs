@@ -80,7 +80,7 @@ test("callback binds company state nonce and erases fragment before failed excha
     "../src/platformSso.ts?wrongproof"
   );
   await assert.rejects(
-    completePlatformLogin("own", "own", "https://api.own.example"),
+    completePlatformLogin("own", "own", "https://own.example"),
   );
   assert.equal(cleared, true);
   assert.equal(called, 0);
@@ -129,8 +129,8 @@ test("callback exchanges once on its own API using opaque proof and credentials"
   );
   assert.deepEqual(
     await Promise.all([
-      completePlatformLogin("own", "own", "https://api.own.example"),
-      completePlatformLogin("own", "own", "https://api.own.example"),
+      completePlatformLogin("own", "own", "https://own.example"),
+      completePlatformLogin("own", "own", "https://own.example"),
     ]),
     [true, true],
   );
@@ -138,7 +138,7 @@ test("callback exchanges once on its own API using opaque proof and credentials"
   assert.equal(calls[0].init.credentials, "include");
   assert.equal(
     calls[0].url,
-    "https://api.own.example/api/saas-tenant/own/auth/sso/exchange",
+    "https://own.example/api/saas-tenant/own/auth/sso/exchange",
   );
   assert.equal(removed, true);
   assert.equal(cleared, true);

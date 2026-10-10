@@ -98,7 +98,7 @@ import {
   validateTenantApiOrigin,
   loadSharedTenantEntry,
 } from "../src/sharedDashboardEntry.ts";
-test("shared Apps allow only exact deployment primary origins, deriving every client API", () => {
+test("shared Apps allow only exact deployment primary origins, using each client origin for API", () => {
   const primary =
     "https://dashboard.chaika.team, https://teamchaika-team-front-204d.twc1.net";
   assert.equal(
@@ -117,7 +117,7 @@ test("shared Apps allow only exact deployment primary origins, deriving every cl
   ])
     assert.deepEqual(dashboardHost(`https://${host}`, primary), {
       surface: "tenant",
-      apiOrigin: `https://api.${host}`,
+      apiOrigin: `https://${host}`,
     });
   assert.equal(
     dashboardHost("http://localhost:5173", primary, true).surface,
@@ -135,15 +135,17 @@ test("shared Apps allow only exact deployment primary origins, deriving every cl
       "tenant",
     );
   assert.equal(
-    validateTenantApiOrigin(
-      "https://iiko.tdpay.ru",
-      "https://api.iiko.tdpay.ru",
-    ),
+    validateTenantApiOrigin("https://iiko.tdpay.ru", "https://iiko.tdpay.ru"),
+    "https://iiko.tdpay.ru",
+  );
+  for (const other of [
+    "https://xx.chaika.team",
     "https://api.iiko.tdpay.ru",
-  );
-  assert.throws(() =>
-    validateTenantApiOrigin("https://iiko.tdpay.ru", "https://xx.chaika.team"),
-  );
+    "https://iiko.tdpay.ru/",
+  ])
+    assert.throws(() =>
+      validateTenantApiOrigin("https://iiko.tdpay.ru", other),
+    );
 });
 test("shared tenant context failure closes entry and never falls back to primary", async (t) => {
   const calls = [];
@@ -154,13 +156,13 @@ test("shared tenant context failure closes entry and never falls back to primary
   await assert.rejects(
     loadSharedTenantEntry(
       "https://iiko.tdpay.ru",
-      "https://api.iiko.tdpay.ru",
+      "https://iiko.tdpay.ru",
       "/",
     ),
   );
   assert.deepEqual(
     calls.map(({ url }) => url),
-    ["https://api.iiko.tdpay.ru/api/saas-context"],
+    ["https://iiko.tdpay.ru/api/saas-context"],
   );
   assert.equal(calls[0].init.credentials, "omit");
 });
@@ -170,7 +172,7 @@ test("explicit company API handles all auth, workspace and dashboard calls with 
     calls.push({ url, init });
     return new Response(JSON.stringify({ csrf_token: "own-token" }));
   });
-  const client = createTenantApi("own", "https://api.iiko.tdpay.ru");
+  const client = createTenantApi("own", "https://iiko.tdpay.ru");
   await client.me();
   await client.login("user", "password");
   await client.password("old", "new");
@@ -185,7 +187,7 @@ test("explicit company API handles all auth, workspace and dashboard calls with 
   assert.ok(
     calls.every(
       ({ url, init }) =>
-        url.startsWith("https://api.iiko.tdpay.ru/api/saas-tenant/own/") &&
+        url.startsWith("https://iiko.tdpay.ru/api/saas-tenant/own/") &&
         init.credentials === "include",
     ),
   );
@@ -197,7 +199,7 @@ test("explicit company API handles all auth, workspace and dashboard calls with 
     ),
   );
   for (const invalid of [
-    "https://api.iiko.tdpay.ru/path",
+    "https://iiko.tdpay.ru/path",
     "http://api.iiko.tdpay.ru",
     "https://user@api.iiko.tdpay.ru",
   ])
@@ -223,7 +225,7 @@ test("shared tenant bootstrap admits registered company sales and refuses platfo
   assert.deepEqual(
     await loadSharedTenantEntry(
       "https://client.example",
-      "https://api.client.example",
+      "https://client.example",
       "/sales",
     ),
     { surface: "tenant", slug: "own", companyName: "My company" },
@@ -231,7 +233,7 @@ test("shared tenant bootstrap admits registered company sales and refuses platfo
   await assert.rejects(
     loadSharedTenantEntry(
       "https://client.example",
-      "https://api.client.example",
+      "https://client.example",
       "/tenant/other",
     ),
   );
@@ -239,7 +241,7 @@ test("shared tenant bootstrap admits registered company sales and refuses platfo
   await assert.rejects(
     loadSharedTenantEntry(
       "https://client.example",
-      "https://api.client.example",
+      "https://client.example",
       "/",
     ),
   );
@@ -273,7 +275,7 @@ test("server logout failure retains tenant CSRF for retry instead of pretending 
       JSON.stringify({ csrf_token: "tenant-retained-token" }),
     );
   });
-  const client = createTenantApi("own", "https://api.client.example");
+  const client = createTenantApi("own", "https://client.example");
   await client.me();
   await assert.rejects(client.logout(), /Не удалось завершить сеанс/);
   fail = false;

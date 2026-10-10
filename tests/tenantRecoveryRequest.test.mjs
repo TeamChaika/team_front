@@ -36,13 +36,13 @@ test("public recovery transport sends no cookies or redirected passwords and rej
     return new Response("{}");
   };
   await tenantRecoveryResponse(
-    "https://api.own.example",
+    "https://own.example",
     "/auth/recovery/telegram",
     {},
     transport,
   );
   await tenantRecoveryResponse(
-    "https://api.own.example",
+    "https://own.example",
     "/auth/recovery/reset",
     {
       method: "POST",
@@ -54,7 +54,7 @@ test("public recovery transport sends no cookies or redirected passwords and rej
   );
   assert.equal(
     calls[0][0],
-    "https://api.own.example/api/auth/recovery/telegram",
+    "https://own.example/api/auth/recovery/telegram",
   );
   for (const [, init] of calls) {
     assert.equal(init.credentials, "omit");
@@ -63,7 +63,7 @@ test("public recovery transport sends no cookies or redirected passwords and rej
   assert.equal(calls[1][1].body, '{"token":"synthetic"}');
   await assert.rejects(
     tenantRecoveryResponse(
-      "https://api.own.example",
+      "https://own.example",
       "/auth/recovery/reset",
       {},
       transport,
@@ -71,7 +71,7 @@ test("public recovery transport sends no cookies or redirected passwords and rej
   );
   await assert.rejects(
     tenantRecoveryResponse(
-      "https://api.own.example",
+      "https://own.example",
       "/auth/recovery/telegram",
       { method: "POST" },
       transport,
@@ -79,7 +79,7 @@ test("public recovery transport sends no cookies or redirected passwords and rej
   );
   await assert.rejects(
     tenantRecoveryResponse(
-      "https://api.own.example",
+      "https://own.example",
       "/profile/password",
       {},
       transport,

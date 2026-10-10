@@ -2,6 +2,7 @@ import {
   loadSaasContext,
   resolveSaasEntry,
   type SaasEntry,
+  type SaasContext,
 } from "./saasTenantApi.ts";
 
 export type DashboardHost =
@@ -36,7 +37,7 @@ export function dashboardHost(
   if (trusted.includes(origin)) return { surface: "primary" };
   if (url.protocol !== "https:" || url.port)
     throw new Error("Этот адрес не подключён к рабочему пространству");
-  return { surface: "tenant", apiOrigin: `https://api.${url.hostname}` };
+  return { surface: "tenant", apiOrigin: origin };
 }
 export function validateTenantApiOrigin(
   origin: string,
@@ -55,21 +56,19 @@ export async function loadSharedTenantEntry(
 ): Promise<SaasEntry> {
   validateTenantApiOrigin(origin, apiOrigin);
   const context = await loadSaasContext(apiOrigin, true);
+  return resolveSharedTenantEntry(origin, context, path, search);
+}
+export function resolveSharedTenantEntry(
+  origin: string,
+  context: SaasContext,
+  path: string,
+  search = "",
+): SaasEntry {
+  validateTenantApiOrigin(origin, origin);
+  if (context.api_origin !== undefined && context.api_origin !== origin)
+    throw new Error("Неверный адрес API компании");
   if (context.surface === "payment") {
-    const canonical = context.api_origin;
-    let valid = false;
-    try {
-      const url = new URL(canonical ?? "");
-      valid =
-        url.protocol === "https:" &&
-        url.origin === canonical &&
-        !url.username &&
-        !url.password &&
-        !url.port;
-    } catch {
-      /* Invalid server context closes the payment page. */
-    }
-    if (context.payment_origin !== origin || !valid)
+    if (context.payment_origin !== origin || context.api_origin !== origin)
       throw new Error("Неверный адрес оплаты компании");
   }
   if (context.surface !== "tenant" && context.surface !== "payment")
@@ -78,6 +77,6 @@ export async function loadSharedTenantEntry(
   if (entry.surface !== "tenant")
     throw new Error("Страница компании не найдена");
   return context.surface === "payment"
-    ? { ...entry, guestApiOrigin: context.api_origin }
+    ? { ...entry, guestApiOrigin: origin }
     : entry;
 }

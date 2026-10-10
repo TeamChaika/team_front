@@ -10,6 +10,11 @@ BROWSER_CHANNEL=chrome node tests/browser/tenantDashboard.smoke.mjs
 `BROWSER_CHANNEL` используется Chromium, установленный Playwright.
 
 Проверка читает production-файлы `dist`; `DASHBOARD_DIST` меняет этот путь.
+Для SaaS entrypoint используйте `DASHBOARD_DIST=dist-saas-admin` и
+`DASHBOARD_HTML=saas-admin.html` после сборки `npm run build -- --mode saas-admin`.
+Тот же сценарий проверяет восстановление и гостевую оплату, включая отсутствие
+ошибок провайдера компонентов и запрет восстановления на платёжной поверхности.
+
 Снимки сохраняются в `/tmp/restcontrol-browser`; `BROWSER_ARTIFACTS` меняет каталог.
 
 Все компании, аккаунты, домены и ответы API синтетические. Неожиданные запросы

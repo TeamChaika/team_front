@@ -1,9 +1,17 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { MantineProvider } from "@mantine/core";
+import { dashboardTheme } from "./dashboardTheme";
+import "@mantine/core/styles.css";
+import "./styles.css";
 import SaasAdmin from "./SaasAdmin";
 import "./saasAdmin.css";
 import SaasTenant from "./SaasTenant";
 import PlatformSsoAuthorize from "./PlatformSsoAuthorize";
+import { resolveSharedTenantEntry } from "./sharedDashboardEntry";
+import { TenantGuestDeposit } from "./TenantGuestDeposit";
+import TenantPasswordRecovery from "./TenantPasswordRecovery";
+import { isTenantRecoveryPage } from "./tenantRecoveryRequest";
 import {
   loadSaasContext,
   resolveSaasEntry,
@@ -17,10 +25,20 @@ function SaasEntryPage() {
   const [error, setError] = useState("");
   useEffect(() => {
     let live = true;
-    contextRequest ??= loadSaasContext();
+    contextRequest ??= loadSaasContext("", true);
     contextRequest
       .then((context) => {
-        if (live) setEntry(resolveSaasEntry(context, window.location.pathname));
+        if (live)
+          setEntry(
+            context.surface === "platform"
+              ? resolveSaasEntry(context, window.location.pathname)
+              : resolveSharedTenantEntry(
+                  window.location.origin,
+                  context,
+                  window.location.pathname,
+                  window.location.search,
+                ),
+          );
       })
       .catch((reason: unknown) => {
         if (live)
@@ -51,6 +69,30 @@ function SaasEntryPage() {
     window.location.pathname === "/sso/authorize"
   )
     return <PlatformSsoAuthorize />;
+  if (entry.surface === "tenant" && entry.guestDeposit)
+    return (
+      <MantineProvider theme={dashboardTheme} defaultColorScheme="dark">
+        <TenantGuestDeposit
+          apiOrigin={window.location.origin}
+          companyName={entry.companyName ?? "Заведение"}
+          timezone={entry.timezone}
+          route={entry.guestDeposit}
+        />
+      </MantineProvider>
+    );
+  if (
+    entry.surface === "tenant" &&
+    isTenantRecoveryPage(window.location.pathname)
+  )
+    return (
+      <MantineProvider theme={dashboardTheme} defaultColorScheme="dark">
+        <TenantPasswordRecovery
+          apiOrigin={window.location.origin}
+          companyName={entry.companyName ?? "Компания"}
+          path={window.location.pathname}
+        />
+      </MantineProvider>
+    );
   return entry.surface === "platform" ? (
     <SaasAdmin />
   ) : (
@@ -60,6 +102,7 @@ function SaasEntryPage() {
       companyName={entry.companyName}
       companyId={entry.companyId}
       platformOrigin={entry.platformOrigin}
+      apiOrigin={window.location.origin}
       fullDashboardAvailable={entry.fullDashboardAvailable}
       workingDashboardAvailable={entry.workingDashboardAvailable}
       featureReadiness={entry.featureReadiness}
