@@ -7,6 +7,7 @@ import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 const build = path.resolve(process.env.DASHBOARD_DIST || "dist");
+const entryHtml = process.env.DASHBOARD_HTML || "index.html";
 const artifacts = path.resolve(
   process.env.BROWSER_ARTIFACTS || "/tmp/restcontrol-browser",
 );
@@ -58,6 +59,8 @@ let contextWorkingOverride;
 let canManage = true;
 let actorKind = "platform_owner";
 let featureReadiness;
+let paymentSurface = false;
+const guestCode = "S".repeat(32);
 try {
   const context = await browser.newContext({
     viewport: { width: 1440, height: 1000 },
@@ -65,10 +68,13 @@ try {
   await context.route("**/*", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
-    if (url.origin === "https://client.example.test") {
+    if (
+      url.origin === "https://client.example.test" &&
+      !url.pathname.startsWith("/api/")
+    ) {
       const asset = url.pathname.startsWith("/assets/")
         ? url.pathname.slice(1)
-        : "index.html";
+        : entryHtml;
       if (asset.includes("..")) return route.abort();
       const contentType = asset.endsWith(".js")
         ? "text/javascript"
@@ -80,7 +86,7 @@ try {
         contentType,
       });
     }
-    if (url.origin !== "https://api.client.example.test") {
+    if (url.origin !== "https://client.example.test") {
       unexpected.push(request.url());
       return route.abort();
     }
@@ -95,9 +101,24 @@ try {
     if (request.method() === "OPTIONS")
       return route.fulfill({ status: 204, headers });
     switch (url.pathname) {
+      case `/api/guest-links/${guestCode}`:
+        assert.equal(request.method(), "GET");
+        return json({
+          id: "88888888-8888-4888-8888-888888888888",
+          amount_minor: 10000,
+          currency: "RUB",
+          restaurant: "Тестовое заведение",
+          status: "created",
+        });
       case "/api/saas-context":
         return json({
-          surface: "tenant",
+          surface: paymentSurface ? "payment" : "tenant",
+          ...(paymentSurface
+            ? {
+                payment_origin: "https://client.example.test",
+                api_origin: "https://client.example.test",
+              }
+            : {}),
           company,
           platform_origin: "https://platform.example.test",
           full_dashboard_ready: fullReady,
@@ -372,10 +393,18 @@ try {
     path: path.join(artifacts, "tenant-recovery.png"),
     fullPage: true,
   });
+  paymentSurface = true;
+  await page.goto(`https://client.example.test/d/${guestCode}`);
+  await page.getByRole("heading", { name: "Оплата депозита" }).waitFor();
+  await page.getByText("Тестовое заведение", { exact: true }).waitFor();
+  assert.equal(await page.getByRole("button", { name: "Войти" }).count(), 0);
+  await page.goto("https://client.example.test/forgot-password");
+  await page.getByRole("alert").waitFor();
+  assert.equal(await page.getByRole("heading", { name: /парол/ }).count(), 0);
   assert.deepEqual(pageErrors, []);
   assert.deepEqual(unexpected, []);
   console.log(
-    "PASS: built tenant shell, full menu, owner identity, stale-ready history UI, working partial readiness, mobile, public recovery, no cross-host traffic",
+    "PASS: built tenant shell, full menu, owner identity, stale-ready history UI, working partial readiness, mobile, public recovery, guest payment boundary, no cross-host traffic",
   );
 } finally {
   await browser.close();

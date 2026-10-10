@@ -64,7 +64,7 @@ test("tenant integration requests use own cookie + rotated CSRF without module r
       { status: 200 },
     );
   });
-  const api = createTenantApi("company-a", "https://api.company.test");
+  const api = createTenantApi("company-a", "https://company.test");
   await api.me();
   const runtime = api.dashboardRuntime(
     () => {},
@@ -79,7 +79,7 @@ test("tenant integration requests use own cookie + rotated CSRF without module r
   );
   assert.equal(
     calls[1].path,
-    "https://api.company.test/api/saas-tenant/company-a/integrations",
+    "https://company.test/api/saas-tenant/company-a/integrations",
   );
   assert.equal(calls[2].init.method, "POST");
   assert.equal(calls[2].init.headers["X-CSRF-Token"], "tenant-only");

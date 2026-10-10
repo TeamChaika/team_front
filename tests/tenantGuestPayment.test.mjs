@@ -83,20 +83,20 @@ test("guest transport omits credentials and retains caller request id on repeate
   try {
     const requestId = "abcdef00-1234-1234-1234-123456789abc";
     await guestDepositRequest(
-      "https://api.demo.example.com",
+      "https://demo.example.com",
       { depositId: id, token },
       "prepare",
       requestId,
     );
     await guestDepositRequest(
-      "https://api.demo.example.com",
+      "https://demo.example.com",
       { depositId: id, token },
       "prepare",
       requestId,
     );
     assert.equal(
       calls[0][0],
-      `https://api.demo.example.com/api/guest-deposits/${id}/prepare`,
+      `https://demo.example.com/api/guest-deposits/${id}/prepare`,
     );
     assert.equal(calls[0][1].credentials, "omit");
     assert.equal(calls[0][1].referrerPolicy, "no-referrer");
@@ -105,7 +105,7 @@ test("guest transport omits credentials and retains caller request id on repeate
       request_id: requestId,
     });
     assert.equal(calls[1][1].body, calls[0][1].body);
-    await guestDepositRequest("https://api.demo.example.com", {
+    await guestDepositRequest("https://demo.example.com", {
       depositId: id,
       token,
     });
@@ -170,7 +170,7 @@ test("public context loads without session cookies and cannot use another API or
   try {
     const entry = await loadSharedTenantEntry(
       "https://demo.example.com",
-      "https://api.demo.example.com",
+      "https://demo.example.com",
       `/deposit/${id}`,
       `?token=${token}`,
     );
@@ -236,7 +236,7 @@ test("short transport never sends legacy token and pins authenticated deposit re
     calls.push({ url, init });
     return new Response(JSON.stringify({ id, amount_minor: 100, revision: 1 }));
   });
-  const api = "https://api.pay.company.test";
+  const api = "https://pay.company.test";
   await guestDepositRequest(api, { code });
   await guestDepositRequest(
     api,
@@ -262,7 +262,7 @@ test("payment surface has no auth/dashboard entry and pins both public origins",
   );
   const code = "C".repeat(32);
   const origin = "https://pay.company.test";
-  const apiOrigin = "https://api.pay.company.test";
+  const apiOrigin = "https://pay.company.test";
   const context = {
     surface: "payment",
     payment_origin: origin,
@@ -279,10 +279,7 @@ test("payment surface has no auth/dashboard entry and pins both public origins",
   ])
     assert.equal(resolveSaasEntry(context, path).surface, "denied");
   assert.equal(resolveSaasEntry(context, `/d/${code}`).guestOnly, true);
-  let responseContext = {
-    ...context,
-    api_origin: "https://api.iiko.company.test",
-  };
+  let responseContext = context;
   t.mock.method(globalThis, "fetch", async (url, init) => {
     assert.equal(init.credentials, "omit");
     assert.equal(init.referrerPolicy, "no-referrer");
@@ -297,7 +294,9 @@ test("payment surface has no auth/dashboard entry and pins both public origins",
     apiOrigin,
     `/d/${code}`,
   );
-  assert.equal(canonicalEntry.guestApiOrigin, "https://api.iiko.company.test");
+  assert.equal(canonicalEntry.guestApiOrigin, origin);
+  responseContext = { ...context, api_origin: "https://api.iiko.company.test" };
+  await assert.rejects(loadSharedTenantEntry(origin, apiOrigin, `/d/${code}`));
   responseContext = {
     ...context,
     payment_origin: "https://other.company.test",

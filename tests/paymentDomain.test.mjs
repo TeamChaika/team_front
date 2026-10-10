@@ -38,7 +38,7 @@ test("domain settings use tenant session and CSRF independently of module readin
       ),
     );
   });
-  const api = createTenantApi("company-a", "https://api.company.test");
+  const api = createTenantApi("company-a", "https://company.test");
   await api.me();
   const runtime = api.dashboardRuntime(
     () => {},
@@ -50,7 +50,7 @@ test("domain settings use tenant session and CSRF independently of module readin
   );
   assert.equal(
     calls[1].url,
-    "https://api.company.test/api/saas-tenant/company-a/payment-domain",
+    "https://company.test/api/saas-tenant/company-a/payment-domain",
   );
   assert.equal(calls[2].init.credentials, "include");
   assert.equal(calls[2].init.headers["X-CSRF-Token"], "tenant-only");

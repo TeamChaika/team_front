@@ -16,7 +16,7 @@ test("full portal uses exact company origin and current tenant CSRF on mutations
       ),
     );
   });
-  const api = createTenantApi("company-a", "https://api.customer.example");
+  const api = createTenantApi("company-a", "https://customer.example");
   await api.me();
   const adapter = api.dashboardRuntime(
     () => assert.fail("lost"),
@@ -31,7 +31,7 @@ test("full portal uses exact company origin and current tenant CSRF on mutations
   await adapter.request("/resources/products?limit=20");
   assert.equal(
     calls[1].url,
-    "https://api.customer.example/api/commercial-invoices/outgoing",
+    "https://customer.example/api/commercial-invoices/outgoing",
   );
   assert.equal(calls[1].init.headers["X-CSRF-Token"], "current-token");
   assert.equal(calls[1].init.credentials, "include");
