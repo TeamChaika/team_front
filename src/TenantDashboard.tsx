@@ -18,6 +18,7 @@ export default function TenantDashboard({
   error,
   basename,
   setupOnly = false,
+  runtimePending = false,
   preserveHistoryReads = false,
   ownerSetupAvailable = false,
 }: {
@@ -28,6 +29,7 @@ export default function TenantDashboard({
   error?: string;
   basename: string;
   setupOnly?: boolean;
+  runtimePending?: boolean;
   preserveHistoryReads?: boolean;
   ownerSetupAvailable?: boolean;
 }) {
@@ -43,6 +45,7 @@ export default function TenantDashboard({
       preserveHistoryReads,
       ownerSetupAvailable,
       setupOnly,
+      runtimePending,
     }),
     [
       companyName,
@@ -54,6 +57,7 @@ export default function TenantDashboard({
       preserveHistoryReads,
       ownerSetupAvailable,
       setupOnly,
+      runtimePending,
     ],
   );
   useEffect(() => {

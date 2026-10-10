@@ -270,6 +270,7 @@ export type TenantDashboardOptions = {
   preserveHistoryReads?: boolean;
   ownerSetupAvailable?: boolean;
   setupOnly?: boolean;
+  runtimePending?: boolean;
   logout: () => Promise<void>;
   error?: string;
 };
@@ -561,7 +562,8 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
   );
   const availableSections = sections.filter((s) =>
     tenant?.setupOnly
-      ? s.path === "/management" && (meta.can_manage || canManageIntegrations)
+      ? s.path === "/management" &&
+        (tenant.ownerSetupAvailable || meta.can_manage || canManageIntegrations)
       : s.path === "/management"
         ? canManageIntegrations ||
           tenant?.ownerSetupAvailable ||
@@ -574,7 +576,9 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
   const currentAllowed = tenant?.setupOnly
     ? currentSection === "profile" ||
       (currentSection === "management" &&
-        (meta.can_manage || canManageIntegrations))
+        (tenant.ownerSetupAvailable ||
+          meta.can_manage ||
+          canManageIntegrations))
     : currentSection === "profile"
       ? (!tenant || tenant.fullDashboard === true) &&
         tenantSectionReady(featureReadiness, "profile")
@@ -882,8 +886,18 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
                     )}
                   {!availableSections.length && currentSection !== "profile" ? (
                     <Alert>
-                      Доступ к разделам пока не назначен. Обратитесь к
-                      администратору.
+                      {tenant?.runtimePending
+                        ? "Компания ещё запускается. Рабочие разделы появятся после завершения первоначальной настройки."
+                        : tenant &&
+                            assigned.some(
+                              (section) =>
+                                !meta.warehouse_capabilities?.unsupported_sections.includes(
+                                  section,
+                                ) &&
+                                !tenantSectionReady(featureReadiness, section),
+                            )
+                          ? "Рабочие разделы появятся после завершения проверки их готовности."
+                          : "Доступ к разделам пока не назначен. Обратитесь к администратору."}
                     </Alert>
                   ) : (
                     <Suspense fallback={<Loader />}>
