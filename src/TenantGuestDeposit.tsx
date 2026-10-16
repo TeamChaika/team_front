@@ -13,6 +13,9 @@ import {
 import { IconCheck, IconRefresh, IconShieldCheck } from "@tabler/icons-react";
 import {
   guestDepositRequest,
+  canPrepareGuestPayment,
+  canRetryGuestPayment,
+  nextGuestPrepareId,
   safePaymentUrl,
   type GuestDeposit,
   type GuestDepositRoute,
@@ -33,7 +36,7 @@ export function TenantGuestDeposit({
   const [deposit, setDeposit] = useState<GuestDeposit | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const prepareId = useRef(crypto.randomUUID());
+  const prepareId = useRef<string>(crypto.randomUUID());
   const reconcileId = useRef(crypto.randomUUID());
   const operation = useRef(false);
   const polling = useRef({ checks: 0, deadline: 0 });
@@ -63,7 +66,11 @@ export function TenantGuestDeposit({
   }, [apiOrigin, route, update]);
   const act = useCallback(
     async (action: "prepare" | "reconcile") => {
-      if (operation.current) return;
+      if (
+        operation.current ||
+        (action === "prepare" && !canPrepareGuestPayment(latest.current))
+      )
+        return;
       operation.current = true;
       setBusy(true);
       setError("");
@@ -76,6 +83,12 @@ export function TenantGuestDeposit({
           AbortSignal.timeout(20_000),
         );
         update(next);
+        prepareId.current = nextGuestPrepareId(
+          prepareId.current,
+          action,
+          next,
+          () => crypto.randomUUID(),
+        );
         if (action === "reconcile") reconcileId.current = crypto.randomUUID();
       } catch (e) {
         if (mounted.current) setError((e as Error).message);
@@ -131,6 +144,7 @@ export function TenantGuestDeposit({
       ? safePaymentUrl(deposit?.payment?.qr_image)
       : null;
   const uncertain = state === "unknown" || state === "creating";
+  const retryable = canRetryGuestPayment(deposit);
   return (
     <Container size={520} py="xl">
       <Stack gap="lg">
@@ -198,7 +212,18 @@ export function TenantGuestDeposit({
                         дождитесь подтверждения перед новой оплатой.
                       </Alert>
                     )}
-                    {(state === "failed" || state === "expired" || expired) && (
+                    {state === "failed" && (
+                      <Alert color="orange">
+                        {deposit.payment?.diagnostic ===
+                        "terminal_merchant_mismatch"
+                          ? "Не удалось подготовить оплату: требуется проверка настроек терминала заведением."
+                          : retryable
+                            ? "Не удалось подготовить оплату. Попробуйте ещё раз или свяжитесь с заведением."
+                            : "Не удалось подготовить оплату. Свяжитесь с заведением для продолжения."}
+                      </Alert>
+                    )}
+                    {(state === "expired" ||
+                      (expired && state !== "failed")) && (
                       <Alert color="orange">
                         Ссылка на оплату больше недоступна. Свяжитесь с
                         заведением для продолжения.
@@ -228,13 +253,15 @@ export function TenantGuestDeposit({
                           : "Перейти к оплате"}
                       </Button>
                     )}
-                    {!deposit.payment && (
+                    {canPrepareGuestPayment(deposit) && (
                       <Button
                         size="lg"
                         loading={busy}
                         onClick={() => void act("prepare")}
                       >
-                        Подготовить оплату
+                        {retryable
+                          ? "Повторить подготовку оплаты"
+                          : "Подготовить оплату"}
                       </Button>
                     )}
                     <Button

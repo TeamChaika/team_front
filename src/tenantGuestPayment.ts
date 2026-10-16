@@ -80,6 +80,43 @@ export type GuestDeposit = {
     valid_until: string | null;
   } | null;
 };
+
+// Only a rejected creation with no payment artefacts can start a new attempt.
+export function canRetryGuestPayment(deposit: GuestDeposit | null): boolean {
+  return (
+    !!deposit &&
+    deposit.status === "pending" &&
+    !deposit.paid_at &&
+    deposit.payment?.state === "failed" &&
+    ["creation_rejected", "terminal_merchant_mismatch"].includes(
+      deposit.payment.diagnostic ?? "",
+    ) &&
+    !deposit.payment.payment_url &&
+    !deposit.payment.qr_image
+  );
+}
+
+export function canPrepareGuestPayment(deposit: GuestDeposit | null): boolean {
+  return (
+    !!deposit &&
+    deposit.status === "pending" &&
+    !deposit.paid_at &&
+    (!deposit.payment || canRetryGuestPayment(deposit))
+  );
+}
+
+// A lost response keeps its UUID, even if a later GET/reconcile sees an old
+// rejection. Only the prepare response itself can definitively finish it.
+export function nextGuestPrepareId(
+  current: string,
+  action: "prepare" | "reconcile" | undefined,
+  response: GuestDeposit | null,
+  createId: () => string,
+): string {
+  return action === "prepare" && canRetryGuestPayment(response)
+    ? createId()
+    : current;
+}
 export async function guestDepositRequest(
   apiOrigin: string,
   route: GuestDepositRoute,

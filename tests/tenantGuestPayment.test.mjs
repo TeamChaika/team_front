@@ -308,3 +308,130 @@ test("payment surface has no auth/dashboard entry and pins both public origins",
   };
   await assert.rejects(loadSharedTenantEntry(origin, apiOrigin, `/d/${code}`));
 });
+
+test("guest preparation allows only unpaid initial or rejected creation without payment artefacts", async () => {
+  const { canPrepareGuestPayment, canRetryGuestPayment } = await import(
+    "../src/tenantGuestPayment.ts"
+  );
+  const initial = { status: "pending", paid_at: null, payment: null };
+  const rejected = {
+    ...initial,
+    payment: {
+      state: "failed",
+      diagnostic: "creation_rejected",
+      payment_url: null,
+      qr_image: null,
+    },
+  };
+  assert.equal(canPrepareGuestPayment(null), false);
+  assert.equal(canPrepareGuestPayment(initial), true);
+  assert.equal(canRetryGuestPayment(initial), false);
+  for (const diagnostic of [
+    "creation_rejected",
+    "terminal_merchant_mismatch",
+  ]) {
+    assert.equal(
+      canRetryGuestPayment({
+        ...rejected,
+        payment: { ...rejected.payment, diagnostic },
+      }),
+      true,
+    );
+  }
+  for (const state of [
+    "creating",
+    "unknown",
+    "pending",
+    "paid",
+    "expired",
+    "cancelled",
+  ]) {
+    assert.equal(
+      canPrepareGuestPayment({
+        ...rejected,
+        payment: { ...rejected.payment, state },
+      }),
+      false,
+      state,
+    );
+  }
+  for (const diagnostic of [null, "provider_timeout", "payment_failed"]) {
+    assert.equal(
+      canRetryGuestPayment({
+        ...rejected,
+        payment: { ...rejected.payment, diagnostic },
+      }),
+      false,
+    );
+  }
+  for (const status of ["paid", "cancelled", "expired"]) {
+    assert.equal(canPrepareGuestPayment({ ...initial, status }), false);
+    assert.equal(canPrepareGuestPayment({ ...rejected, status }), false);
+  }
+  assert.equal(
+    canPrepareGuestPayment({ ...rejected, paid_at: "2026-10-16T12:00:00Z" }),
+    false,
+  );
+  for (const field of ["payment_url", "qr_image"]) {
+    assert.equal(
+      canPrepareGuestPayment({
+        ...rejected,
+        payment: { ...rejected.payment, [field]: "https://bank.example/pay" },
+      }),
+      false,
+    );
+  }
+  // A stale button based on the old rejection must be denied using the latest snapshot.
+  assert.equal(canPrepareGuestPayment(rejected), true);
+  assert.equal(
+    canPrepareGuestPayment({
+      ...rejected,
+      status: "paid",
+      paid_at: "2026-10-16T12:00:00Z",
+    }),
+    false,
+  );
+});
+
+test("prepare UUID survives uncertainty and unrelated snapshots until its own definitive rejection", async () => {
+  const { nextGuestPrepareId } = await import("../src/tenantGuestPayment.ts");
+  const rejected = {
+    status: "pending",
+    paid_at: null,
+    payment: {
+      state: "failed",
+      diagnostic: "creation_rejected",
+      payment_url: null,
+      qr_image: null,
+    },
+  };
+  let generated = 0;
+  const createId = () => `new-${++generated}`;
+  const current = "attempt-1";
+  assert.equal(nextGuestPrepareId(current, "prepare", null, createId), current);
+  assert.equal(
+    nextGuestPrepareId(current, undefined, rejected, createId),
+    current,
+  );
+  assert.equal(
+    nextGuestPrepareId(current, "reconcile", rejected, createId),
+    current,
+  );
+  for (const state of ["unknown", "creating", "pending", "paid", "expired"]) {
+    assert.equal(
+      nextGuestPrepareId(
+        current,
+        "prepare",
+        { ...rejected, payment: { ...rejected.payment, state } },
+        createId,
+      ),
+      current,
+    );
+  }
+  assert.equal(generated, 0);
+  assert.equal(
+    nextGuestPrepareId(current, "prepare", rejected, createId),
+    "new-1",
+  );
+  assert.equal(generated, 1);
+});

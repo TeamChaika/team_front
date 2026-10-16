@@ -561,6 +561,7 @@ function TerminalEditor({
               />
               <TextInput
                 label="Идентификатор продавца"
+                description="Необязательно: merchant ID из QR Manager, например MA1234567890, а не название продавца. Оставьте пустым для проверки по API-ключу."
                 value={value.merchant_id ?? ""}
                 maxLength={200}
                 onChange={(e) =>
