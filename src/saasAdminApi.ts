@@ -1,3 +1,9 @@
+import type {
+  SupportPage,
+  SupportTicket,
+  SupportStatus,
+  SupportIncident,
+} from "./supportModel";
 import type { ModuleSettings } from "./companyModuleSettingsModel";
 import type { ProvisioningStatus } from "./SaasProvisioning";
 import { normalizeCompany } from "./saasAdminModel";
@@ -65,6 +71,24 @@ async function request<T>(
   return response.status === 204 ? (undefined as T) : await response.json();
 }
 export const api = {
+  supportTickets: (company: string, status: string, offset: number) =>
+    request<SupportPage>(
+      `/support/tickets?limit=25&offset=${offset}${company ? `&company_id=${encodeURIComponent(company)}` : ""}${status ? `&status=${encodeURIComponent(status)}` : ""}`,
+    ),
+  supportTicket: (id: string) =>
+    request<SupportTicket>(`/support/tickets/${id}`),
+  supportStatus: (ticket: SupportTicket, status: SupportStatus, note: string) =>
+    request<SupportTicket>(`/support/tickets/${ticket.id}/status`, "POST", {
+      expected_revision: ticket.revision,
+      status,
+      note,
+    }),
+  supportEvents: (company: string, offset: number) =>
+    request<SupportPage<SupportIncident>>(
+      `/support/events?limit=25&offset=${offset}${company ? `&company_id=${encodeURIComponent(company)}` : ""}`,
+    ),
+  supportEvent: (id: string) =>
+    request<SupportIncident>(`/support/events/${id}`),
   moduleSettings: (id: string, signal?: AbortSignal) =>
     request<ModuleSettings>(
       `/companies/${id}/module-settings`,

@@ -1471,3 +1471,12 @@ pre {
 body:has(.tenant-owner-banner) .tenant-dashboard .sidebar {
   top: 40px;
 }
+
+/* Support stays available without expanding the mobile header. */
+.topbar-actions { display: flex; align-items: center; gap: 8px; }
+.support-trigger { flex-shrink: 0; }
+@media (max-width: 600px) {
+  .topbar { flex-wrap: wrap; gap: 8px; }
+  .topbar-actions { margin-left: auto; }
+  .support-trigger { font-size: 12px; }
+}
