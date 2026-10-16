@@ -19,6 +19,7 @@ import {
 } from "@mantine/core";
 import { IconBuildingStore, IconPlus, IconUsers } from "@tabler/icons-react";
 import { api } from "./api";
+import { OperationSettings } from "./OperationSettings";
 import { DocumentAccess } from "./DocumentAccess";
 import { CompanyIntegrations } from "./CompanyIntegrations";
 import { CommercialInvoiceAccess } from "./CommercialInvoiceAccess";
@@ -734,6 +735,7 @@ export function ManagementPage({
                 : "accounts"
           }
           keepMounted={false}
+          keepMountedMode="display-none"
         >
           <Tabs.List>
             {integrationsEnabled && (
@@ -756,7 +758,15 @@ export function ManagementPage({
             {!setupOnly && (
               <Tabs.Tab value="commercial">Приход и реализация</Tabs.Tab>
             )}
+            {!setupOnly && (
+              <Tabs.Tab value="operations">Синхронизация и склады</Tabs.Tab>
+            )}
           </Tabs.List>
+          {!setupOnly && (
+            <Tabs.Panel value="operations" pt="lg" keepMounted>
+              <OperationSettings onChange={onChange} />
+            </Tabs.Panel>
+          )}
           {integrationsEnabled && (
             <Tabs.Panel value="integrations" pt="lg">
               <CompanyIntegrations onChange={onChange} />

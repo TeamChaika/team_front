@@ -26,6 +26,8 @@ import {
 import { DocumentPanel } from "./DocumentPanel";
 import {
   documentPayload,
+  documentEditorCatalogs,
+  copyDocumentStores,
   type DocumentDraft,
   type DocumentItem,
   type DocumentKind,
@@ -146,8 +148,12 @@ export function DocumentEditor({
   const [value, set] = useState<DocumentDraft>(
     document
       ? {
-          store_id: document.store_id,
-          counteragent_id: document.counteragent_id,
+          ...(mode === "copy"
+            ? copyDocumentStores(options, document)
+            : {
+                store_id: document.store_id,
+                counteragent_id: document.counteragent_id,
+              }),
           reason: document.reason,
           reason_id: document.reason_id,
           comment: document.comment,
@@ -179,12 +185,14 @@ export function DocumentEditor({
   }, [discard]);
   const nonce = useRef(crypto.randomUUID());
   const pending = useRef<ReturnType<typeof documentPayload> | null>(null);
-  const action = mode === "edit" ? "edit" : "create";
-  const stores = options.stores.filter((s) =>
-    options.grants.some(
-      (g) => g.store_id === s.id && g.actions.includes(action),
-    ),
-  );
+  const { stores, recipients } = documentEditorCatalogs(options, mode);
+  const copyNeedsStores =
+    mode === "copy" &&
+    document &&
+    (copyDocumentStores(options, document).store_id !== document.store_id ||
+      (kind === "waybill" &&
+        copyDocumentStores(options, document).counteragent_id !==
+          document.counteragent_id));
   function update(next: DocumentDraft) {
     setDirty(true);
     set(next);
@@ -210,6 +218,15 @@ export function DocumentEditor({
     if (!desktop && pickerOpen) return;
     setError("");
     try {
+      if (
+        mode !== "edit" &&
+        (!stores.some((s) => s.id === value.store_id) ||
+          (kind === "waybill" &&
+            !recipients.some(
+              (s) => s.id === value.counteragent_id && s.id !== value.store_id,
+            )))
+      )
+        throw new Error("Выберите доступные склад и получателя.");
       pending.current ||= documentPayload(
         kind,
         value,
@@ -266,6 +283,12 @@ export function DocumentEditor({
                   {error}
                 </Alert>
               )}
+              {copyNeedsStores && (
+                <Alert color="yellow">
+                  Склад или получатель исходного документа недоступен для новых
+                  документов. Выберите доступные значения.
+                </Alert>
+              )}
               {uncertain && (
                 <Alert color="yellow">
                   Ответ не получен. Поля сохранены; «Проверить результат»
@@ -291,7 +314,7 @@ export function DocumentEditor({
                   required
                   label="Получатель"
                   searchable
-                  data={options.recipients
+                  data={recipients
                     .filter((s) => s.id !== value.store_id)
                     .map((s) => ({ value: s.id, label: s.name }))}
                   value={value.counteragent_id || null}

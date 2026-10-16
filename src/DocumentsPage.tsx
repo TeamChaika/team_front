@@ -30,6 +30,7 @@ import { writeoffMoney } from "./writeoffCostModel";
 import {
   actionSnapshot,
   documentStatuses,
+  documentEditorCatalogs,
   receiptDifference,
   receiptPayload,
   receiptSnapshot,
@@ -724,16 +725,16 @@ export function DocumentsPage({ kind }: { kind: DocumentKind }) {
                   >
                     Экспорт CSV
                   </Button>
-                  {options.data?.grants.some((g) =>
-                    g.actions.includes("create"),
-                  ) && (
-                    <Button
-                      leftSection={<IconPlus size={16} />}
-                      onClick={() => openEditor({ mode: "create" })}
-                    >
-                      Создать заявку
-                    </Button>
-                  )}
+                  {options.data &&
+                    documentEditorCatalogs(options.data, "create").stores
+                      .length > 0 && (
+                      <Button
+                        leftSection={<IconPlus size={16} />}
+                        onClick={() => openEditor({ mode: "create" })}
+                      >
+                        Создать заявку
+                      </Button>
+                    )}
                 </Group>
               </Group>
               {kind === "waybill" && (

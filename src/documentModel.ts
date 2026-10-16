@@ -57,6 +57,8 @@ export type DocumentRecord = DocumentDraft & {
 export type DocumentOptions = {
   stores: { id: string; name: string }[];
   recipients: { id: string; name: string }[];
+  create_stores?: { id: string; name: string }[];
+  create_recipients?: { id: string; name: string }[];
   reasons: { id: number; name: string }[];
   grants: { store_id: string; actions: string[] }[];
 };
@@ -193,4 +195,40 @@ export function documentPayload(
       ? { counteragent_id: value.counteragent_id }
       : { reason: value.reason, reason_id: value.reason_id }),
   };
+}
+
+export function documentEditorCatalogs(
+  options: DocumentOptions,
+  mode: "create" | "edit" | "copy",
+) {
+  const action = mode === "edit" ? "edit" : "create";
+  return {
+    stores: (mode === "edit"
+      ? options.stores
+      : (options.create_stores ?? options.stores)
+    ).filter((s) =>
+      options.grants.some(
+        (g) => g.store_id === s.id && g.actions.includes(action),
+      ),
+    ),
+    recipients:
+      mode === "edit"
+        ? options.recipients
+        : (options.create_recipients ?? options.recipients),
+  };
+}
+export function copyDocumentStores(
+  options: DocumentOptions,
+  draft: Pick<DocumentDraft, "store_id" | "counteragent_id">,
+) {
+  const catalog = documentEditorCatalogs(options, "copy");
+  const store_id = catalog.stores.some((s) => s.id === draft.store_id)
+    ? draft.store_id
+    : "";
+  const counteragent_id = catalog.recipients.some(
+    (s) => s.id === draft.counteragent_id && s.id !== store_id,
+  )
+    ? draft.counteragent_id
+    : "";
+  return { store_id, counteragent_id };
 }
