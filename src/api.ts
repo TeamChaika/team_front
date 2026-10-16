@@ -96,6 +96,15 @@ async function request(
         "status" in error &&
         typeof error.status === "number"
       ) {
+        if (error.status >= 500 && !path.startsWith("/support/"))
+          window.dispatchEvent(
+            new CustomEvent("support-api-error", {
+              detail: {
+                status: error.status,
+                requestId: "requestId" in error ? error.requestId : undefined,
+              },
+            }),
+          );
         const detail = "detail" in error ? error.detail : undefined;
         throw new ApiError(
           error.message,
@@ -139,6 +148,12 @@ async function request(
         renewed.status,
       );
   }
+  if (r.status >= 500 && !path.startsWith("/support/"))
+    window.dispatchEvent(
+      new CustomEvent("support-api-error", {
+        detail: { status: r.status, requestId: r.headers.get("X-Request-ID") },
+      }),
+    );
   if (!r.ok) {
     const body = await r.json().catch(() => ({}));
     if (r.status === 403 && body.detail?.code === "password_change_required")

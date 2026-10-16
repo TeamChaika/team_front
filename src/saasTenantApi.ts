@@ -1,4 +1,9 @@
 import type {
+  SupportPage,
+  SupportTicket,
+  SupportEvent,
+} from "./supportModel.ts";
+import type {
   PaymentDomainSettings,
   PaymentDomainWrite,
 } from "./paymentDomainModel.ts";
@@ -181,6 +186,7 @@ export class TenantApiError extends Error {
   status: number;
   code?: string;
   detail?: unknown;
+  requestId?: string | null;
   constructor(
     message: string,
     status: number,
@@ -275,6 +281,13 @@ export function createTenantApi(slug: string, apiOrigin = "") {
       ownerSetupAvailable = false,
     ): DashboardRuntime => ({
       fullDashboard,
+      support: {
+        list: (offset) =>
+          request<SupportPage>(`/support/tickets?limit=25&offset=${offset}`),
+        create: (body) =>
+          request<SupportTicket>("/support/tickets", "POST", body),
+        event: (body: SupportEvent) => request("/support/events", "POST", body),
+      },
       featureReadiness,
       paymentDomainSettings: () =>
         request<PaymentDomainSettings>("/payment-domain"),
@@ -352,7 +365,7 @@ export function createTenantApi(slug: string, apiOrigin = "") {
           const detail = (await response.json().catch(() => null))?.detail;
           if (response.status === 401) onSessionLost();
           if (detail?.code === "password_change_required") onPasswordRequired();
-          throw new TenantApiError(
+          const failure = new TenantApiError(
             typeof detail === "string"
               ? detail
               : detail?.message || "Не удалось получить данные компании",
@@ -360,6 +373,8 @@ export function createTenantApi(slug: string, apiOrigin = "") {
             detail?.code,
             detail,
           );
+          failure.requestId = response.headers.get("X-Request-ID");
+          throw failure;
         }
         if (
           fullDashboard &&

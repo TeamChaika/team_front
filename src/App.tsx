@@ -1,3 +1,4 @@
+import Support from "./Support";
 import { companyIntegrationsAllowed } from "./companyIntegrationsModel";
 import {
   tenantSectionReady,
@@ -5,7 +6,7 @@ import {
   tenantFeatureAllowed,
   type FeatureReadiness,
 } from "./tenantFeatureReadiness";
-import { tenantSections } from "./dashboardRuntime";
+import { getDashboardRuntime, tenantSections } from "./dashboardRuntime";
 import {
   useEffect,
   useState,
@@ -518,6 +519,7 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
     return (
       <Alert color="red">
         {error || "Не удалось открыть данные компании"}
+        <Support supportClient={getDashboardRuntime()?.support} />
         <Button onClick={() => setRevision((x) => x + 1)}>Повторить</Button>
         <Button onClick={() => void logout()}>Выйти</Button>
       </Alert>
@@ -753,6 +755,13 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
                   <strong>{title}</strong>
                 </div>
                 <div className="topbar-actions">
+                  <Support
+                    key={
+                      tenant
+                        ? `${tenant.companyId}:${meta.user.id}`
+                        : meta.user.id
+                    }
+                  />
                   {canAssistant && <AssistantToggle />}
                   {!tenant && (
                     <Badge variant="light" color="cyan">

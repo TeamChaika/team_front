@@ -1,3 +1,4 @@
+import SaasSupport from "./SaasSupport";
 import SaasProvisioning from "./SaasProvisioning";
 import { useEffect, useState } from "react";
 import {
@@ -13,6 +14,7 @@ import {
   IconEdit,
   IconArchive,
   IconRefresh,
+  IconMessageExclamation,
 } from "@tabler/icons-react";
 import { api, ApiError, setCsrf } from "./saasAdminApi";
 import {
@@ -62,9 +64,9 @@ export default function SaasAdmin() {
   const [loginBusy, setLoginBusy] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [view, setView] = useState<"companies" | "subscriptions" | "events">(
-    "companies",
-  );
+  const [view, setView] = useState<
+    "companies" | "subscriptions" | "events" | "support"
+  >("companies");
   const [companies, setCompanies] = useState<Company[]>([]);
   const [total, setTotal] = useState(0);
   const [selected, setSelected] = useState<Company | null>(null);
@@ -359,6 +361,7 @@ export default function SaasAdmin() {
               ["companies", "Компании", IconBuilding],
               ["subscriptions", "Подписки", IconCreditCard],
               ["events", "История компании", IconHistory],
+              ["support", "Поддержка", IconMessageExclamation],
             ] as const
           ).map(([key, label, Icon]) => (
             <button
@@ -391,7 +394,9 @@ export default function SaasAdmin() {
             ? "Компании"
             : view === "subscriptions"
               ? "Подписки"
-              : "История компании"}
+              : view === "support"
+                ? "Поддержка"
+                : "История компании"}
         </div>
         <header className="sa-page-header">
           <div>
@@ -400,14 +405,18 @@ export default function SaasAdmin() {
                 ? "Компании"
                 : view === "subscriptions"
                   ? "Подписки"
-                  : "История компании"}
+                  : view === "support"
+                    ? "Поддержка"
+                    : "История компании"}
             </h1>
-            <p>Управление реестром RestControl</p>
+            {view !== "support" && <p>Управление реестром RestControl</p>}
           </div>
-          <button className="sa-button" onClick={() => setForm("new")}>
-            <IconPlus size={20} />
-            Добавить компанию
-          </button>
+          {view !== "support" && (
+            <button className="sa-button" onClick={() => setForm("new")}>
+              <IconPlus size={20} />
+              Добавить компанию
+            </button>
+          )}
         </header>
         {notice && (
           <div className="sa-notice" role="status">
@@ -426,7 +435,9 @@ export default function SaasAdmin() {
             <button onClick={() => setRefresh((n) => n + 1)}>Повторить</button>
           </div>
         )}
-        {view === "events" ? (
+        {view === "support" ? (
+          <SaasSupport companies={companies} />
+        ) : view === "events" ? (
           <section className="sa-card sa-history-page">
             <h2>{selected ? selected.name : "Выберите компанию"}</h2>
             {selected ? (
@@ -691,7 +702,10 @@ export default function SaasAdmin() {
                 <p className="sa-muted">Не задан</p>
               )}
             </section>
-            <SaasProvisioning key={`${selected.id}-${selected.version}`} company={selected} />
+            <SaasProvisioning
+              key={`${selected.id}-${selected.version}`}
+              company={selected}
+            />
             <SaasAdminAccess
               key={selected.id}
               company={selected}

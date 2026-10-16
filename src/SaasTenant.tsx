@@ -1,3 +1,6 @@
+import Support from "./Support";
+import { MantineProvider } from "@mantine/core";
+import { dashboardTheme } from "./dashboardTheme";
 import type { FeatureReadiness } from "./tenantFeatureReadiness";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import {
@@ -397,6 +400,9 @@ export default function SaasTenant({
     <main className="sa-auth">
       <div className="sa-login">
         <h1>{session.company.name}</h1>
+        <MantineProvider theme={dashboardTheme} forceColorScheme="light">
+          <Support supportClient={dashboardRuntime.support} />
+        </MantineProvider>
         {error ? (
           <p className="sa-error" role="alert">
             {error}
