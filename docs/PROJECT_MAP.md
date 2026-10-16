@@ -28,6 +28,7 @@
 | Остатки и поиск товара | [BalancesPage.tsx](../src/BalancesPage.tsx), [BalanceSearch.tsx](../src/BalanceSearch.tsx) |
 | Сотрудники iiko | [EmployeeEditor.tsx](../src/EmployeeEditor.tsx), [interface.md](CODEMAPS/interface.md) |
 | Депозиты и создание | [DepositsPage.tsx](../src/DepositsPage.tsx), [CreateDeposit.tsx](../src/CreateDeposit.tsx) |
+| Общие настройки синхронизации и складов новых документов | [OperationSettings.tsx](../src/OperationSettings.tsx), [operationSettingsModel.ts](../src/operationSettingsModel.ts); GET/POST `/management/operation-settings`, revision и явные `all` / `selected` (пустой список отключает всё). Вкладка обычного управления, отдельно от прав сотрудников. |
 | Аккаунты dashboard, заведения, терминалы | [ManagementPage.tsx](../src/ManagementPage.tsx), [integrations.md](CODEMAPS/integrations.md) |
 | Мобильный UI и стили | [styles.css](../src/styles.css), [interface.md](CODEMAPS/interface.md) |
 | Сборка и проверки | [package.json](../package.json), [integrations.md](CODEMAPS/integrations.md) |
@@ -233,3 +234,5 @@ runtime первоначальная настройка остаётся отд�
 бизнес-разделов, права сотрудника/складов и серверные проверки сохраняются.
 Browser smoke покрывает setup owner с `can_manage=false`, пустые реальные права
 и переход назначенного раздела от отсутствующей readiness к готовому чтению.
+
+Настройки операций (16.10.2026): `ManagementPage` открывает «Синхронизация и склады» в полном управлении. Каталоги и сохранённые настройки приходят с сервера; конфликт revision 409 сохраняет черновик и требует явного обновления. `DocumentOptions.create_stores/create_recipients` ограничивают создание и копии вместе с прежними grants, явный пустой каталог запрещает новые документы; отсутствие поля сохраняет старый контракт. Редактирование и история используют исходные stores/recipients. Проверки: `tests/operationSettings.test.mjs`.
