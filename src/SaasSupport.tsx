@@ -270,6 +270,7 @@ function SupportView({ companies }: { companies: Company[] }) {
           }}
           title={tab === "tickets" ? "Обращение" : "Техническая ошибка"}
           size="lg"
+          styles={{ content: { color: "var(--mantine-color-text)" } }}
         >
           <Stack>
             {detailError && (
