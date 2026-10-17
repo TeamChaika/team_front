@@ -24,10 +24,11 @@ import {
   IconSearch,
   IconX,
 } from "@tabler/icons-react";
-import { api, dateText } from "./api";
+import { api, ApiError, dateText } from "./api";
 import { useWorkspace } from "./App";
 import "./indicators.css";
 import { periods, presets, type Preset } from "./indicatorPeriods";
+import { indicatorErrorMessage } from "./indicatorErrors";
 
 type Metric = { key: string; label: string; unit?: string; duration?: boolean };
 const metrics: Metric[] = [
@@ -251,10 +252,10 @@ export function Indicators() {
           setCards((c) => ({
             ...c,
             [key]: {
-              error:
-                e instanceof Error
-                  ? e.message
-                  : "Не удалось загрузить показатель",
+              error: indicatorErrorMessage(
+                e instanceof Error ? e.message : "",
+                e instanceof ApiError ? e.status : undefined,
+              ),
             },
           }));
       } finally {
@@ -360,7 +361,7 @@ export function Indicators() {
           <button
             aria-label="Обновить показатели"
             onClick={() => setRevision((v) => v + 1)}
-            disabled={!ready.length}
+            disabled={!Object.values(cards).some((card) => card.report || card.error)}
           >
             <IconRefresh size={20} />
           </button>
@@ -577,7 +578,7 @@ export function Indicators() {
                 </button>
                 {card?.error && (
                   <span className="indicator-error-text" title={card.error}>
-                    iiko пока не ответила
+                    {card.error}
                   </span>
                 )}
               </article>
@@ -588,6 +589,11 @@ export function Indicators() {
         <Button variant="light" onClick={() => setSettingsOpen(true)}>
           Добавить показатели
         </Button>
+      )}
+      {!departments.length && (
+        <p className="indicators-sync-note">
+          Только заведения с включённой синхронизацией
+        </p>
       )}
       <div className="indicators-legend">
         <span>● Выбранный период</span>
