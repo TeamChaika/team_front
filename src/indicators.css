@@ -219,6 +219,11 @@
   font-size: 10px;
   color: #b4d9e2;
 }
+.indicators-sync-note {
+  margin: 10px 0 0;
+  font-size: 11px;
+  color: #b4d9e2;
+}
 .indicators-legend span + span {
   color: #69ad9e;
 }
