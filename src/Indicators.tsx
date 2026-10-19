@@ -29,6 +29,12 @@ import { useWorkspace } from "./App";
 import "./indicators.css";
 import { periods, presets, type Preset } from "./indicatorPeriods";
 import { indicatorErrorMessage } from "./indicatorErrors";
+import {
+  indicatorCards,
+  startIndicatorRefresh,
+  updateIndicatorCard,
+  type IndicatorSnapshot,
+} from "./indicatorRefresh";
 
 type Metric = { key: string; label: string; unit?: string; duration?: boolean };
 const metrics: Metric[] = [
@@ -49,22 +55,6 @@ const metrics: Metric[] = [
 ];
 type Filter = { key: string; label: string; default: string[] };
 type Filters = Record<string, string[]>;
-type Period = {
-  start: string;
-  end: string;
-  value: string | number | null;
-  partial: boolean;
-  observed_at: string | null;
-};
-type Report = {
-  status: "ready";
-  current: Period;
-  previous: Period;
-  source: string;
-  observed_at: string;
-};
-type Pending = { status: "loading"; retry_after: number };
-type CardState = { report?: Report; error?: string };
 type Dictionary = {
   filters: Filter[];
   options: Record<string, string[]>;
@@ -98,20 +88,6 @@ function rangeLabel(start: string, end: string) {
   return start === end
     ? dateText(start)
     : `${dateText(start)} — ${dateText(end)}`;
-}
-function pause(ms: number, signal: AbortSignal) {
-  return new Promise<void>((resolve, reject) => {
-    const cancel = () => {
-      clearTimeout(timer);
-      reject(new DOMException("Aborted", "AbortError"));
-    };
-    const timer = setTimeout(() => {
-      signal.removeEventListener("abort", cancel);
-      resolve();
-    }, ms);
-    signal.addEventListener("abort", cancel, { once: true });
-    if (signal.aborted) cancel();
-  });
 }
 function display(value: unknown, metric: Metric) {
   if (value === null || value === undefined || !Number.isFinite(Number(value)))
@@ -163,7 +139,10 @@ export function Indicators() {
   const [draftRange, setDraftRange] = useState(custom);
   const [filters, setFilters] = useState<Filters>({});
   const [revision, setRevision] = useState(0);
-  const [cards, setCards] = useState<Record<string, CardState>>({});
+  const [snapshot, setSnapshot] = useState<IndicatorSnapshot>({
+    queryKey: "",
+    cards: {},
+  });
   const retryCard = useRef<(key: string) => void>(() => {});
   const [dictionary, setDictionary] = useState<Dictionary | null>(null);
   const [dictionaryBusy, setDictionaryBusy] = useState(false);
@@ -184,6 +163,13 @@ export function Indicators() {
   const filterJson = JSON.stringify(filters);
   const period = periods(preset, today, custom);
   const periodJson = JSON.stringify(period);
+  const queryKey = JSON.stringify([
+    meta.user.id,
+    query,
+    periodJson,
+    filterJson,
+  ]);
+  const cards = indicatorCards(snapshot, queryKey);
   const visibleKeys = metrics
     .filter((m) => !preferences.hidden.includes(m.key))
     .map((m) => m.key)
@@ -215,67 +201,36 @@ export function Indicators() {
     return () => controller.abort();
   }, [dictionaryQuery, dictionaryRevision]);
   useEffect(() => {
-    const controller = new AbortController(),
-      signal = controller.signal;
-    setCards({});
-    setDetail(null);
     const body = JSON.stringify({
       ...JSON.parse(periodJson),
       filters: JSON.parse(filterJson),
     });
-    const inFlight = new Set<string>();
-    async function load(key: string) {
-      if (inFlight.has(key)) return;
-      inFlight.add(key);
-      setCards((c) => ({ ...c, [key]: {} }));
-      try {
-        const deadline = Date.now() + 15 * 60_000;
-        while (!signal.aborted) {
-          const result = await api<Report | Pending>(
-            `/indicators/metric/${key}?${query}`,
-            { method: "POST", body, signal },
-          );
-          if (signal.aborted) return;
-          if (result.status === "ready") {
-            setCards((c) => ({ ...c, [key]: { report: result } }));
-            return;
-          }
-          if (Date.now() >= deadline)
-            throw new Error("iiko долго формирует отчёт. Повторите загрузку.");
-          await pause(
-            Math.min(10, Math.max(1, result.retry_after)) * 1000,
-            signal,
-          );
-        }
-      } catch (e) {
-        if (!signal.aborted)
-          setCards((c) => ({
-            ...c,
-            [key]: {
-              error: indicatorErrorMessage(
-                e instanceof Error ? e.message : "",
-                e instanceof ApiError ? e.status : undefined,
-              ),
-            },
-          }));
-      } finally {
-        inFlight.delete(key);
-      }
-    }
-    retryCard.current = (key) => {
-      void load(key);
-    };
-    const queue = visibleKeys.split(",").filter(Boolean);
-    async function worker() {
-      while (queue.length && !signal.aborted) await load(queue.shift()!);
-    }
-    void worker();
-    void worker();
+    const refresh = startIndicatorRefresh({
+      keys: visibleKeys.split(",").filter(Boolean),
+      request: (key, signal) =>
+        api(`/indicators/metric/${key}?${query}`, {
+          method: "POST",
+          body,
+          signal,
+        }),
+      update: (key, patch) =>
+        setSnapshot((current) =>
+          updateIndicatorCard(current, queryKey, key, patch),
+        ),
+      errorMessage: (error) =>
+        indicatorErrorMessage(
+          error instanceof Error ? error.message : "",
+          error instanceof ApiError ? error.status : undefined,
+        ),
+      visibility: document,
+    });
+    retryCard.current = refresh.refresh;
     return () => {
-      controller.abort();
+      refresh.stop();
       retryCard.current = () => {};
     };
-  }, [periodJson, query, filterJson, visibleKeys, revision]);
+  }, [periodJson, query, filterJson, queryKey, visibleKeys, revision]);
+  useEffect(() => setDetail(null), [queryKey]);
   const activeFilters = Object.entries(filters).filter(
     ([key, values]) =>
       JSON.stringify(values) !== JSON.stringify(defaults[key] || []),
@@ -310,13 +265,22 @@ export function Indicators() {
     setSearch("");
     setFilterOpen(true);
   }
-  const ready = Object.values(cards).flatMap((c) =>
-    c.report ? [c.report] : [],
-  );
+  const visibleCards = visibleKeys
+    .split(",")
+    .map((key) => cards[key])
+    .filter(Boolean);
+  const ready = visibleCards.flatMap((c) => (c.report ? [c.report] : []));
   const observed = ready
     .map((r) => r.observed_at)
     .sort()
-    .at(-1);
+    .at(0);
+  const refreshDelayed = visibleCards.some(
+    (c) => c.error || c.report?.refresh_error,
+  );
+  const refreshing = visibleCards.some(
+    (c) => c.refreshing || c.report?.refreshing,
+  );
+  const stale = ready.some((r) => r.stale);
   const detailReport = detail ? cards[detail.key]?.report : null;
   const options = field ? dictionary?.options[field] || [] : [];
   const optionBusy = dictionaryBusy;
@@ -361,7 +325,9 @@ export function Indicators() {
           <button
             aria-label="Обновить показатели"
             onClick={() => setRevision((v) => v + 1)}
-            disabled={!Object.values(cards).some((card) => card.report || card.error)}
+            disabled={
+              !Object.values(cards).some((card) => card.report || card.error)
+            }
           >
             <IconRefresh size={20} />
           </button>
@@ -483,12 +449,22 @@ export function Indicators() {
       )}
       <div className="indicators-freshness">
         <span>
-          iiko · кеш 5 мин
+          iiko · автоматическое обновление каждые 5 мин
           {observed
-            ? ` · ${new Date(observed.replace(" ", "T")).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", timeZone: "Europe/Simferopol" })}`
+            ? ` · данные на ${new Date(observed.replace(" ", "T")).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Simferopol" })}`
             : ""}
         </span>
-        {period.end === today && <span>Сегодня — на текущий момент</span>}
+        <span role="status">
+          {refreshDelayed
+            ? "Обновление задерживается · показаны последние данные"
+            : refreshing
+              ? "Обновление…"
+              : stale
+                ? "Ожидается обновление данных"
+                : period.end === today
+                  ? "Сегодня — на текущий момент"
+                  : ""}
+        </span>
       </div>
       <div className="indicators-grid">
         {ordered
@@ -538,12 +514,12 @@ export function Indicators() {
                 <button
                   className="indicator-values"
                   onClick={() =>
-                    card?.error
+                    !report && card?.error
                       ? retryCard.current(metric.key)
                       : setDetail(metric)
                   }
                   disabled={!report && !card?.error}
-                  aria-label={`${metric.label}${metric.unit ? `, ${metric.unit}` : ""}: ${card?.error ? "повторить загрузку" : "сравнить периоды"}`}
+                  aria-label={`${metric.label}${metric.unit ? `, ${metric.unit}` : ""}: ${!report && card?.error ? "повторить загрузку" : "сравнить периоды"}`}
                 >
                   <span className="indicator-label">
                     {metric.label}
