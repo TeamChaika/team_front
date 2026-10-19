@@ -80,6 +80,7 @@ type Report = {
     start: string;
     end: string;
     recipe_day: string | null;
+    excluded_department_ids?: string[];
     coverage?: {
       complete: boolean;
       loaded_days: number;
@@ -484,6 +485,8 @@ function PriceWorkspace({
                       {dateText(report.impact_period.end)}. «+» — рост затрат,
                       «−» — экономия при прежнем темпе продаж. Нажмите сумму,
                       чтобы увидеть расчёт по блюдам.
+                      {!!report.impact_period.excluded_department_ids?.length &&
+                        " В расчёте — заведения с включённой синхронизацией."}
                     </p>
                   )}
                   {impactNotice && <p role="status">{impactNotice}</p>}
