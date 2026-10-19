@@ -229,7 +229,15 @@ const metrics: {
     note: "Выручка / количество чеков",
   },
 ];
-function Kpis({ data, compare }: { data: OverviewData; compare: boolean }) {
+function Kpis({
+  data,
+  compare,
+  onOpen,
+}: {
+  data: OverviewData;
+  compare: boolean;
+  onOpen: () => void;
+}) {
   const t = data.current.totals;
   return (
     <>
@@ -238,6 +246,7 @@ function Kpis({ data, compare }: { data: OverviewData; compare: boolean }) {
           <Link
             key={k.key}
             to="/sales?kind=daily"
+            onClick={onOpen}
             className="kpi-card"
             aria-label={`${k.label} — открыть расшифровку`}
           >
@@ -660,6 +669,7 @@ export function Overview({ tenant = false }: { tenant?: boolean }) {
   const trendState = samePeriod ? state : recent;
   const openPeriod = (p: Period) => {
     w.setPeriod(p.start, p.end);
+    w.preserveDepartmentScope();
     navigate("/sales?kind=daily");
   };
   const hour = Number(
@@ -762,6 +772,7 @@ export function Overview({ tenant = false }: { tenant?: boolean }) {
           error={state.error}
           prices={prices}
           onPrice={setSelectedPrice}
+          onSales={w.preserveDepartmentScope}
           statusAvailable={canStatus}
         />
       </OverviewPortal>
@@ -799,7 +810,11 @@ export function Overview({ tenant = false }: { tenant?: boolean }) {
                 {compare && <PeriodNotice period={data.previous} previous />}
               </details>
             )}
-            <Kpis data={data} compare={compare} />
+            <Kpis
+              data={data}
+              compare={compare}
+              onOpen={w.preserveDepartmentScope}
+            />
             <Feedback
               state={{
                 ...trendState,
@@ -824,7 +839,11 @@ export function Overview({ tenant = false }: { tenant?: boolean }) {
               <section className="panel overview-restaurants">
                 <div className="panel-heading">
                   <h2>Рестораны</h2>
-                  <Link to="/sales?kind=daily" className="text-link">
+                  <Link
+                    to="/sales?kind=daily"
+                    onClick={w.preserveDepartmentScope}
+                    className="text-link"
+                  >
                     Все рестораны <IconArrowRight size={14} />
                   </Link>
                 </div>
@@ -925,7 +944,11 @@ export function Overview({ tenant = false }: { tenant?: boolean }) {
                 <section className="panel overview-dish-leaders">
                   <div className="panel-heading">
                     <h2>Топ-5 позиций по выручке</h2>
-                    <Link to="/sales?kind=dishes" className="text-link">
+                    <Link
+                      to="/sales?kind=dishes"
+                      onClick={w.preserveDepartmentScope}
+                      className="text-link"
+                    >
                       Все <IconArrowRight size={14} />
                     </Link>
                   </div>
@@ -951,6 +974,7 @@ export function Overview({ tenant = false }: { tenant?: boolean }) {
                               <td>
                                 <Link
                                   className="text-link"
+                                  onClick={w.preserveDepartmentScope}
                                   to={
                                     "/sales?" +
                                     new URLSearchParams({

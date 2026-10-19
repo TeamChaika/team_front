@@ -247,7 +247,7 @@ export type Meta = {
     all_departments?: boolean;
     password_change_required?: boolean;
   };
-  departments: { id: string; name: string; code: string }[];
+  departments: { id: string; name: string; code: string; archived?: boolean }[];
   sales_dates: string[];
   balance_dates: string[];
 };

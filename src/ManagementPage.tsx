@@ -1,3 +1,4 @@
+import { VenueArchive } from "./VenueArchive";
 import { useEffect, useState } from "react";
 import {
   Alert,
@@ -758,10 +759,16 @@ export function ManagementPage({
             {!setupOnly && (
               <Tabs.Tab value="commercial">Приход и реализация</Tabs.Tab>
             )}
+            {!setupOnly && <Tabs.Tab value="archive">Заведения</Tabs.Tab>}
             {!setupOnly && (
               <Tabs.Tab value="operations">Синхронизация и склады</Tabs.Tab>
             )}
           </Tabs.List>
+          {!setupOnly && (
+            <Tabs.Panel value="archive" pt="lg">
+              <VenueArchive onChange={onChange} />
+            </Tabs.Panel>
+          )}
           {!setupOnly && (
             <Tabs.Panel value="operations" pt="lg" keepMounted>
               <OperationSettings onChange={onChange} />
