@@ -1,3 +1,4 @@
+import { venueScope, drilldownDepartments } from "./venueArchiveModel";
 import Support from "./Support";
 import { companyIntegrationsAllowed } from "./companyIntegrationsModel";
 import {
@@ -34,6 +35,7 @@ import {
   Loader,
   Badge,
   Avatar,
+  Checkbox,
 } from "@mantine/core";
 import {
   IconChartBar,
@@ -139,6 +141,10 @@ export const sections = [
 type Workspace = {
   meta: Meta;
   departments: string[];
+  includeArchived: boolean;
+  setIncludeArchived: (value: boolean) => void;
+  hasArchivedDepartments: boolean;
+  preserveDepartmentScope: () => void;
   setDepartment: (v: string) => void;
   setDepartments: (ids: string[]) => void;
   start: string;
@@ -295,11 +301,31 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
   const currentUserId = useRef<string | null>(null);
   currentUserId.current = meta?.user.id ?? null;
   const [departments, setDepartments] = useState<string[]>([]);
-  const setDepartment = (id: string) => setDepartments(id ? [id] : []);
   const [start, setStart] = useState(""),
     [end, setEnd] = useState(""),
     [mobile, setMobile] = useState(false);
   const location = useLocation();
+  const [includeArchived, setIncludeArchived] = useState(false);
+  const archiveScope =
+    location.pathname === "/" || location.pathname === "/indicators";
+  const scope = venueScope(
+    meta?.departments ?? [],
+    departments,
+    !archiveScope || includeArchived,
+  );
+  const effectiveDepartments = scope.selected;
+  useEffect(() => {
+    if (archiveScope) {
+      setDepartments((ids) => {
+        const next = venueScope(
+          meta?.departments ?? [],
+          ids,
+          includeArchived,
+        ).selected;
+        return next.length === ids.length ? ids : next;
+      });
+    }
+  }, [archiveScope, includeArchived, meta?.departments]);
   useEffect(() => {
     let live = true;
     const requirementVersion = getPasswordRequirementVersion();
@@ -621,7 +647,13 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
   ].includes(location.pathname);
   const query = (dates = false) => {
     const p = new URLSearchParams();
-    for (const id of departments) p.append("department_id", id);
+    const queryDepartments =
+      location.pathname === "/"
+        ? drilldownDepartments(scope.venues, effectiveDepartments)
+        : effectiveDepartments;
+    for (const id of queryDepartments) p.append("department_id", id);
+    if (location.pathname === "/")
+      p.set("include_archived", String(includeArchived));
     if (dates) {
       p.set("start", start);
       p.set("end", end);
@@ -631,10 +663,23 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
   return (
     <WorkspaceContext.Provider
       value={{
-        meta,
-        departments,
-        setDepartment,
-        setDepartments,
+        meta: archiveScope ? { ...meta, departments: scope.venues } : meta,
+        departments: effectiveDepartments,
+        includeArchived,
+        setIncludeArchived,
+        hasArchivedDepartments: meta.departments.some(
+          (venue) => venue.archived,
+        ),
+        preserveDepartmentScope: () =>
+          setDepartments(
+            drilldownDepartments(scope.venues, effectiveDepartments),
+          ),
+        setDepartment: (id) =>
+          setDepartments(
+            venueScope(scope.venues, id ? [id] : [], true).selected,
+          ),
+        setDepartments: (ids) =>
+          setDepartments(venueScope(scope.venues, ids, true).selected),
         start,
         end,
         query,
@@ -798,11 +843,21 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
                       </span>
                     ) : (
                       <RestaurantPicker
-                        restaurants={meta.departments}
-                        value={departments}
+                        restaurants={scope.venues}
+                        value={effectiveDepartments}
                         onChange={setDepartments}
                       />
                     )}
+                    {location.pathname === "/" &&
+                      meta.departments.some((venue) => venue.archived) && (
+                        <Checkbox
+                          label="Показать архивные"
+                          checked={includeArchived}
+                          onChange={(event) =>
+                            setIncludeArchived(event.currentTarget.checked)
+                          }
+                        />
+                      )}
                     {location.pathname !== "/purchase-prices" && (
                       <>
                         <div className="date-filter">
@@ -927,10 +982,17 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
                         <Route
                           path="/"
                           element={
-                            <Overview
-                              key={departments.join(",")}
-                              tenant={Boolean(tenant)}
-                            />
+                            scope.empty ? (
+                              <Alert>
+                                Нет активных заведений. Включите «Показать
+                                архивные», чтобы открыть историю.
+                              </Alert>
+                            ) : (
+                              <Overview
+                                key={`${includeArchived}:${scope.venues.map((venue) => venue.id).join(",")}:${effectiveDepartments.join(",")}`}
+                                tenant={Boolean(tenant)}
+                              />
+                            )
                           }
                         />
                         <Route

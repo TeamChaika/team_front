@@ -106,6 +106,7 @@ export function OverviewNotifications({
   error,
   prices,
   onPrice,
+  onSales,
   statusAvailable = true,
 }: {
   data: OverviewData | null;
@@ -113,6 +114,7 @@ export function OverviewNotifications({
   error: string;
   prices: Prices;
   onPrice: (row: PriceChange) => void;
+  onSales: () => void;
   statusAvailable?: boolean;
 }) {
   const alerts: {
@@ -225,7 +227,12 @@ export function OverviewNotifications({
               {content}
             </div>
           ) : (
-            <Link key={alert.id} className="overview-alert" to={alert.href!}>
+            <Link
+              key={alert.id}
+              className="overview-alert"
+              to={alert.href!}
+              onClick={alert.href!.startsWith("/sales?") ? onSales : undefined}
+            >
               {content}
             </Link>
           );

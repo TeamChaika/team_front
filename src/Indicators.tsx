@@ -1,9 +1,11 @@
+import { venueScope } from "./venueArchiveModel";
 import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Button,
   Checkbox,
   Drawer,
+  Group,
   Loader,
   Menu,
   Modal,
@@ -128,7 +130,15 @@ function loadPreferences(key: string): Preferences {
 }
 
 export function Indicators() {
-  const { meta, departments, setDepartments } = useWorkspace();
+  const {
+    meta,
+    departments,
+    setDepartments,
+    includeArchived,
+    setIncludeArchived,
+    hasArchivedDepartments,
+  } = useWorkspace();
+  const empty = meta.departments.length === 0;
   const storageKey = `chaika:indicators:v1:${meta.user.id}`;
   const [preferences, setPreferences] = useState(() =>
     loadPreferences(storageKey),
@@ -156,16 +166,25 @@ export function Indicators() {
   const [field, setField] = useState<string | null>(null),
     [search, setSearch] = useState("");
   const [detail, setDetail] = useState<Metric | null>(null);
+  const scopedDraftDepartments = venueScope(
+    meta.departments,
+    draftDepartments,
+    true,
+  ).selected;
   const query = parameters(departments);
-  const dictionaryQuery = parameters(
-    filterOpen ? draftDepartments : departments,
+  const dictionaryParams = new URLSearchParams(
+    parameters(filterOpen ? scopedDraftDepartments : departments),
   );
+  dictionaryParams.set("include_archived", String(includeArchived));
+  const dictionaryQuery = dictionaryParams.toString();
   const filterJson = JSON.stringify(filters);
   const period = periods(preset, today, custom);
   const periodJson = JSON.stringify(period);
   const queryKey = JSON.stringify([
     meta.user.id,
     query,
+    includeArchived,
+    meta.departments.map((venue) => venue.id),
     periodJson,
     filterJson,
   ]);
@@ -182,6 +201,7 @@ export function Indicators() {
     }
   }, [storageKey, preferences]);
   useEffect(() => {
+    if (empty) return;
     const controller = new AbortController();
     setDictionaryBusy(true);
     setDictionaryError("");
@@ -199,11 +219,13 @@ export function Indicators() {
         if (!controller.signal.aborted) setDictionaryBusy(false);
       });
     return () => controller.abort();
-  }, [dictionaryQuery, dictionaryRevision]);
+  }, [dictionaryQuery, dictionaryRevision, empty]);
   useEffect(() => {
+    if (empty) return;
     const body = JSON.stringify({
       ...JSON.parse(periodJson),
       filters: JSON.parse(filterJson),
+      include_archived: includeArchived,
     });
     const refresh = startIndicatorRefresh({
       keys: visibleKeys.split(",").filter(Boolean),
@@ -229,7 +251,16 @@ export function Indicators() {
       refresh.stop();
       retryCard.current = () => {};
     };
-  }, [periodJson, query, filterJson, queryKey, visibleKeys, revision]);
+  }, [
+    periodJson,
+    query,
+    filterJson,
+    queryKey,
+    visibleKeys,
+    revision,
+    includeArchived,
+    empty,
+  ]);
   useEffect(() => setDetail(null), [queryKey]);
   const activeFilters = Object.entries(filters).filter(
     ([key, values]) =>
@@ -288,7 +319,7 @@ export function Indicators() {
   const syncTime = field ? dictionary?.sync[field]?.synced_at : undefined;
   const selectedValues =
     field === "restaurants"
-      ? draftDepartments
+      ? scopedDraftDepartments
       : field
         ? (draft[field] ?? defaults[field] ?? [])
         : [];
@@ -311,15 +342,37 @@ export function Indicators() {
       .toLocaleLowerCase("ru")
       .replaceAll("ё", "е")
       .includes(search.toLocaleLowerCase("ru").replaceAll("ё", "е"));
+  const archiveToggle = hasArchivedDepartments && (
+    <Checkbox
+      label="Показать архивные"
+      size="xs"
+      checked={includeArchived}
+      onChange={(event) => setIncludeArchived(event.currentTarget.checked)}
+    />
+  );
+  if (empty)
+    return (
+      <section className="indicators-page">
+        <h1>Показатели</h1>
+        {archiveToggle}
+        <Alert mt="md">
+          Нет активных заведений. Включите «Показать архивные», чтобы открыть
+          историю.
+        </Alert>
+      </section>
+    );
   return (
     <section className="indicators-page">
       <div className="indicators-heading">
         <div>
           <h1>Показатели</h1>
-          <button className="indicators-scope" onClick={openFilters}>
-            {restaurantLabel}
-            <IconChevronRight size={14} />
-          </button>
+          <Group gap="md">
+            <button className="indicators-scope" onClick={openFilters}>
+              {restaurantLabel}
+              <IconChevronRight size={14} />
+            </button>
+            {archiveToggle}
+          </Group>
         </div>
         <div className="indicators-actions">
           <button
@@ -620,7 +673,7 @@ export function Indicators() {
             >
               Все значения · сбросить выбор
             </button>
-            {field === "restaurants" && !draftDepartments.length && (
+            {field === "restaurants" && !scopedDraftDepartments.length && (
               <p className="muted">Выбрана вся доступная сеть</p>
             )}
             {optionBusy && field !== "restaurants" && (
@@ -688,8 +741,10 @@ export function Indicators() {
               <span>
                 Точка продаж
                 <small>
-                  {draftDepartments.length
-                    ? draftDepartments.map((id) => names.get(id)).join(", ")
+                  {scopedDraftDepartments.length
+                    ? scopedDraftDepartments
+                        .map((id) => names.get(id))
+                        .join(", ")
                     : "Вся сеть"}
                 </small>
               </span>
@@ -748,7 +803,7 @@ export function Indicators() {
           <Button
             onClick={() => {
               setFilters(draft);
-              setDepartments(draftDepartments);
+              setDepartments(scopedDraftDepartments);
               setFilterOpen(false);
             }}
           >
