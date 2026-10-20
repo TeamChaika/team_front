@@ -176,7 +176,7 @@ function PriceWorkspace({
   const [product, setProduct] = useState<string | null>(null);
   const [direction, setDirection] = useState("all");
   const [threshold, setThreshold] = useState("0");
-  const [sort, setSort] = useState("percent_desc");
+  const [sort, setSort] = useState("date");
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<PriceChange | null>(null);
   const [impact, setImpact] = useState<PriceChange | null>(null);
@@ -440,7 +440,7 @@ function PriceWorkspace({
                 value: "weekly_asc",
                 label: "За неделю: от меньшего к большему",
               },
-              { value: "date", label: "Сначала последние" },
+              { value: "date", label: "Сначала последние поступления" },
               {
                 value: "percent",
                 label: "По величине изменения: рост и снижение",
