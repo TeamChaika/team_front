@@ -22,6 +22,7 @@ import { IconBuildingStore, IconPlus, IconUsers } from "@tabler/icons-react";
 import { api } from "./api";
 import { OperationSettings } from "./OperationSettings";
 import { DocumentAccess } from "./DocumentAccess";
+import { WriteoffReasons } from "./WriteoffReasons";
 import { CompanyIntegrations } from "./CompanyIntegrations";
 import { CommercialInvoiceAccess } from "./CommercialInvoiceAccess";
 
@@ -756,6 +757,9 @@ export function ManagementPage({
             {documentsEnabled && !setupOnly && (
               <Tabs.Tab value="documents">Документы и склады</Tabs.Tab>
             )}
+            {documentsEnabled && !setupOnly && (
+              <Tabs.Tab value="writeoff-reasons">Причины списания</Tabs.Tab>
+            )}
             {!setupOnly && (
               <Tabs.Tab value="commercial">Приход и реализация</Tabs.Tab>
             )}
@@ -782,6 +786,11 @@ export function ManagementPage({
           {documentsEnabled && (
             <Tabs.Panel value="documents" pt="lg">
               <DocumentAccess accounts={directory.users} />
+            </Tabs.Panel>
+          )}
+          {documentsEnabled && !setupOnly && (
+            <Tabs.Panel value="writeoff-reasons" pt="lg">
+              <WriteoffReasons />
             </Tabs.Panel>
           )}
           <Tabs.Panel value="commercial" pt="lg">
