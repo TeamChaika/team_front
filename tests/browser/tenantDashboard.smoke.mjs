@@ -61,6 +61,9 @@ let assignedSections = sections;
 let actorKind = "platform_owner";
 let featureReadiness;
 let paymentSurface = false;
+let reasonFailure = 0;
+let reasons = [];
+const reasonWrites = [];
 const guestCode = "S".repeat(32);
 try {
   const context = await browser.newContext({
@@ -181,6 +184,37 @@ try {
           warehouses: [],
           venues: [],
         });
+      case "/api/documents/admin/writeoff-reasons":
+      case "/api/documents/admin/writeoff-reasons/1": {
+        if (request.method() === "GET") {
+          if (reasonFailure === 403)
+            return json({ detail: "Недостаточно прав" }, 403);
+          return json({
+            reasons,
+            accounts: [{ id: "account-1", name: "Порча", code: "91.2" }],
+          });
+        }
+        const body = request.postDataJSON();
+        reasonWrites.push({ body, csrf: request.headers()["x-csrf-token"] });
+        if (reasonFailure)
+          return json(
+            {
+              detail:
+                reasonFailure === 409
+                  ? "Причина уже изменена"
+                  : "Не удалось сохранить причину",
+            },
+            reasonFailure,
+          );
+        const reason = {
+          ...body,
+          id: 1,
+          account_name: "Порча",
+          version: (reasons[0]?.version || 0) + 1,
+        };
+        reasons = [reason];
+        return json({ reason });
+      }
       case "/api/management/venues":
         return json({ venues: [], terminals: [], tenant_payments: true });
       case "/api/assistant/status":
@@ -292,6 +326,74 @@ try {
     path: path.join(artifacts, "tenant-working-partial.png"),
     fullPage: true,
   });
+  // Reasons use the tenant administration transport, including CSRF and readiness.
+  await page.goto("https://client.example.test/management");
+  await page
+    .getByRole("tab", { name: "Причины списания", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Добавить причину", exact: true })
+    .click();
+  await page.getByLabel("Название причины", { exact: true }).fill("  Бой  ");
+  await page.getByLabel("Счёт iiko", { exact: true }).fill("91.2");
+  await page.getByRole("option", { name: "Порча · 91.2" }).click();
+  reasonFailure = 400;
+  await page.getByRole("button", { name: "Сохранить", exact: true }).click();
+  await page
+    .getByRole("alert")
+    .filter({ hasText: "Не удалось сохранить причину" })
+    .waitFor();
+  assert.equal(
+    await page.getByLabel("Название причины", { exact: true }).inputValue(),
+    "  Бой  ",
+  );
+  reasonFailure = 0;
+  await page.getByRole("button", { name: "Сохранить", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Изменить причину «Бой»", exact: true })
+    .click();
+  await page.getByLabel("Название причины", { exact: true }).fill("Бой посуды");
+  await page.getByRole("button", { name: "Сохранить", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Изменить причину «Бой посуды»", exact: true })
+    .click();
+  assert.deepEqual(reasonWrites.at(-1).body, {
+    name: "Бой посуды",
+    account_id: "account-1",
+    version: 1,
+  });
+  assert.ok(
+    reasonWrites.every((write) => write.csrf),
+    "tenant writes require CSRF",
+  );
+  reasonFailure = 409;
+  await page
+    .getByLabel("Название причины", { exact: true })
+    .fill("Мой черновик");
+  await page.getByRole("button", { name: "Сохранить", exact: true }).click();
+  await page.getByText("Причина уже изменена", { exact: true }).waitFor();
+  assert.equal(
+    await page.getByLabel("Название причины", { exact: true }).inputValue(),
+    "Мой черновик",
+  );
+  assert.equal(
+    await page
+      .getByRole("button", { name: "Сохранить", exact: true })
+      .isDisabled(),
+    true,
+  );
+  reasonFailure = 403;
+  await page
+    .getByRole("button", { name: "Обновить список", exact: true })
+    .click();
+  await page.getByText("Недостаточно прав", { exact: true }).waitFor();
+  assert.equal(
+    await page
+      .getByRole("button", { name: "Добавить причину", exact: true })
+      .count(),
+    0,
+  );
+  reasonFailure = 0;
   // A newer authenticated workspace upgrades a stale public setup snapshot.
   setupAvailable = true;
   contextWorkingOverride = false;
@@ -328,6 +430,12 @@ try {
   );
   assert.equal(
     await page.getByRole("tab", { name: "Сотрудники и доступы" }).count(),
+    0,
+  );
+  assert.equal(
+    await page
+      .getByRole("tab", { name: "Причины списания", exact: true })
+      .count(),
     0,
   );
   // A ready settings feature does not grant the separate user administration feature.
