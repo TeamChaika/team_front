@@ -76,6 +76,8 @@ const BalancesPage = lazy(() =>
   import("./BalancesPage").then((module) => ({ default: module.BalancesPage })),
 );
 import { Overview } from "./Overview";
+import { KITCHEN_HEATMAP_PATH } from "./kitchenHeatmap";
+const KitchenHeatmapPage = lazy(() => import("./KitchenHeatmapPage"));
 const PurchasePrices = lazy(() =>
   import("./PurchasePrices").then((module) => ({
     default: module.PurchasePrices,
@@ -816,6 +818,7 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
                 </div>
               </header>
               {currentAllowed &&
+                location.pathname !== KITCHEN_HEATMAP_PATH &&
                 !commercialWorkspace &&
                 !(
                   meta.documents_enabled &&
@@ -1025,6 +1028,14 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
                           }
                         />
                         <Route path="/sales" element={<SalesPage />} />
+                        <Route
+                          path={KITCHEN_HEATMAP_PATH}
+                          element={
+                            currentAllowed && meta.kitchen_heatmap_enabled === true
+                              ? <KitchenHeatmapPage />
+                              : <Navigate to="/sales" replace />
+                          }
+                        />
                         <Route
                           path="/deposits"
                           element={

@@ -233,6 +233,7 @@ export type Meta = {
     unsupported_sections: string[];
   };
   supported_sales_kinds?: string[];
+  kitchen_heatmap_enabled?: boolean;
   documents_enabled?: boolean;
   sections?: string[];
   can_manage?: boolean;

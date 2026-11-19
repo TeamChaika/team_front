@@ -40,6 +40,7 @@ import {
 } from "./api";
 import { useData } from "./useData";
 import { useWorkspace } from "./App";
+import { KITCHEN_HEATMAP_PATH } from "./kitchenHeatmap";
 import { DiscountDrilldown } from "./DiscountDrilldown";
 import { LiveDataNotice } from "./LiveDataNotice";
 import { EmployeeEditor, EmployeePending } from "./EmployeeEditor";
@@ -750,6 +751,11 @@ export function SalesPage() {
             : "Семь согласованных между собой разрезов OLAP. Час открытия и группа → тип оплаты."
         }
       />
+      {w.meta.kitchen_heatmap_enabled === true && (
+        <Button component={Link} to={KITCHEN_HEATMAP_PATH} variant="light" mb="md">
+          Тепловая карта цехов
+        </Button>
+      )}
       <div className="tabs" role="tablist" aria-label="Отчёты продаж">
         {availableKinds.map(([k, title]) => (
           <button

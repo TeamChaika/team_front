@@ -7,6 +7,7 @@
 | `/`, обзор | [Overview.tsx](../../src/Overview.tsx), [OverviewCards.tsx](../../src/OverviewCards.tsx); `GET /overview`, `GET /purchase-prices` |
 | `/indicators` | [Indicators.tsx](../../src/Indicators.tsx), [indicatorPeriods.ts](../../src/indicatorPeriods.ts); `GET /indicators/filters`, `POST /indicators/metric/:key` |
 | `/sales?kind=...` | `SalesPage` в [pages.tsx](../../src/pages.tsx); `GET /sales/:kind` |
+| `/sales/kitchen-heatmap` | [KitchenHeatmapPage.tsx](../../src/KitchenHeatmapPage.tsx) → `GET /sales/kitchen/heatmap`; доступ к продажам и `meta.kitchen_heatmap_enabled=true` |
 | `/cash-shifts`, `/invoices`, `/outgoing`, `/products`, `/charts`, `/employees`, `/events` | `ResourcePage` в [pages.tsx](../../src/pages.tsx); `GET /resources/:resource` |
 | `/:resource/:id` | `DetailPage` в [pages.tsx](../../src/pages.tsx); `GET /resources/:resource/:id` |
 | `/events/topology` | `TopologyPage` в [pages.tsx](../../src/pages.tsx); `GET /topology` |
@@ -25,6 +26,14 @@
 - [pages.tsx](../../src/pages.tsx) также содержит `DataTable`, `ExportButton`, KPI продаж и часовую диаграмму. [DiscountDrilldown.tsx](../../src/DiscountDrilldown.tsx) связывает скидки с событиями заказа.
 - Сотрудники iiko: список/деталь находятся в `pages.tsx`, форма и ожидание изменений — в [EmployeeEditor.tsx](../../src/EmployeeEditor.tsx); пути `/employees/options`, `/employees/:id/edit`, `/employees`, `/employees/:id`, `/employees/pending`, `/employees/changes/:id/refresh`.
 - Мобильное меню открывает `App` и закрывает при смене URL. Общая оболочка и адаптивные правила — [styles.css](../../src/styles.css); экраны — [overview.css](../../src/overview.css), [indicators.css](../../src/indicators.css), [documents.css](../../src/documents.css), [deposits.css](../../src/deposits.css), [purchase-prices.css](../../src/purchase-prices.css), [purchase-assistant.css](../../src/purchase-assistant.css).
+
+## Тепловая карта цехов
+
+Страница получает доступные заведения из `GET /me`. Ссылка может заполнить разрешённое заведение и проверенный диапазон через `department_id`, `date_from`, `date_to`. Отчёт открывается по кнопке «Показать». [kitchenHeatmap.ts](../../src/kitchenHeatmap.ts) запрашивает последовательные отрезки до семи дней через `api.ts` и отменяет запрос при смене фильтров. Карта появляется после загрузки всего периода.
+
+Тепловая карта показывает порции или сумму после скидок по часу сервисной печати. `mode=money` открывает сумму. Прежние `mode=ready` и `mode=sent` открывают порции. Диаграмма показывает суммы со знаком по всем цехам или по одному цеху. Если суммы по позициям с печатью неполные, денежный режим сообщает об отсутствии данных. Признак печати проверяется за весь период. Дни только с порциями без времени печати сохраняют свой счётчик в отчёте и не скрывают суммы печати за другие дни. Переключение показателя, выбор цеха на диаграмме и ввод минут обходятся без новых запросов.
+
+Планирование использует первую печать за учётный день или медиану первых печатей по дням с печатью. Часы пика рассчитываются по порциям за весь выбранный период. При равенстве показываются все часы пика. Минуты на подготовку сохраняются в браузере по аккаунту, заведению и идентификатору цеха. Рекомендуемое начало расчётное и учитывает переход через полночь относительно учётной даты.
 
 ## Ограничение по складам
 

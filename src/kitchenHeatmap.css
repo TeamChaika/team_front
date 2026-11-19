@@ -1,0 +1,314 @@
+.kitchen-heatmap {
+  min-width: 0;
+}
+
+.kitchen-heatmap-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+}
+
+.kitchen-heatmap-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.kitchen-heatmap-filters label {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+  font-size: 0.875rem;
+}
+
+.kitchen-heatmap-filters :is(input, select) {
+  box-sizing: border-box;
+  min-height: 2.25rem;
+  max-width: 100%;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-default);
+  background: var(--mantine-color-body);
+  color: var(--mantine-color-text);
+  font: inherit;
+}
+
+.kitchen-heatmap-filters label:first-child {
+  flex: 0 1 18rem;
+}
+
+.kitchen-heatmap-filter-message {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.kitchen-heatmap-mode {
+  max-width: 100%;
+  margin-bottom: 1rem;
+}
+
+.kitchen-heatmap-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0 0 1rem;
+}
+
+.kitchen-heatmap-summary > div {
+  flex: 1 1 12rem;
+  padding: 0.75rem;
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-md);
+}
+
+.kitchen-heatmap-summary dt {
+  font-size: 0.875rem;
+}
+
+.kitchen-heatmap-summary dd {
+  margin: 0.3rem 0 0;
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.kitchen-heatmap-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 1rem 0 0.6rem;
+  font-size: 0.875rem;
+}
+
+.kitchen-heatmap-legend [data-level] {
+  padding: 0.125rem 0.4rem;
+  border-radius: 0.25rem;
+}
+
+.kitchen-heatmap-legend i {
+  width: 1rem;
+  height: 1rem;
+}
+
+.kitchen-heatmap-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-md);
+}
+
+.kitchen-heatmap-scroll:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: 2px;
+}
+
+.kitchen-heatmap-table {
+  min-width: 100%;
+  border-spacing: 0;
+  color: var(--mantine-color-text);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.kitchen-heatmap-table :is(th, td) {
+  padding: 0.5rem 0.45rem;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.kitchen-heatmap-table :is(th, td):not(:first-child) {
+  min-width: 3rem;
+}
+
+.kitchen-heatmap-table th:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  width: 9rem;
+  min-width: 7rem;
+  max-width: 11rem;
+  border-right: 1px solid var(--mantine-color-default-border);
+  background: var(--mantine-color-body);
+  text-align: left;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.kitchen-heatmap-table :is(thead, tfoot) {
+  font-weight: 700;
+}
+
+.kitchen-heatmap [data-level="0"] {
+  background-color: var(--panel);
+  color: var(--muted);
+}
+
+.kitchen-heatmap [data-level="1"] {
+  background-color: #dbf3ef;
+  color: #163c39;
+}
+
+.kitchen-heatmap [data-level="2"] {
+  background-color: #9adacd;
+  color: #163c39;
+}
+
+.kitchen-heatmap [data-level="3"] {
+  background-color: #22796c;
+  color: #fff;
+}
+
+.kitchen-heatmap [data-level="4"] {
+  background-color: #14544d;
+  color: #fff;
+}
+
+@media (max-width: 540px) {
+  .kitchen-heatmap-filters label:first-child {
+    flex: 1 0 100%;
+  }
+
+  .kitchen-heatmap-filters label:not(:first-child) {
+    flex: 1 1 8rem;
+  }
+
+  .kitchen-heatmap-summary > div {
+    flex-basis: 9rem;
+  }
+}
+
+.kitchen-heatmap-panel {
+  margin: 1.5rem 0;
+}
+
+.kitchen-heatmap-panel h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.kitchen-heatmap-panel p {
+  margin: 0.35rem 0 0.75rem;
+  color: var(--mantine-color-text);
+  font-size: 0.875rem;
+}
+
+.kitchen-heatmap-panel :is(input, select) {
+  min-height: 2.25rem;
+  max-width: 100%;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-default);
+  background: var(--mantine-color-body);
+  color: var(--mantine-color-text);
+  font: inherit;
+}
+
+.kitchen-chart-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.4rem 1rem;
+}
+
+.kitchen-chart-header label {
+  display: grid;
+  align-self: start;
+  gap: 0.3rem;
+  font-size: 0.875rem;
+  max-width: 100%;
+}
+
+.kitchen-chart {
+  display: grid;
+  grid-template-columns: repeat(24, minmax(2.45rem, 1fr));
+  list-style: none;
+  padding: 1.9rem 0.35rem 0.4rem;
+  margin: 0;
+  width: 100%;
+  min-width: 59.5rem;
+  color: var(--mantine-color-text);
+  font-size: 0.75rem;
+}
+
+.kitchen-chart li {
+  position: relative;
+  text-align: center;
+  padding-bottom: 0.2rem;
+}
+
+.kitchen-chart li:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: -1px;
+  border-radius: 0.25rem;
+}
+
+.kitchen-chart-track {
+  position: relative;
+  height: 8.75rem;
+  margin-bottom: 0.4rem;
+}
+
+.kitchen-chart-zero {
+  position: absolute;
+  z-index: 1;
+  inset-inline: 0;
+  border-top: 1px solid var(--mantine-color-default-border);
+}
+
+.kitchen-chart-bar {
+  position: absolute;
+  inset-inline: 20%;
+  border-radius: 0.2rem;
+  background: #22796c;
+}
+
+.kitchen-chart-bar.negative {
+  background: #a33c31;
+}
+
+.kitchen-chart-amount {
+  position: absolute;
+  z-index: 2;
+  bottom: calc(100% + 0.15rem);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  visibility: hidden;
+  padding: 0.12rem 0.3rem;
+  border-radius: 0.25rem;
+  background: var(--mantine-color-text);
+  color: var(--mantine-color-body);
+}
+
+.kitchen-chart li:focus .kitchen-chart-amount,
+.kitchen-chart li:hover .kitchen-chart-amount {
+  visibility: visible;
+}
+
+.kitchen-chart li:first-child .kitchen-chart-amount {
+  left: 0;
+  transform: none;
+}
+
+.kitchen-chart li:last-child .kitchen-chart-amount {
+  right: 0;
+  left: auto;
+  transform: none;
+}
+
+.kitchen-plan-table :is(th, td) {
+  vertical-align: top;
+  text-align: left;
+}
+
+.kitchen-plan-table .kitchen-plan-peak {
+  white-space: normal;
+  min-width: 12rem;
+}
+
+.kitchen-plan-table input {
+  width: 5.5rem;
+}
