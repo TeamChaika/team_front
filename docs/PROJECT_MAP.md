@@ -14,6 +14,7 @@
 | Обзор и карточки | [Overview.tsx](../src/Overview.tsx), [interface.md](CODEMAPS/interface.md) |
 | Показатели и периоды сравнения | [Indicators.tsx](../src/Indicators.tsx), [indicatorPeriods.ts](../src/indicatorPeriods.ts), [indicatorErrors.ts](../src/indicatorErrors.ts), [indicatorRefresh.ts](../src/indicatorRefresh.ts): серверный кеш, фоновая проверка и сохранение последних данных при обновлении; реальные причины ошибок карточек; «Вся сеть» считает заведения с включённой синхронизацией, явный выбор отключённого заведения объясняет ограничение |
 | Ручной запуск синхронизации | [ScheduledSync.tsx](../src/ScheduledSync.tsx), [scheduledSyncModel.ts](../src/scheduledSyncModel.ts); `GET /status`, `POST /status/sync/{job}/run` |
+| Тепловая карта цехов по сервисной печати, суммы и планирование смены | [KitchenHeatmapPage.tsx](../src/KitchenHeatmapPage.tsx), [kitchenHeatmap.ts](../src/kitchenHeatmap.ts), [interface.md](CODEMAPS/interface.md) |
 | Продажи, ресурсы, детали, статус данных | [pages.tsx](../src/pages.tsx), [interface.md](CODEMAPS/interface.md) |
 | Приходные накладные, реализация и счёт PDF | [CommercialInvoices.tsx](../src/CommercialInvoices.tsx), [commercialInvoiceModel.ts](../src/commercialInvoiceModel.ts); `/invoices`, `/outgoing`, [контракт](CODEMAPS/documents.md#приходные-накладные-и-реализация) |
 | Перемещения/списания: заявки, согласование | [DocumentsPage.tsx](../src/DocumentsPage.tsx), [documents.md](CODEMAPS/documents.md) |
