@@ -2,7 +2,7 @@ import Support from "./Support";
 import { MantineProvider } from "@mantine/core";
 import { dashboardTheme } from "./dashboardTheme";
 import type { FeatureReadiness } from "./tenantFeatureReadiness";
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
   createTenantApi,
   TenantApiError,
@@ -46,6 +46,8 @@ export default function SaasTenant({
   );
   const [session, setSession] = useState<TenantSession | null>(null);
   const [workspace, setWorkspace] = useState<TenantWorkspace | null>(null);
+  const [setupRetrySession, setSetupRetrySession] =
+    useState<TenantSession | null>(null);
   const workingAvailable =
     workspace?.working_dashboard_available ?? workingDashboardAvailable;
   const fullReady = workspace?.full_dashboard_ready ?? fullDashboardReady;
@@ -55,9 +57,14 @@ export default function SaasTenant({
   const runtimePending = !workingAvailable && !fullReady && !fullAvailable;
   const effectiveSetupOnly =
     (workspace?.setup_available ?? setupOnly) && runtimePending;
+  const isPlatformOwner = session?.actor?.kind === "platform_owner";
+  const waitingForSetup =
+    !isPlatformOwner &&
+    runtimePending &&
+    (effectiveSetupOnly || (session !== null && setupRetrySession === session));
   const ownerSetupAvailable =
     (workspace?.setup_available ?? setupAvailable) &&
-    session?.actor?.kind === "platform_owner" &&
+    isPlatformOwner &&
     !preserveHistoryReads;
   const readiness = effectiveSetupOnly
     ? undefined
@@ -105,6 +112,7 @@ export default function SaasTenant({
   const [newPassword, setNewPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
   const [workspaceLoading, setWorkspaceLoading] = useState(false);
+  const workspaceRequestPending = useRef(false);
   const [retry, setRetry] = useState(0);
   useEffect(() => {
     const previous = document.title;
@@ -150,8 +158,16 @@ export default function SaasTenant({
   }, [api]);
   useEffect(() => {
     setWorkspace(null);
-    if (!session || session.must_change_password) return;
+    setSetupRetrySession(null);
+  }, [api, session]);
+  useEffect(() => {
+    if (!session || session.must_change_password) {
+      workspaceRequestPending.current = false;
+      setWorkspaceLoading(false);
+      return;
+    }
     let live = true;
+    workspaceRequestPending.current = true;
     setWorkspaceLoading(true);
     api
       .workspace()
@@ -177,12 +193,24 @@ export default function SaasTenant({
         } else setError(e.message);
       })
       .finally(() => {
-        if (live) setWorkspaceLoading(false);
+        if (live) {
+          workspaceRequestPending.current = false;
+          setWorkspaceLoading(false);
+        }
       });
     return () => {
       live = false;
     };
   }, [api, session, retry]);
+  function retryWorkspace() {
+    if (workspaceRequestPending.current || busy) return;
+    workspaceRequestPending.current = true;
+    // A setup socket can disappear while the company is still getting ready.
+    if (workspace && waitingForSetup) setSetupRetrySession(session);
+    setError("");
+    setWorkspaceLoading(true);
+    setRetry((n) => n + 1);
+  }
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (busy) return;
@@ -352,10 +380,10 @@ export default function SaasTenant({
         </div>
       </main>
     );
-  if (workspace)
+  if (workspace && !waitingForSetup)
     return (
       <>
-        {session?.actor?.kind === "platform_owner" && (
+        {isPlatformOwner && (
           <aside
             className="tenant-owner-banner"
             aria-label="Контекст владельца"
@@ -403,25 +431,34 @@ export default function SaasTenant({
         <MantineProvider theme={dashboardTheme} forceColorScheme="light">
           <Support supportClient={dashboardRuntime.support} />
         </MantineProvider>
-        {error ? (
+        {error && (
           <p className="sa-error" role="alert">
             {error}
           </p>
-        ) : (
-          <p role="status">Загружаем компанию…</p>
         )}
-        {!workspaceLoading && (
+        <p role="status">
+          {workspaceLoading
+            ? "Проверяем готовность рабочего пространства…"
+            : waitingForSetup && workspace
+              ? "Компания ещё настраивается. Рабочие разделы откроются после завершения настройки."
+              : !error && "Загружаем компанию…"}
+        </p>
+        {(workspace || error || retry > 0) && (
           <button
             className="sa-button"
-            onClick={() => {
-              setError("");
-              setRetry((n) => n + 1);
-            }}
+            disabled={workspaceLoading || busy}
+            onClick={retryWorkspace}
           >
-            Повторить
+            {waitingForSetup && workspace
+              ? "Проверить готовность"
+              : "Повторить"}
           </button>
         )}
-        <button className="sa-text-button" onClick={() => void logout()}>
+        <button
+          className="sa-text-button sa-tenant-link"
+          disabled={busy}
+          onClick={() => void logout()}
+        >
           Выйти
         </button>
       </div>
