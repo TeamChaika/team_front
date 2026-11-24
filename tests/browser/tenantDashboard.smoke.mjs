@@ -173,6 +173,24 @@ try {
         });
       case "/api/profile/telegram":
         return json({ available: false, linked: false });
+      case "/api/sales/daily":
+        return json({
+          start: "2026-10-09",
+          end: "2026-10-09",
+          complete: false,
+          loaded_dates: [],
+          missing_dates: ["2026-10-09"],
+          rows: [],
+          totals: {
+            revenue: null,
+            cost: null,
+            gross_profit: null,
+            average_check: null,
+            checks: null,
+            guests: null,
+          },
+          live: { source: "stored", status: "sync_paused", stale: true },
+        });
       case "/api/management/accounts":
         return json({
           users: [],
@@ -183,6 +201,18 @@ try {
         });
       case "/api/management/venues":
         return json({ venues: [], terminals: [], tenant_payments: true });
+      case "/api/management/operation-settings":
+        assert.equal(request.method(), "GET");
+        return json({
+          revision: 0,
+          sync: { mode: "all", department_ids: [] },
+          writeoff: { mode: "all", store_ids: [] },
+          waybill: { mode: "all", store_ids: [] },
+          departments: [],
+          stores: [],
+          updated_at: null,
+          updated_by: null,
+        });
       case "/api/assistant/status":
         return json({ enabled: false, available: false });
       case "/api/auth/recovery/telegram":
@@ -223,6 +253,17 @@ try {
     path: path.join(artifacts, "tenant-desktop.png"),
     fullPage: true,
   });
+  await page.getByRole("link", { name: "Продажи", exact: true }).click();
+  const salesRevenue = page.getByRole("link", {
+    name: "Выручка — открыть расшифровку",
+  });
+  await salesRevenue.waitFor();
+  assert.equal(await salesRevenue.locator("strong").innerText(), "—");
+  assert.doesNotMatch(
+    await page.locator("main").innerText(),
+    /Недостаточно данных за выбранный период|Сохранённые строки доступны|Сегодня · сохранённые данные|Синхронизация с iiko приостановлена/,
+  );
+  await page.getByRole("link", { name: "Мой профиль", exact: true }).click();
   fullReady = false;
   await page.reload();
   await page.getByRole("link", { name: "Управление", exact: true }).waitFor();

@@ -1,4 +1,3 @@
-import { dashboardSectionAvailable } from "./dashboardRuntime";
 import { DataSourceNotice } from "./DataSourceNotice";
 import { useCallback, useState, type ReactNode } from "react";
 import { ScheduledSync } from "./ScheduledSync";
@@ -365,29 +364,9 @@ const salesNames: Record<string, string> = {
   hours: "По часам",
 };
 function ReviewNotice({ data }: { data: Sales }) {
-  const statusAvailable = dashboardSectionAvailable(
-    useWorkspace().meta.sections,
-    "status",
-  );
+  if (!data.complete) return null;
   const days =
     Math.round((Date.parse(data.end) - Date.parse(data.start)) / 86400000) + 1;
-  if (!data.complete) {
-    return (
-      <Alert
-        color="orange"
-        title="Недостаточно данных за выбранный период"
-        role="status"
-      >
-        Загружено {data.loaded_dates.length} из {days} дней. Итоги за{" "}
-        {dateText(data.start)} — {dateText(data.end)} не рассчитаны.
-        <div>Не загружены: {data.missing_dates.map(dateText).join(", ")}.</div>
-        <div>
-          Сохранённые строки доступны в расшифровке.{" "}
-          {statusAvailable && <Link to="/status">Статус данных</Link>}
-        </div>
-      </Alert>
-    );
-  }
   if (data.reconciliation_issues?.length) {
     const fields: Record<string, string> = {
       DishDiscountSumInt: "Выручка",
@@ -779,12 +758,13 @@ export function SalesPage() {
           <>
             <DataSourceNotice status={state.data.data_status} />
             <ReviewNotice data={state.data} />
-            {state.data.live ? (
+            {state.data.live && state.data.live.status !== "sync_paused" && (
               <LiveDataNotice
                 source={state.data.live}
                 onRefresh={state.reload}
               />
-            ) : (
+            )}
+            {!state.data.live && (
               <PartialDayNotice days={state.data.partial_days} />
             )}
             <Modal
