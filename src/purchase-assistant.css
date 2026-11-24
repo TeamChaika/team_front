@@ -350,15 +350,6 @@
   max-height: 70px;
   overflow: auto;
 }
-.assistant-floating {
-  position: fixed;
-  right: 25px;
-  bottom: 24px;
-  z-index: 45;
-  height: 46px;
-  background: #137688;
-  box-shadow: 0 6px 24px #03121a80;
-}
 .price-assistant-launch {
   display: flex;
   justify-content: flex-end;
@@ -399,9 +390,6 @@
   .topbar-actions {
     gap: 0;
   }
-  .topbar-actions > .mantine-Badge-root {
-    display: none;
-  }
   .site-assistant-toggle {
     padding: 0 8px;
   }
@@ -426,10 +414,6 @@
   }
   .assistant-composer {
     padding-bottom: max(14px, env(safe-area-inset-bottom));
-  }
-  .assistant-floating {
-    right: 16px;
-    bottom: 16px;
   }
   .assistant-header-actions button {
     width: 36px;

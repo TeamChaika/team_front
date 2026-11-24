@@ -373,17 +373,30 @@ const dateTimeFormat = new Intl.DateTimeFormat("ru-RU", {
   hour: "2-digit",
   minute: "2-digit",
 });
+const timeFormat = new Intl.DateTimeFormat("ru-RU", {
+  timeZone: dateOptions.timeZone,
+  hour: "2-digit",
+  minute: "2-digit",
+});
 export const money = (v: unknown) =>
   v === null || v === undefined ? "—" : moneyFormat.format(Number(v));
 export const number = (v: unknown) =>
   v === null || v === undefined ? "—" : numberFormat.format(Number(v));
-export function dateText(v: unknown) {
-  if (!v) return "—";
-  const text = String(v);
+function parseReportDate(text: string) {
   let raw = text.replace(" ", "T");
   if (/^\d{4}-\d{2}-\d{2}T/.test(raw) && !/(Z|[+-]\d{2}:?\d{2})$/.test(raw))
     raw += "+03:00";
-  const d = new Date(raw);
+  return new Date(raw);
+}
+export function reportTimeText(value?: string | null) {
+  if (!value?.includes(":")) return null;
+  const date = parseReportDate(value);
+  return Number.isNaN(date.getTime()) ? null : timeFormat.format(date);
+}
+export function dateText(v: unknown) {
+  if (!v) return "—";
+  const text = String(v);
+  const d = parseReportDate(text);
   if (Number.isNaN(d.getTime())) return text;
   return (text.includes(":") ? dateTimeFormat : dateFormat).format(d);
 }

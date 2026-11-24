@@ -320,6 +320,9 @@ try {
     path: path.join(artifacts, "tenant-working-partial.png"),
     fullPage: true,
   });
+  await page.goto("https://client.example.test/sales");
+  await page.getByRole("heading", { name: "Продажи", exact: true }).waitFor();
+  assert.equal(await page.getByRole("button", { name: "ИИ-ассистент", exact: true }).count(), 0);
   // A newer authenticated workspace upgrades a stale public setup snapshot.
   setupAvailable = true;
   contextWorkingOverride = false;

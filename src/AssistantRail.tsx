@@ -15,6 +15,7 @@ export function AssistantToggle() {
   const assistant = useAssistant();
   return (
     <Button
+      id="site-assistant-trigger"
       variant="light"
       size="xs"
       leftSection={<IconMessageCircle size={17} />}
@@ -40,7 +41,6 @@ export function AssistantRail() {
   const controller = useRef<AbortController | null>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
   const rail = useRef<HTMLElement>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
   useEffect(() => () => controller.current?.abort(), []);
   useEffect(() => {
     controller.current?.abort();
@@ -62,7 +62,7 @@ export function AssistantRail() {
         !rail.current?.contains(prior)
       )
         prior.focus({ preventScroll: true });
-      else trigger.current?.focus({ preventScroll: true });
+      else document.getElementById("site-assistant-trigger")?.focus({ preventScroll: true });
     };
   }, [assistant.opened]);
   useEffect(() => {
@@ -111,19 +111,6 @@ export function AssistantRail() {
   }
   return (
     <>
-      {!assistant.opened && (
-        <Button
-          ref={trigger}
-          className="assistant-floating"
-          radius="xl"
-          leftSection={<IconMessageCircle size={20} />}
-          onClick={() => assistant.open()}
-          aria-controls="site-assistant"
-          aria-expanded={false}
-        >
-          Чат с ИИ
-        </Button>
-      )}
       {compact && assistant.opened && (
         <div
           className="assistant-backdrop"

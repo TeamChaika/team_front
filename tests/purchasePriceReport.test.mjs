@@ -47,7 +47,7 @@ const stubs = {
   "./PurchaseImpact": "export const PurchaseImpact=()=>null;",
   "./PurchaseModal": "export const PurchaseModal=()=>null;",
   "./api":
-    "export const dateText=v=>v;export const number=v=>v;export const csv=()=>{};",
+    'export { reportTimeText } from "./src/api.ts";export const dateText=v=>v;export const number=v=>v;export const csv=()=>{};',
   "react-router-dom":
     'import React from "react";export const Link=({children})=>React.createElement("a",null,children);',
   "@mantine/core":
@@ -60,17 +60,19 @@ const bundled = await build({
   stdin: {
     contents: `
       import { PurchasePrices } from "./src/PurchasePrices";
-      import { LiveDataNotice } from "./src/LiveDataNotice";
+      import { LiveDataNotice, SalesDataNotice } from "./src/LiveDataNotice";
       import { renderToStaticMarkup } from "react-dom/server";
       import React from "react";
       export const render = () => renderToStaticMarkup(React.createElement(PurchasePrices));
       export const liveNotice = source => renderToStaticMarkup(React.createElement(LiveDataNotice, { source }));
+      export const salesNotice = (data, onRefresh) => renderToStaticMarkup(React.createElement(SalesDataNotice, { data, onRefresh }));
     `,
     resolveDir: root,
   },
   bundle: true,
   format: "esm",
   platform: "node",
+  define: { "import.meta.env.VITE_API_BASE_URL": "undefined", BroadcastChannel: "undefined" },
   write: false,
   banner: {
     js: `import {createRequire} from "node:module";const require=createRequire(${JSON.stringify(new URL("../package.json", import.meta.url).href)});`,
@@ -93,7 +95,7 @@ const bundled = await build({
     },
   ],
 });
-const { render, liveNotice } = await import(
+const { render, liveNotice, salesNotice } = await import(
   `data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString("base64")}`
 );
 const row = {
@@ -177,6 +179,51 @@ test("live data keeps the current snapshot's metadata and omits missing fields",
   const partial = liveNotice({ source: "iiko_api", stale: false });
   assert.match(partial, /iiko API/);
   assert.doesNotMatch(partial, /Кеш|NaN|недоступен|undefined/);
+});
+
+test("sales shows one local source time, including fallback and stale states", () => {
+  const today = "2026-10-09";
+  const period = { start: today, end: today };
+  const live = { source: "iiko_api", observed_at: today + "T11:42:30Z", stale: false };
+  const data_status = {
+    source: "iiko_api",
+    status: "ready",
+    observed_at: today + "T09:15:00+03:00",
+    expires_at: "2099-01-01T00:00:00Z",
+  };
+  globalThis.purchaseTestWorkspace = { meta: { today, sales_dates: [] } };
+  globalThis.purchaseTestButtons = new Map();
+  try {
+    let refreshes = 0;
+    const fresh = salesNotice({ ...period, live, data_status }, () => refreshes++);
+    assert.match(fresh, /Данные iiko на 14:42/);
+    assert.doesNotMatch(fresh, /09:15|Кеш|День ещё идёт|устарели/);
+    globalThis.purchaseTestButtons.get("Обновить")();
+    assert.equal(refreshes, 1);
+
+    const statusOnly = salesNotice({ ...period, data_status });
+    assert.match(statusOnly, /Данные iiko на 09:15/);
+    assert.doesNotMatch(statusOnly, /Кеш|устарели/);
+    const fallback = salesNotice({ ...period, live: { ...live, observed_at: null }, data_status });
+    assert.match(fallback, /Данные iiko на 09:15/);
+    const noTime = salesNotice({ ...period, live: { ...live, observed_at: null } });
+    assert.match(noTime, /Данные iiko<\/strong>/);
+
+    const stale = salesNotice({ ...period, live: { ...live, stale: true }, data_status });
+    assert.match(stale, /14:42/);
+    assert.match(stale, /Данные устарели/);
+    const expired = salesNotice({ ...period, data_status: { ...data_status, expires_at: "2000-01-01T00:00:00Z" } });
+    assert.match(expired, /Данные устарели/);
+
+    const historical = salesNotice({ start: "2026-10-01", end: "2026-10-01", data_status });
+    assert.match(historical, /Данные из iiko/);
+    assert.match(historical, /Кеш до/);
+    const paused = salesNotice({ ...period, live: { source: "stored", status: "sync_paused", stale: true }, data_status });
+    assert.equal(paused, "");
+  } finally {
+    delete globalThis.purchaseTestWorkspace;
+    delete globalThis.purchaseTestButtons;
+  }
 });
 
 test("paused sync can open the most recent available earlier date without changing venue selection", () => {

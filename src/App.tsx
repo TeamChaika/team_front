@@ -34,7 +34,6 @@ import {
   PasswordInput,
   Alert,
   Loader,
-  Badge,
   Avatar,
   Checkbox,
 } from "@mantine/core";
@@ -317,8 +316,8 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
   const [includeArchived, setIncludeArchived] = useState(false);
   const overviewWorkspace = location.pathname === "/";
   const salesWorkspace = location.pathname === "/sales" || location.pathname === "/sales/";
-  const archiveScope =
-    overviewWorkspace || location.pathname === "/indicators";
+  const reportWorkspace = overviewWorkspace || salesWorkspace;
+  const archiveScope = reportWorkspace || location.pathname === "/indicators";
   const scope = venueScope(
     meta?.departments ?? [],
     overviewWorkspace && departmentSelection.overview
@@ -327,7 +326,7 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
     !archiveScope || includeArchived,
   );
   const salesDefault =
-    (overviewWorkspace || salesWorkspace) && meta
+    reportWorkspace && meta
       ? salesDefaultDepartments(
           { ...meta, departments: scope.venues },
           start,
@@ -656,14 +655,19 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
     "/writeoffs",
     "/events",
   ].includes(location.pathname);
+  const archivesHidden = scope.venues.length < meta.departments.length;
+  const noActiveVenues = (
+    <Alert>
+      Нет активных заведений. Включите «Показать архивные», чтобы открыть историю.
+    </Alert>
+  );
   const query = (dates = false) => {
     const p = new URLSearchParams();
     const queryDepartments =
-      location.pathname === "/"
+      overviewWorkspace || (salesWorkspace && archivesHidden)
         ? drilldownDepartments(scope.venues, effectiveDepartments)
         : effectiveDepartments;
-    const largeReportScope =
-      (salesWorkspace || overviewWorkspace) && queryDepartments.length > 100;
+    const largeReportScope = reportWorkspace && queryDepartments.length > 100;
     const inherited = salesWorkspace ? departmentSelection.overview : undefined;
     const selection = new Set(queryDepartments);
     const hasAllActive =
@@ -671,7 +675,7 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
       meta.departments.every((venue) => selection.has(venue.id) === !venue.archived);
     if (largeReportScope && (automaticSalesDepartments || inherited?.syncOnly)) {
       p.set("sync_only", "true");
-      if (inherited && !inherited.includeArchived) {
+      if (archivesHidden || (inherited && !inherited.includeArchived)) {
         p.set("include_archived", "false");
       }
     } else if (hasAllActive && queryDepartments.length < meta.departments.length) {
@@ -701,7 +705,7 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
           if (
             !scope.selected.length &&
             ((forHistoricalPoint && automaticSalesDepartments) ||
-              scope.venues.length < meta.departments.length)
+              archivesHidden)
           ) {
             setDepartmentSelection({
               ids: automaticSalesDepartments ?? scope.venues.map((venue) => venue.id),
@@ -844,12 +848,7 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
                         : meta.user.id
                     }
                   />
-                  {canAssistant && <AssistantToggle />}
-                  {!tenant && (
-                    <Badge variant="light" color="cyan">
-                      Первая версия
-                    </Badge>
-                  )}
+                  {canAssistant && !overviewWorkspace && <AssistantToggle />}
                 </div>
               </header>
               {currentAllowed &&
@@ -887,14 +886,15 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
                         onChange={setDepartments}
                       />
                     )}
-                    {location.pathname === "/" &&
+                    {reportWorkspace &&
                       meta.departments.some((venue) => venue.archived) && (
                         <Checkbox
                           label="Показать архивные"
                           checked={includeArchived}
-                          onChange={(event) =>
-                            setIncludeArchived(event.currentTarget.checked)
-                          }
+                          onChange={(event) => {
+                            setIncludeArchived(event.currentTarget.checked);
+                            if (departmentSelection.overview) setDepartments([]);
+                          }}
                         />
                       )}
                     {location.pathname !== "/purchase-prices" && (
@@ -952,7 +952,12 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
                           )}
                       </>
                     )}
-                    {location.pathname === "/" && <div id="overview-toolbar" />}
+                    {overviewWorkspace && (
+                      <div className="overview-toolbar">
+                        <div id="overview-toolbar" />
+                        {canAssistant && <AssistantToggle />}
+                      </div>
+                    )}
                   </div>
                 )}
               <ContentLayout>
@@ -1022,10 +1027,7 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
                           path="/"
                           element={
                             scope.empty ? (
-                              <Alert>
-                                Нет активных заведений. Включите «Показать
-                                архивные», чтобы открыть историю.
-                              </Alert>
+                              noActiveVenues
                             ) : automaticSalesDepartments?.length === 0 ? (
                               <p className="section-note">
                                 Нет заведений с включённой синхронизацией. Для
@@ -1071,10 +1073,12 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
                         <Route
                           path="/sales"
                           element={
-                            <SalesPage
-                              key={query(true)}
-                              emptyLiveScope={automaticSalesDepartments?.length === 0}
-                            />
+                            scope.empty && archivesHidden ? noActiveVenues : (
+                              <SalesPage
+                                key={query(true)}
+                                emptyLiveScope={automaticSalesDepartments?.length === 0}
+                              />
+                            )
                           }
                         />
                         <Route

@@ -18,13 +18,14 @@ export const salesDepartments = [
   },
 ];
 
-export function salesResponse(params) {
+export function salesResponse(params, available = salesDepartments) {
   const start = params.get("start");
   const end = params.get("end");
   const ids = params.getAll("department_id");
-  const venues = salesDepartments.filter(
-    (v) => !ids.length || ids.includes(v.id),
-  );
+  const venues = available.filter((v) => ids.length
+    ? ids.includes(v.id)
+    : (params.get("sync_only") !== "true" || v.sync_enabled) &&
+      (params.get("include_archived") !== "false" || !v.archived));
   const paused = end === "2026-10-09" && venues.some((v) => !v.sync_enabled);
   const rows = paused
     ? []
@@ -85,6 +86,12 @@ export async function verifySalesScopes(page) {
     "220,00 ₽",
     "75,00 ₽",
   ]);
+  assert.equal(await page.locator(".page-title p").count(), 0);
+  assert.equal(await page.locator(".report-summary").count(), 0);
+  const tableHeading = page.locator(".panel-heading").filter({
+    has: page.getByRole("heading", { name: "По ресторанам", exact: true }),
+  });
+  assert.equal(await tableHeading.locator("small").innerText(), "2 строки");
   assert.match(await picker.innerText(), /2 из 3/);
   assert.doesNotMatch(
     await page.locator("main").innerText(),

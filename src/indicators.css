@@ -6,8 +6,7 @@
   font: inherit;
   cursor: pointer;
 }
-.is-indicators .filterbar,
-.is-indicators .assistant-floating {
+.is-indicators .filterbar {
   display: none;
 }
 .indicators-page {
