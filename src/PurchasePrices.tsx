@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { Button, Checkbox, Select } from "@mantine/core";
 import { useElementSize } from "@mantine/hooks";
 import { IconArrowUpRight, IconDownload } from "@tabler/icons-react";
@@ -9,11 +9,17 @@ import { csv, dateText, number } from "./api";
 import { Feedback, PageTitle } from "./pages";
 import { PurchaseImpact } from "./PurchaseImpact";
 import { PurchaseModal } from "./PurchaseModal";
+import { price, signed, csvPrice } from "./purchasePriceFormat";
+import { todayReservation } from "./depositDates";
 import { useAssistant } from "./AssistantContext";
 import {
   canReadPurchaseImpact,
   purchaseImpactNotice,
+  waitingForPurchaseImpact,
+  purchasePriceFilters,
   purchasePriceReportPath,
+  updatePurchasePriceFilters,
+  type PurchasePriceFilters,
   type PreparedImpactPeriod,
 } from "./purchasePriceReport";
 import "./purchase-prices.css";
@@ -98,19 +104,6 @@ type Report = {
     short_history: number;
   };
 };
-const priceFormat = new Intl.NumberFormat("ru-RU", {
-  maximumFractionDigits: 1,
-});
-const signedFormat = new Intl.NumberFormat("ru-RU", {
-  maximumFractionDigits: 1,
-  signDisplay: "exceptZero",
-});
-const price = (v: string | number | null) =>
-  v === null ? "—" : priceFormat.format(Number(v)).replace(/^-0$/, "0");
-const signed = (v: string | null) =>
-  v === null ? "—" : signedFormat.format(Number(v));
-const csvPrice = (v: string | null) =>
-  v === null ? null : price(v).replace(/\s/g, "");
 function Percent({ row }: { row: PriceChange }) {
   if (row.delta === null) return <span className="muted">Нет истории</span>;
   return (
@@ -129,6 +122,7 @@ function Percent({ row }: { row: PriceChange }) {
 }
 const identity = (r: PriceChange) =>
   [r.product_id, r.store_id, r.unit_id, r.linked, r.current.date].join("/");
+const productOrder = new Intl.Collator("ru", { numeric: true });
 const emptyRows: PriceChange[] = [];
 
 export function PurchasePrices() {
@@ -154,9 +148,25 @@ function PriceWorkspace({
   impactAllowed: boolean;
 }) {
   const assistant = useAssistant();
-  const [kind, setKind] = useState("unlinked");
-  const [excludeHousehold, setExcludeHousehold] = useState(true);
-  const [recentOnly, setRecentOnly] = useState(true);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const {
+    kind,
+    exclude_household: excludeHousehold,
+    recent_only: recentOnly,
+    product,
+    direction,
+    threshold,
+    sort,
+    page,
+  } = purchasePriceFilters(searchParams);
+  function changeFilters(changes: Partial<PurchasePriceFilters>) {
+    setSearchParams(
+      (previous) => updatePurchasePriceFilters(previous, changes),
+      {
+        replace: true,
+      },
+    );
+  }
   const reportPath = purchasePriceReportPath(
     scope,
     kind,
@@ -164,21 +174,37 @@ function PriceWorkspace({
     recentOnly,
     impactAllowed,
   );
-  const state = useData<Report>(reportPath);
+  const state = useData<Report>(reportPath, true);
   const matchesFilters = (value: Report | null) =>
     value?.kind === kind &&
     value.exclude_household === excludeHousehold &&
     value.recent_only === recentOnly;
   const report = matchesFilters(state.data) ? state.data : null;
+  useEffect(() => {
+    if (!report || state.refreshing) return;
+    const dayLoaded = todayReservation();
+    let lastCheck = Date.now();
+    const check = () => {
+      if (document.hidden || Date.now() - lastCheck < 120_000) return;
+      if (
+        state.error || todayReservation() !== dayLoaded ||
+        (impactAllowed && waitingForPurchaseImpact(report.impact_period))
+      ) {
+        lastCheck = Date.now();
+        state.reload();
+      }
+    };
+    const timer = window.setInterval(check, 120_000);
+    document.addEventListener("visibilitychange", check);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", check);
+    };
+  }, [impactAllowed, report, state.error, state.reload, state.refreshing]);
   const impactNotice = purchaseImpactNotice(
     impactAllowed,
     report?.impact_period,
   );
-  const [product, setProduct] = useState<string | null>(null);
-  const [direction, setDirection] = useState("all");
-  const [threshold, setThreshold] = useState("0");
-  const [sort, setSort] = useState("date");
-  const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<PriceChange | null>(null);
   const [impact, setImpact] = useState<PriceChange | null>(null);
   function openAssistant(row: PriceChange | null = null) {
@@ -194,6 +220,7 @@ function PriceWorkspace({
         kind,
         exclude_household: excludeHousehold,
         recent_only: recentOnly,
+        recent_period: "month",
       },
       row?.product ?? null,
     );
@@ -219,23 +246,27 @@ function PriceWorkspace({
                 Math.abs(Number(r.percent)) >= Number(threshold))),
         )
         .sort((a, b) => {
-          const byDate = b.current.date.localeCompare(a.current.date);
-          if (sort === "date") return byDate;
+          const dateDifference = b.current.date.localeCompare(a.current.date);
+          const byReceipt =
+            (sort === "date_asc" ? -dateDifference : dateDifference) ||
+            productOrder.compare(a.product, b.product) ||
+            identity(a).localeCompare(identity(b));
+          if (sort === "date" || sort === "date_asc") return byReceipt;
           if (sort === "weekly_desc" || sort === "weekly_asc") {
             const left = a.impact?.weekly_delta ?? null;
             const right = b.impact?.weekly_delta ?? null;
             if (left === null || right === null)
-              return left === right ? byDate : left === null ? 1 : -1;
+              return left === right ? byReceipt : left === null ? 1 : -1;
             return (
               (sort === "weekly_asc"
                 ? Number(left) - Number(right)
-                : Number(right) - Number(left)) || byDate
+                : Number(right) - Number(left)) || byReceipt
             );
           }
           // A zero baseline has no percentage; keep those rows last in either direction.
           if (a.percent === null || b.percent === null) {
             return a.percent === b.percent
-              ? byDate
+              ? byReceipt
               : a.percent === null
                 ? 1
                 : -1;
@@ -248,15 +279,12 @@ function PriceWorkspace({
               : sort === "percent_asc"
                 ? left - right
                 : right - left;
-          return difference || byDate;
+          return difference || byReceipt;
         }),
     [all, product, direction, threshold, sort],
   );
-  const currentPage = Math.min(
-    page,
-    Math.max(0, Math.ceil(rows.length / 50) - 1),
-  );
-  const visible = rows.slice(currentPage * 50, currentPage * 50 + 50);
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(rows.length / 50)));
+  const visible = rows.slice((currentPage - 1) * 50, currentPage * 50);
   const choices = useMemo(
     () =>
       [
@@ -331,12 +359,23 @@ function PriceWorkspace({
         impact_reason: r.impact?.reason,
         sales_start: report?.impact_period?.start,
         sales_end: report?.impact_period?.end,
-        old_amount: r.previous.amount,
+        old_amount: csvPrice(r.previous.amount),
         old_sum: csvPrice(r.previous.sum),
-        new_amount: r.current.amount,
+        new_amount: csvPrice(r.current.amount),
         new_sum: csvPrice(r.current.sum),
         linked: r.linked ? "Да" : "Нет",
       })),
+      [
+        "old_price",
+        "new_price",
+        "delta",
+        "percent",
+        "weekly_delta",
+        "old_amount",
+        "old_sum",
+        "new_amount",
+        "new_sum",
+      ],
     );
   }
   return (
@@ -354,20 +393,22 @@ function PriceWorkspace({
         Товар объединён по всем доступным складам сети. Кнопка «Динамика»
         открывает цены и накладные с указанием складов. Разные единицы измерения
         и виды поступлений сравниваются отдельно.
-        {state.data?.recent_only &&
-          ` В списке товары с последним поступлением с ${dateText(state.data.recent_since)}.`}
+        {report?.recent_only &&
+          report.recent_since &&
+          ` В списке товары с последним поступлением с ${dateText(report.recent_since)}.`}
       </div>
       <section className="panel">
         <div className="price-household-filter">
           <Checkbox
-            label="Были поступления за последние 60 дней"
+            label="Были поступления за последний месяц"
             description="На любой склад сети. История предыдущих поступлений сохраняется целиком."
             checked={recentOnly}
             onChange={(event) => {
-              setRecentOnly(event.currentTarget.checked);
-              setProduct(null);
+              changeFilters({
+                recent_only: event.currentTarget.checked,
+                product: null,
+              });
               setSelected(null);
-              setPage(0);
             }}
           />
           <Checkbox
@@ -375,10 +416,11 @@ function PriceWorkspace({
             description="Группа «ХОЗНУЖДЫ» и её подгруппы: хозтовары, хозрасходы, посуда и одноразовая посуда."
             checked={excludeHousehold}
             onChange={(event) => {
-              setExcludeHousehold(event.currentTarget.checked);
-              setProduct(null);
+              changeFilters({
+                exclude_household: event.currentTarget.checked,
+                product: null,
+              });
               setSelected(null);
-              setPage(0);
             }}
           />
         </div>
@@ -387,10 +429,8 @@ function PriceWorkspace({
             label="Поступления"
             value={kind}
             onChange={(v) => {
-              setKind(v ?? "unlinked");
-              setProduct(null);
+              changeFilters({ kind: v ?? "unlinked", product: null });
               setSelected(null);
-              setPage(0);
             }}
             data={[
               { value: "unlinked", label: "Без связанной расходной" },
@@ -404,20 +444,14 @@ function PriceWorkspace({
             searchable
             clearable
             value={product}
-            onChange={(v) => {
-              setProduct(v);
-              setPage(0);
-            }}
+            onChange={(v) => changeFilters({ product: v })}
             data={choices}
             nothingFoundMessage="Товар не найден в поступлениях"
           />
           <Select
             label="Направление"
             value={direction}
-            onChange={(v) => {
-              setDirection(v ?? "all");
-              setPage(0);
-            }}
+            onChange={(v) => changeFilters({ direction: v ?? "all" })}
             data={[
               { value: "all", label: "Все товары" },
               { value: "unchanged", label: "Без изменения" },
@@ -429,10 +463,7 @@ function PriceWorkspace({
           <Select
             label="Изменение от"
             value={threshold}
-            onChange={(v) => {
-              setThreshold(v ?? "0");
-              setPage(0);
-            }}
+            onChange={(v) => changeFilters({ threshold: v ?? "0" })}
             data={[
               { value: "0", label: "Любое" },
               { value: "1", label: "1%" },
@@ -443,11 +474,10 @@ function PriceWorkspace({
           <Select
             label="Сортировка"
             value={sort}
-            onChange={(v) => {
-              setSort(v ?? "percent_desc");
-              setPage(0);
-            }}
+            onChange={(v) => changeFilters({ sort: v ?? "date" })}
             data={[
+              { value: "date", label: "Сначала последние поступления" },
+              { value: "date_asc", label: "Сначала ранние поступления" },
               {
                 value: "percent_desc",
                 label: "Изменение, %: от большего к меньшему",
@@ -464,7 +494,6 @@ function PriceWorkspace({
                 value: "weekly_asc",
                 label: "За неделю: от меньшего к большему",
               },
-              { value: "date", label: "Сначала последние поступления" },
               {
                 value: "percent",
                 label: "По величине изменения: рост и снижение",
@@ -473,7 +502,15 @@ function PriceWorkspace({
           />
         </div>
       </section>
-      <Feedback state={state}>
+      {report && state.error && (
+        <p role="status">
+          Не удалось обновить список. Показаны данные последней загрузки.{" "}
+          <button type="button" className="text-link" onClick={state.reload}>
+            Повторить
+          </button>
+        </p>
+      )}
+      <Feedback state={report ? { ...state, error: "" } : state}>
         {state.data && (
           <>
             <div className="price-summary" aria-label="Итоги изменений">
@@ -507,6 +544,11 @@ function PriceWorkspace({
                       чтобы увидеть расчёт по блюдам.
                       {!!report.impact_period.excluded_department_ids?.length &&
                         " В расчёте — заведения с включённой синхронизацией."}
+                      {report.impact_period.coverage?.complete &&
+                        report.impact_period.target_end &&
+                        report.impact_period.end <
+                          report.impact_period.target_end &&
+                        " Более свежий период появится автоматически после проверки продаж."}
                     </p>
                   )}
                   {impactNotice && <p role="status">{impactNotice}</p>}
@@ -549,7 +591,39 @@ function PriceWorkspace({
                   <thead>
                     <tr>
                       <th>Товар / единица</th>
-                      <th>Последнее поступление</th>
+                      <th
+                        aria-sort={
+                          sort === "date"
+                            ? "descending"
+                            : sort === "date_asc"
+                              ? "ascending"
+                              : "none"
+                        }
+                      >
+                        <button
+                          type="button"
+                          className="price-sort-button"
+                          onClick={() =>
+                            changeFilters({
+                              sort: sort === "date" ? "date_asc" : "date",
+                            })
+                          }
+                          aria-label={
+                            sort === "date"
+                              ? "Сначала ранние поступления"
+                              : "Сначала последние поступления"
+                          }
+                        >
+                          Последнее поступление{" "}
+                          <span aria-hidden="true">
+                            {sort === "date"
+                              ? "↓"
+                              : sort === "date_asc"
+                                ? "↑"
+                                : "↕"}
+                          </span>
+                        </button>
+                      </th>
                       <th className="numeric">Средняя предыдущих, ₽/ед.</th>
                       <th className="numeric">Цена поступления, ₽/ед.</th>
                       <th className="numeric">Разница, ₽/ед.</th>
@@ -566,14 +640,14 @@ function PriceWorkspace({
                         <button
                           type="button"
                           className="price-sort-button"
-                          onClick={() => {
-                            setSort(
-                              sort === "percent_desc"
-                                ? "percent_asc"
-                                : "percent_desc",
-                            );
-                            setPage(0);
-                          }}
+                          onClick={() =>
+                            changeFilters({
+                              sort:
+                                sort === "percent_desc"
+                                  ? "percent_asc"
+                                  : "percent_desc",
+                            })
+                          }
                           aria-label={
                             sort === "percent_desc"
                               ? "Изменение: сортировать от меньшего к большему"
@@ -603,14 +677,14 @@ function PriceWorkspace({
                         <button
                           type="button"
                           className="price-sort-button"
-                          onClick={() => {
-                            setSort(
-                              sort === "weekly_desc"
-                                ? "weekly_asc"
-                                : "weekly_desc",
-                            );
-                            setPage(0);
-                          }}
+                          onClick={() =>
+                            changeFilters({
+                              sort:
+                                sort === "weekly_desc"
+                                  ? "weekly_asc"
+                                  : "weekly_desc",
+                            })
+                          }
                           aria-label={
                             sort === "weekly_desc"
                               ? "За неделю: сортировать от меньшего к большему"
@@ -637,6 +711,9 @@ function PriceWorkspace({
                           <Link
                             className="text-link"
                             to={"/products/" + r.product_id}
+                            state={{
+                              purchasePricesSearch: searchParams.toString(),
+                            }}
                           >
                             {r.product}
                           </Link>
@@ -662,6 +739,21 @@ function PriceWorkspace({
                         <td className="numeric">{signed(r.delta)}</td>
                         <td className="numeric">
                           <Percent row={r} />
+                          {r.previous.count === 1 &&
+                            r.delta !== null &&
+                            Number(r.delta) !== 0 && (
+                              <button
+                                type="button"
+                                className="price-sample-link"
+                                onClick={() => setSelected(r)}
+                                aria-label={
+                                  "Сравнение за один день закупок, показать накладные: " +
+                                  r.product
+                                }
+                              >
+                                Сравнение за 1 день
+                              </button>
+                            )}
                         </td>
                         <td className="numeric price-weekly">
                           {impactAllowed ? (
@@ -748,22 +840,21 @@ function PriceWorkspace({
               {rows.length > 0 && (
                 <div className="table-footer">
                   <span>
-                    {currentPage * 50 + 1}–
-                    {Math.min((currentPage + 1) * 50, rows.length)} из{" "}
-                    {rows.length}
+                    {(currentPage - 1) * 50 + 1}–
+                    {Math.min(currentPage * 50, rows.length)} из {rows.length}
                   </span>
                   <div>
                     <Button
                       variant="default"
-                      disabled={currentPage === 0}
-                      onClick={() => setPage(currentPage - 1)}
+                      disabled={currentPage === 1}
+                      onClick={() => changeFilters({ page: currentPage - 1 })}
                     >
                       Назад
                     </Button>{" "}
                     <Button
                       variant="default"
-                      disabled={(currentPage + 1) * 50 >= rows.length}
-                      onClick={() => setPage(currentPage + 1)}
+                      disabled={currentPage * 50 >= rows.length}
+                      onClick={() => changeFilters({ page: currentPage + 1 })}
                     >
                       Далее
                     </Button>
@@ -819,7 +910,7 @@ function PriceWorkspace({
         </p>
       </details>
       <PurchaseModal
-        opened={impactAllowed && Boolean(impact)}
+        opened={Boolean(report && impactAllowed && impact)}
         onClose={() => setImpact(null)}
         closeButtonProps={{ "aria-label": "Закрыть влияние цены" }}
         title={
@@ -829,12 +920,21 @@ function PriceWorkspace({
         }
         size="70rem"
       >
-        {impactAllowed && impact && (
-          <PurchaseImpact key={identity(impact)} row={impact} scope={scope} />
+        {report && impactAllowed && impact && (
+          <PurchaseImpact
+            key={identity(impact)}
+            row={impact}
+            scope={scope}
+            periodVersion={[
+              report?.impact_period?.end,
+              report?.impact_period?.prepared_at,
+              report?.impact_period?.status,
+            ].join("/")}
+          />
         )}
       </PurchaseModal>
       <PurchaseModal
-        opened={Boolean(selected)}
+        opened={Boolean(report && selected)}
         onClose={() => setSelected(null)}
         closeButtonProps={{ "aria-label": "Закрыть сравнение накладных" }}
         title={
@@ -842,7 +942,7 @@ function PriceWorkspace({
         }
         size="xl"
       >
-        {selected && (
+        {report && selected && (
           <PriceDetails key={identity(selected)} row={selected} scope={scope} />
         )}
       </PurchaseModal>
@@ -880,47 +980,57 @@ export function PriceDetails({
             {price(selected.current.price)} ₽/{selected.unit}{" "}
             <Percent row={selected} />
           </p>
-          <PriceChart row={selected} />
+          {selected.previous.count !== 1 && <PriceChart row={selected} />}
           <div className="price-comparison">
-            <section>
-              <h3>Средняя предыдущих поступлений</h3>
-              <p>
-                Поступлений: {selected.previous.count} из {historySize}
-              </p>
-              {selected.previous.count === 0 && (
-                <p className="muted">
-                  Это первое загруженное поступление. Сравнивать пока не с чем.
+            {selected.previous.receipts.length === 1 ? (
+              <Sources
+                title="Предыдущее поступление"
+                value={selected.previous.receipts[0]}
+                unit={selected.unit}
+              />
+            ) : (
+              <section>
+                <h3>Средняя предыдущих поступлений</h3>
+                <p>
+                  Поступлений: {selected.previous.count} из {historySize}
                 </p>
-              )}
-              <strong>
-                {price(selected.previous.price)} ₽/{selected.unit}
-              </strong>
-              {selected.previous.count > 0 && (
-                <>
-                  <p>
-                    {price(selected.previous.sum)} ₽ ÷{" "}
-                    {number(selected.previous.amount)} {selected.unit}
-                  </p>
-                </>
-              )}
-              <p className="muted">
-                {dateText(selected.previous.date_from)} —{" "}
-                {dateText(selected.previous.date)}
-              </p>
-              {selected.previous.count > 0 &&
-                selected.previous.count < historySize && (
+                {selected.previous.count === 0 && (
                   <p className="muted">
-                    В истории доступно меньше 6 поступлений. Средняя рассчитана
-                    по указанным ниже документам.
+                    Это первое загруженное поступление. Сравнивать пока не с
+                    чем.
                   </p>
                 )}
-            </section>
+                <strong>
+                  {price(selected.previous.price)} ₽/{selected.unit}
+                </strong>
+                {selected.previous.count > 0 && (
+                  <>
+                    <p>
+                      {price(selected.previous.sum)} ₽ ÷{" "}
+                      {number(selected.previous.amount)} {selected.unit}
+                    </p>
+                  </>
+                )}
+                <p className="muted">
+                  {dateText(selected.previous.date_from)} —{" "}
+                  {dateText(selected.previous.date)}
+                </p>
+                {selected.previous.count > 0 &&
+                  selected.previous.count < historySize && (
+                    <p className="muted">
+                      В истории доступно меньше 6 поступлений. Средняя
+                      рассчитана по указанным ниже документам.
+                    </p>
+                  )}
+              </section>
+            )}
             <Sources
               title="Последнее поступление"
               value={selected.current}
               unit={selected.unit}
             />
           </div>
+          {selected.previous.count === 1 && <PriceChart row={selected} />}
           <section className="price-history">
             <div className="panel-heading">
               <h3>Предыдущие поступления · {selected.previous.count}</h3>
@@ -1045,7 +1155,7 @@ function exportHistory(row: PriceChange) {
     [...row.previous.receipts, row.current].map((o) => ({
       date: o.date,
       price: csvPrice(o.price),
-      amount: o.amount,
+      amount: csvPrice(o.amount),
       sum: csvPrice(o.sum),
       unit: row.unit,
       latest: o.date === row.current.date ? "Да" : "Нет",
@@ -1065,6 +1175,7 @@ function exportHistory(row: PriceChange) {
         )
         .join("; "),
     })),
+    ["price", "amount", "sum"],
   );
 }
 

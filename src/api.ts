@@ -400,17 +400,18 @@ export function dateText(v: unknown) {
   if (Number.isNaN(d.getTime())) return text;
   return (text.includes(":") ? dateTimeFormat : dateFormat).format(d);
 }
-export function csv(name: string, cols: Column[], rows: Row[]) {
-  const cell = (v: unknown) => {
+export function csv(name: string, cols: Column[], rows: Row[], decimalKeys: readonly string[] = []) {
+  const cell = (v: unknown, decimal = false) => {
     let s = v === null || v === undefined ? "" : String(v);
-    if (/^[\s]*[=+@\-]/.test(s)) s = "'" + s;
+    const signedDecimal = decimal && /^[+-]?\d+(?:[.,]\d+)?(?:[eE][+-]?\d+)?$/.test(s) && !/\s/.test(s);
+    if (!signedDecimal && /^[\s]*[=+@\-]/.test(s)) s = "'" + s;
     return '"' + s.replaceAll('"', '""') + '"';
   };
   const content =
     "\uFEFF" +
     [
       cols.map((c) => cell(c.label)).join(";"),
-      ...rows.map((r) => cols.map((c) => cell(r[c.key])).join(";")),
+      ...rows.map((r) => cols.map((c) => cell(r[c.key], decimalKeys.includes(c.key))).join(";")),
     ].join("\r\n");
   const url = URL.createObjectURL(
     new Blob([content], { type: "text/csv;charset=utf-8" }),

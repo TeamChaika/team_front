@@ -24,7 +24,7 @@
 | Права на документы | [DocumentAccess.tsx](../src/DocumentAccess.tsx), [CommercialInvoiceAccess.tsx](../src/CommercialInvoiceAccess.tsx), [documents.md](CODEMAPS/documents.md) |
 | Создание контрагентов в iiko и восстановление операции | [CommercialCounterpartyCreate.tsx](../src/CommercialCounterpartyCreate.tsx), [commercialCounterpartyModel.ts](../src/commercialCounterpartyModel.ts), [CounterpartyPermission.tsx](../src/CounterpartyPermission.tsx); [контракт](CODEMAPS/documents.md#создание-контрагентов-в-iiko) |
 | Ограничение всех данных выбранными складами | [ManagementPage.tsx](../src/ManagementPage.tsx), [App.tsx](../src/App.tsx), [api.ts](../src/api.ts); [границы](CODEMAPS/interface.md#ограничение-по-складам) |
-| Закупочные цены, недельное влияние | [PurchasePrices.tsx](../src/PurchasePrices.tsx), [PurchaseImpact.tsx](../src/PurchaseImpact.tsx) |
+| Закупочные цены, фильтры и сортировка в URL, недельное влияние | [PurchasePrices.tsx](../src/PurchasePrices.tsx), [purchasePriceReport.ts](../src/purchasePriceReport.ts), [PurchaseImpact.tsx](../src/PurchaseImpact.tsx) |
 | Помощник и его источники | [PurchaseAssistant.tsx](../src/PurchaseAssistant.tsx), [integrations.md](CODEMAPS/integrations.md) |
 | Остатки и поиск товара | [BalancesPage.tsx](../src/BalancesPage.tsx), [BalanceSearch.tsx](../src/BalanceSearch.tsx) |
 | Сотрудники iiko | [EmployeeEditor.tsx](../src/EmployeeEditor.tsx), [interface.md](CODEMAPS/interface.md) |

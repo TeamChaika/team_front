@@ -10,6 +10,7 @@ import {
   verifySalesScopes,
 } from "./salesScope.mjs";
 import { verifyOverviewScope } from "./overviewScope.mjs";
+import { verifyPurchasePrices } from "./purchasePrices.mjs";
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 const build = path.resolve(process.env.DASHBOARD_DIST || "dist");
@@ -222,6 +223,9 @@ try {
   });
   const page = await context.newPage();
   page.on("pageerror", (error) => pageErrors.push(error.message));
+  const initialMeta = page
+    .waitForResponse((response) => new URL(response.url()).pathname === "/api/me")
+    .then((response) => response.json());
   await page.goto("https://client.example.test/profile");
   await page.getByRole("link", { name: "Управление", exact: true }).waitFor();
   await page
@@ -250,6 +254,7 @@ try {
   });
   await verifySalesScopes(page);
   await verifyOverviewScope(context);
+  await verifyPurchasePrices(context, await initialMeta);
   await page.getByRole("link", { name: "Мой профиль", exact: true }).click();
   fullReady = false;
   await page.reload();

@@ -23,6 +23,7 @@ export type AssistantContext = {
   kind: string;
   exclude_household: boolean;
   recent_only: boolean;
+  recent_period?: "month";
 };
 export type AssistantSource = {
   kind: "invoice" | "history" | "impact";
