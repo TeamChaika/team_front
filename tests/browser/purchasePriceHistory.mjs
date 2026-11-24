@@ -1,19 +1,21 @@
 import assert from "node:assert/strict";
 
 function purchase(date, price, documents) {
-  const lines = documents.map(({ amount, supplier }, index) => ({
-    document_id: `invoice-${date}-${index + 1}`,
-    document_number: `${date}/${index + 1}`,
-    num: index + 1,
-    num_occurrence: 1,
-    supplier,
-    store: "Склад тестового ресторана",
-    department: null,
-    amount: String(amount),
-    price: String(price),
-    sum: String(amount * price),
-    last_seen_at: date,
-  }));
+  const lines = documents.map(
+    ({ amount, supplier, store, department = null }, index) => ({
+      document_id: `invoice-${date}-${index + 1}`,
+      document_number: `${date}/${index + 1}`,
+      num: index + 1,
+      num_occurrence: 1,
+      supplier,
+      store,
+      department,
+      amount: String(amount),
+      price: String(price),
+      sum: String(amount * price),
+      last_seen_at: date,
+    }),
+  );
   const amount = documents.reduce(
     (total, document) => total + document.amount,
     0,
@@ -28,12 +30,19 @@ function purchase(date, price, documents) {
 }
 
 export function withPriceComparison(row) {
-  const earlier = purchase("2026-10-01", 80, [{ amount: 5, supplier: null }]);
-  const later = purchase("2026-10-02", 100, [
-    { amount: 10, supplier: "Молочный дом" },
-    { amount: 5, supplier: "Ферма Заречье" },
+  const earlier = purchase("2026-10-01", 80, [
+    { amount: 5, supplier: null, store: null },
   ]);
-  // Input order is №10 then №2. The latter contains two differently priced lines.
+  const later = purchase("2026-10-02", 100, [
+    { amount: 10, supplier: "Молочный дом", store: "Холодильник бара" },
+    {
+      amount: 5,
+      supplier: "Ферма Заречье",
+      store: "Склад кухни",
+      department: "Ресторан у моря",
+    },
+  ]);
+  // Input order is №10 then №2. №2 has three lines delivered to two stores.
   const [milk, farm] = later.lines;
   later.lines = [
     { ...milk, document_number: "10", price: "114", sum: "1140" },
@@ -49,15 +58,29 @@ export function withPriceComparison(row) {
       ...farm,
       document_number: "2",
       num: 2,
-      amount: "3",
+      store: "Склад кондитерской",
+      amount: "1",
       price: "80",
-      sum: "240",
+      sum: "80",
+    },
+    {
+      ...farm,
+      document_number: "2",
+      num: 3,
+      amount: "2",
+      price: "80",
+      sum: "160",
     },
   ];
   return {
     ...row,
     current: purchase("2026-10-09", 114, [
-      { amount: 10, supplier: "Крымская маслодельня" },
+      {
+        amount: 10,
+        supplier: "Крымская маслодельня",
+        store: "Склад ресторана",
+        department: "Ресторан в центре",
+      },
     ]),
     previous: {
       date_from: earlier.date,
@@ -79,6 +102,8 @@ const priorInvoices = [
     number: "2",
     id: "invoice-2026-10-02-2",
     supplier: "Ферма Заречье",
+    stores: ["Склад кухни", "Склад кондитерской"],
+    department: "Ресторан у моря",
     price: "72",
     amount: "5",
     sum: "360",
@@ -88,6 +113,7 @@ const priorInvoices = [
     number: "10",
     id: "invoice-2026-10-02-1",
     supplier: "Молочный дом",
+    stores: ["Холодильник бара"],
     price: "114",
     amount: "10",
     sum: "1 140",
@@ -97,6 +123,7 @@ const priorInvoices = [
     number: "2026-10-01/1",
     id: "invoice-2026-10-01-1",
     supplier: "Не указан",
+    stores: [],
     price: "80",
     amount: "5",
     sum: "400",
@@ -118,6 +145,10 @@ async function verifyInvoiceRows(dialog, desktop) {
   await dialog
     .getByRole("heading", { name: "Предыдущие накладные · 3", exact: true })
     .waitFor();
+  if (desktop) {
+    const headers = await dialog.getByRole("columnheader").allInnerTexts();
+    assert.deepEqual(headers.slice(1, 3), ["Поставщик", "Склад приёмки"]);
+  }
   for (const [index, expected] of priorInvoices.entries()) {
     const row = rows.nth(index);
     const link = row.getByRole("link");
@@ -125,17 +156,24 @@ async function verifyInvoiceRows(dialog, desktop) {
     assert.ok(await link.isVisible());
     assert.equal(normalized(await link.innerText()), "№" + expected.number);
     assert.equal(await link.getAttribute("href"), "/invoices/" + expected.id);
+    let storeText;
     if (desktop) {
       const cells = (await row.getByRole("cell").allInnerTexts()).map(
         normalized,
       );
-      assert.deepEqual(cells.slice(0, 5), [
-        expected.date,
-        expected.supplier,
-        expected.price,
-        expected.amount,
-        expected.sum,
-      ]);
+      const [date, supplier, warehouse, price, amount, sum] = cells;
+      assert.deepEqual(
+        [date, supplier, price, amount, sum],
+        [
+          expected.date,
+          expected.supplier,
+          expected.price,
+          expected.amount,
+          expected.sum,
+        ],
+      );
+      storeText = warehouse;
+      if (!expected.stores.length) assert.equal(warehouse, "Не указан");
     } else {
       const card = normalized(await row.innerText());
       for (const value of [
@@ -147,6 +185,18 @@ async function verifyInvoiceRows(dialog, desktop) {
       ])
         assert.ok(card.includes(value), value + " in " + card);
       assert.ok(card.includes("Поставщик"));
+      assert.match(card, /Склад(?:ы)? приёмки/);
+      if (!expected.stores.length)
+        assert.match(card, /Склад приёмки\s*:?\s*Не указан/);
+      storeText = card;
+    }
+    if (expected.department) assert.ok(storeText.includes(expected.department));
+    for (const store of priorInvoices.flatMap((entry) => entry.stores)) {
+      assert.equal(
+        storeText.split(store).length - 1,
+        Number(expected.stores.includes(store)),
+        `Накладная №${expected.number}, склад «${store}»`,
+      );
     }
   }
 }
@@ -167,8 +217,8 @@ async function verifyInvoiceCsv(page, dialog) {
   for (const [index, expected] of priorInvoices.entries()) {
     const record = records[index + 1];
     assert.ok(record.includes(expected.id));
-    const numeric = record
-      .split('";"')
+    const fields = record.split('";"');
+    const numeric = fields
       .slice(1, 4)
       .map((value) => Number(value.replace(",", ".")));
     assert.deepEqual(numeric, [
@@ -176,6 +226,7 @@ async function verifyInvoiceCsv(page, dialog) {
       Number(expected.amount),
       Number(expected.sum.replaceAll(" ", "")),
     ]);
+    for (const store of expected.stores) assert.ok(fields[8].includes(store));
   }
 }
 
@@ -276,11 +327,13 @@ export async function verifyPriceComparison(page, productName) {
         (await latest.innerText()).replace(/\s+/g, " "),
         /Поставщик\s*:?\s*Крымская маслодельня/,
       );
-      assert.ok(
-        await latest
-          .getByText("Склад тестового ресторана", { exact: true })
-          .isVisible(),
-      );
+      const latestText = normalized(await latest.innerText());
+      for (const field of [
+        "Склад приёмки",
+        "Ресторан в центре",
+        "Склад ресторана",
+      ])
+        assert.ok(latestText.includes(field), field + " in " + latestText);
       assert.equal(
         await latest
           .getByRole("link", { name: "Накладная №2026-10-09/1", exact: true })

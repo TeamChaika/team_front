@@ -32,7 +32,7 @@ type SourceLine = {
   num: number;
   num_occurrence: number;
   supplier: string | null;
-  store: string;
+  store: string | null;
   department: string | null;
   amount: string;
   sum: string;
@@ -900,7 +900,7 @@ function PriceWorkspace({
           Сравниваются один UUID товара и одна единица измерения по всей сети.
           Для графика и средней цены накладные с одинаковыми датой и временем
           считаются одним поступлением. В истории для каждой накладной видны
-          поставщик, количество, сумма и цена выбранного товара.
+          поставщик, склад приёмки, количество, сумма и цена выбранного товара.
         </p>
         <p>
           Черновики, удалённые документы и дополнительные расходы исключены.
@@ -1102,6 +1102,7 @@ export function PriceDetails({
                   <tr>
                     <th>Дата</th>
                     <th scope="col">Поставщик</th>
+                    <th scope="col">Склад приёмки</th>
                     <th className="numeric">Цена, ₽/{selected.unit}</th>
                     <th className="numeric">Количество, {selected.unit}</th>
                     <th className="numeric">Сумма, ₽</th>
@@ -1114,8 +1115,11 @@ export function PriceDetails({
                       <td className="price-receipt-date">
                         {dateText(invoice.date)}
                       </td>
-                      <td className="price-history-suppliers">
-                        <SupplierNames lines={invoice.lines} />
+                      <td className="price-history-names">
+                        <InvoiceNames lines={invoice.lines} field="supplier" />
+                      </td>
+                      <td className="price-history-names">
+                        <InvoiceNames lines={invoice.lines} field="warehouse" />
                       </td>
                       <td className="numeric">{price(invoice.price)}</td>
                       <td className="numeric">{number(invoice.amount)}</td>
@@ -1149,7 +1153,16 @@ export function PriceDetails({
                     {number(invoice.amount)} {selected.unit} ·{" "}
                     {price(invoice.sum)} ₽
                   </p>
-                  <SupplierNames lines={invoice.lines} labelled />
+                  <InvoiceNames
+                    lines={invoice.lines}
+                    field="supplier"
+                    labelled
+                  />
+                  <InvoiceNames
+                    lines={invoice.lines}
+                    field="warehouse"
+                    labelled
+                  />
                   <InvoiceLink invoice={invoice} />
                 </li>
               ))}
@@ -1172,28 +1185,52 @@ export function PriceDetails({
   );
 }
 
-function supplierName(line: SourceLine) {
-  const name = line.supplier?.trim();
+function directoryName(value: string | null) {
+  const name = value?.trim();
   if (!name || name === "—") return "Не указан";
-  // The API returns the counteragent UUID when its directory name is missing.
+  // The API returns the iiko UUID if the directory entry has no name.
   if (/^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i.test(name))
     return "Название не найдено";
   return name;
 }
 
-function SupplierNames({
+function supplierName(line: SourceLine) {
+  return directoryName(line.supplier);
+}
+
+function sourceWarehouse(line: SourceLine) {
+  const warehouse = directoryName(line.store);
+  const department = line.department?.trim();
+  return department && department !== "—" && department !== warehouse
+    ? department + " · " + warehouse
+    : warehouse;
+}
+
+const invoiceNameFields = {
+  supplier: { name: supplierName, one: "Поставщик", many: "Поставщики" },
+  warehouse: {
+    name: sourceWarehouse,
+    one: "Склад приёмки",
+    many: "Склады приёмки",
+  },
+};
+
+function InvoiceNames({
   lines,
+  field,
   labelled = false,
 }: {
   lines: SourceLine[];
+  field: keyof typeof invoiceNameFields;
   labelled?: boolean;
 }) {
-  const names = [...new Set(lines.map(supplierName))];
+  const { name, one, many } = invoiceNameFields[field];
+  const names = [...new Set(lines.map(name))];
   return (
-    <div className="price-supplier-names">
+    <div className="price-invoice-names">
       {labelled && (
-        <span className="price-supplier-label">
-          {names.length > 1 ? "Поставщики" : "Поставщик"}
+        <span className="price-invoice-label">
+          {names.length > 1 ? many : one}
         </span>
       )}
       {names.length ? (
@@ -1237,7 +1274,7 @@ function exportHistory(row: PriceChange, invoices: InvoiceRow[]) {
       ["latest", "Последнее поступление"],
       ["documents", "Накладная и UUID"],
       ["suppliers", "Поставщик"],
-      ["stores", "Склады поступления"],
+      ["stores", "Склады приёмки"],
       ["source_lines", "Исходные строки: номер, вхождение, количество, сумма"],
     ].map(([key, label]) => ({ key, label })),
     invoices.map((invoice) => ({
@@ -1249,11 +1286,11 @@ function exportHistory(row: PriceChange, invoices: InvoiceRow[]) {
       latest: invoice.date === row.current.date ? "Да" : "Нет",
       documents: `${invoice.document_number ?? "Без номера"} [${invoice.document_id}]`,
       suppliers: [...new Set(invoice.lines.map(supplierName))].join("; "),
-      stores: [...new Set(invoice.lines.map((line) => line.store))].join("; "),
+      stores: [...new Set(invoice.lines.map(sourceWarehouse))].join("; "),
       source_lines: invoice.lines
         .map(
           (line) =>
-            `${line.document_id}, ${line.num}.${line.num_occurrence}, ${line.store}: ${line.amount} ${row.unit}, ${csvPrice(line.sum)} ₽`,
+            `${line.document_id}, ${line.num}.${line.num_occurrence}, ${sourceWarehouse(line)}: ${line.amount} ${row.unit}, ${csvPrice(line.sum)} ₽`,
         )
         .join("; "),
     })),
@@ -1373,10 +1410,6 @@ function PriceChart({ row }: { row: PriceChange }) {
   );
 }
 
-function sourceWarehouse(line: SourceLine) {
-  return [line.department, line.store].filter(Boolean).join(" · ");
-}
-
 function Sources({
   title,
   invoices,
@@ -1391,7 +1424,12 @@ function Sources({
   return (
     <section>
       <h3>{title}</h3>
-      {invoices.length === 0 && <SupplierNames lines={[]} labelled />}
+      {invoices.length === 0 && (
+        <div className="price-document-fields">
+          <InvoiceNames lines={[]} field="supplier" labelled />
+          <InvoiceNames lines={[]} field="warehouse" labelled />
+        </div>
+      )}
       {invoices.map((invoice) => (
         <InvoiceSource
           key={invoice.document_id}
@@ -1413,9 +1451,8 @@ function InvoiceSource({
   unit: string;
   showFigures: boolean;
 }) {
-  const stores = [
-    ...new Set(invoice.lines.map(sourceWarehouse).filter(Boolean)),
-  ];
+  const multipleWarehouses =
+    new Set(invoice.lines.map(sourceWarehouse)).size > 1;
   return (
     <div className="price-source">
       {showFigures && (
@@ -1430,13 +1467,9 @@ function InvoiceSource({
         </p>
       )}
       <div className="price-document-heading">
-        <div>
-          <SupplierNames lines={invoice.lines} labelled />
-          {stores.map((store) => (
-            <small className="price-subtext" key={store}>
-              {store}
-            </small>
-          ))}
+        <div className="price-document-fields">
+          <InvoiceNames lines={invoice.lines} field="supplier" labelled />
+          <InvoiceNames lines={invoice.lines} field="warehouse" labelled />
         </div>
         <InvoiceLink invoice={invoice} fullLabel />
       </div>
@@ -1451,7 +1484,7 @@ function InvoiceSource({
               Строка {line.num}
               {line.num_occurrence > 1 && " · вхождение " + line.num_occurrence}
             </strong>
-            {stores.length > 1 && <span>{sourceWarehouse(line)}</span>}
+            {multipleWarehouses && <span>{sourceWarehouse(line)}</span>}
             <span>
               {number(line.amount)} {unit} · {price(line.sum)} ₽
             </span>
