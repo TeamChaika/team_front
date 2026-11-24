@@ -510,8 +510,12 @@ function PriceWorkspace({
           </button>
         </p>
       )}
-      <Feedback state={report ? { ...state, error: "" } : state}>
-        {state.data && (
+      <Feedback state={{
+        reload: state.reload,
+        loading: !report && (state.loading || state.data !== null),
+        error: report ? "" : state.error,
+      }}>
+        {report && (
           <>
             <div className="price-summary" aria-label="Итоги изменений">
               <div>
@@ -863,12 +867,12 @@ function PriceWorkspace({
               )}
             </section>
             <p className="section-note">
-              Сравнений по сети: {state.data.stats.observations}. Без истории:{" "}
-              {state.data.stats.no_previous}. Совпадают со средней:{" "}
-              {state.data.stats.unchanged}. Не удалось сравнить:{" "}
-              {state.data.stats.invalid} (нет единицы или пригодного
-              количества/суммы). История короче {state.data.history_size}{" "}
-              поступлений: {state.data.stats.short_history}. Счётчики относятся
+              Сравнений по сети: {report.stats.observations}. Без истории:{" "}
+              {report.stats.no_previous}. Совпадают со средней:{" "}
+              {report.stats.unchanged}. Не удалось сравнить:{" "}
+              {report.stats.invalid} (нет единицы или пригодного
+              количества/суммы). История короче {report.history_size}{" "}
+              поступлений: {report.stats.short_history}. Счётчики относятся
               ко всему выбранному виду поступлений.
             </p>
           </>

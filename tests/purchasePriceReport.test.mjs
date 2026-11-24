@@ -83,10 +83,10 @@ const stubs = {
   "./App":
     "export const useWorkspace=()=>globalThis.purchaseTestWorkspace ?? {meta:{sales_dates:[]}};",
   "./useData":
-    'export function useData(path) {globalThis.purchaseTestCalls.push(path);return {data:globalThis.purchaseTestReport,error:"",loading:false};}',
+    'export function useData(path) {globalThis.purchaseTestCalls.push(path);return {data:globalThis.purchaseTestReport,error:"",loading:false,...globalThis.purchaseTestLoadState};}',
   "./AssistantContext": "export const useAssistant=()=>({open(){}});",
   "./pages":
-    "export const Feedback=({children})=>children;export const PageTitle=()=>null;",
+    'export const Feedback=({children,state})=>state.loading?"Загружаем данные…":state.error||children;export const PageTitle=()=>null;',
   "./PurchaseImpact": "export const PurchaseImpact=()=>null;",
   "./PurchaseModal": "export const PurchaseModal=()=>null;",
   "./api":
@@ -199,6 +199,24 @@ function renderReport(mode, period, rows = [row]) {
   };
   return render();
 }
+test("changing server filters shows loading until the matching report arrives and retains rows during its refresh", () => {
+  try {
+    globalThis.purchaseTestSearch = "recent_only=false";
+    const changing = renderReport("selected");
+    assert.match(changing, /Загружаем данные/);
+    assert.doesNotMatch(changing, /Закупочные цены · 0|По выбранным условиям товаров не найдено|Товаров в выборке/);
+    globalThis.purchaseTestReport.recent_only = false;
+    globalThis.purchaseTestLoadState = { refreshing: true };
+    assert.match(render(), /Тестовый товар/);
+    assert.doesNotMatch(render(), /Загружаем данные/);
+    globalThis.purchaseTestReport.rows = [];
+    assert.match(render(), /По выбранным условиям товаров не найдено/);
+  } finally {
+    delete globalThis.purchaseTestSearch;
+    delete globalThis.purchaseTestLoadState;
+  }
+});
+
 test("latest receipts are first and saved filters, order and page are restored from the URL", () => {
   const rows = Array.from({ length: 55 }, (_, i) => ({
     ...row,
