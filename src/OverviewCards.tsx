@@ -103,6 +103,8 @@ export function PriceLeaders({
 
 export function OverviewNotifications({
   data,
+  hideMissingSales,
+  hideMissingDishes,
   loading,
   error,
   prices,
@@ -111,6 +113,8 @@ export function OverviewNotifications({
   statusAvailable = true,
 }: {
   data: OverviewData | null;
+  hideMissingSales: boolean;
+  hideMissingDishes: boolean;
   loading: boolean;
   error: string;
   prices: Prices;
@@ -137,7 +141,7 @@ export function OverviewNotifications({
     });
   if (data) {
     const current = data.current;
-    if (!current.complete)
+    if (!current.complete && !hideMissingSales)
       alerts.push({
         id: "coverage",
         title: "Продажи загружены не полностью",
@@ -161,7 +165,7 @@ export function OverviewNotifications({
         icon: IconDatabase,
         href: "/status",
       });
-    if (!data.dish_current.complete)
+    if (!data.dish_current.complete && !hideMissingDishes)
       alerts.push({
         id: "dishes",
         title: "Рейтинг блюд ожидает загрузки",
@@ -261,6 +265,8 @@ export function OverviewNotifications({
           !prices.loading &&
           !error &&
           !prices.error &&
+          !hideMissingSales &&
+          !hideMissingDishes &&
           !alerts.length && (
             <p className="section-note">
               <IconCheck size={16} /> Отклонений в загруженных продажах и

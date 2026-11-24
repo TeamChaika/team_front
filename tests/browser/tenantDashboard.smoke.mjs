@@ -9,6 +9,7 @@ import {
   salesResponse,
   verifySalesScopes,
 } from "./salesScope.mjs";
+import { verifyOverviewScope } from "./overviewScope.mjs";
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 const build = path.resolve(process.env.DASHBOARD_DIST || "dist");
@@ -248,6 +249,7 @@ try {
     fullPage: true,
   });
   await verifySalesScopes(page);
+  await verifyOverviewScope(context);
   await page.getByRole("link", { name: "Мой профиль", exact: true }).click();
   fullReady = false;
   await page.reload();

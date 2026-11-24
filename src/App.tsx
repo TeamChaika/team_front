@@ -147,7 +147,7 @@ type Workspace = {
   includeArchived: boolean;
   setIncludeArchived: (value: boolean) => void;
   hasArchivedDepartments: boolean;
-  preserveDepartmentScope: () => void;
+  preserveDepartmentScope: (forHistoricalPoint?: boolean) => void;
   setDepartment: (v: string) => void;
   setDepartments: (ids: string[]) => void;
   start: string;
@@ -305,7 +305,7 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
   currentUserId.current = meta?.user.id ?? null;
   const [departmentSelection, setDepartmentSelection] = useState<{
     ids: string[];
-    fromActiveOverview?: boolean;
+    overview?: { syncOnly: boolean; includeArchived: boolean };
   }>({ ids: [] });
   function setDepartments(ids: string[]) {
     setDepartmentSelection({ ids });
@@ -315,28 +315,30 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
     [mobile, setMobile] = useState(false);
   const location = useLocation();
   const [includeArchived, setIncludeArchived] = useState(false);
+  const overviewWorkspace = location.pathname === "/";
   const salesWorkspace = location.pathname === "/sales" || location.pathname === "/sales/";
   const archiveScope =
-    location.pathname === "/" || location.pathname === "/indicators";
+    overviewWorkspace || location.pathname === "/indicators";
   const scope = venueScope(
     meta?.departments ?? [],
-    departmentSelection.ids,
+    overviewWorkspace && departmentSelection.overview
+      ? []
+      : departmentSelection.ids,
     !archiveScope || includeArchived,
   );
-  let salesDefault =
-    salesWorkspace && meta
-      ? salesDefaultDepartments(meta, start, end)
+  const salesDefault =
+    (overviewWorkspace || salesWorkspace) && meta
+      ? salesDefaultDepartments(
+          { ...meta, departments: scope.venues },
+          start,
+          end,
+        )
       : null;
-  if (salesDefault && departmentSelection.fromActiveOverview) {
-    salesDefault = salesDefault.filter((id) => scope.selected.includes(id));
-  }
   const automaticSalesDepartments =
-    !scope.selected.length || departmentSelection.fromActiveOverview
-      ? salesDefault
-      : null;
+    !scope.selected.length ? salesDefault : null;
   const effectiveDepartments = automaticSalesDepartments ?? scope.selected;
   useEffect(() => {
-    if (archiveScope) {
+    if (archiveScope && !(overviewWorkspace && departmentSelection.overview)) {
       setDepartmentSelection((selection) => {
         const next = venueScope(
           meta?.departments ?? [],
@@ -348,7 +350,13 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
           : { ...selection, ids: next };
       });
     }
-  }, [archiveScope, includeArchived, meta?.departments]);
+  }, [
+    archiveScope,
+    overviewWorkspace,
+    departmentSelection.overview,
+    includeArchived,
+    meta?.departments,
+  ]);
   useEffect(() => {
     let live = true;
     const requirementVersion = getPasswordRequirementVersion();
@@ -654,19 +662,24 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
       location.pathname === "/"
         ? drilldownDepartments(scope.venues, effectiveDepartments)
         : effectiveDepartments;
-    const largeSalesScope = salesWorkspace && queryDepartments.length > 100;
-    if (largeSalesScope && automaticSalesDepartments) {
+    const largeReportScope =
+      (salesWorkspace || overviewWorkspace) && queryDepartments.length > 100;
+    const inherited = salesWorkspace ? departmentSelection.overview : undefined;
+    const selection = new Set(queryDepartments);
+    const hasAllActive =
+      largeReportScope &&
+      meta.departments.every((venue) => selection.has(venue.id) === !venue.archived);
+    if (largeReportScope && (automaticSalesDepartments || inherited?.syncOnly)) {
       p.set("sync_only", "true");
-      if (departmentSelection.fromActiveOverview) {
+      if (inherited && !inherited.includeArchived) {
         p.set("include_archived", "false");
       }
-    } else if (
-      !largeSalesScope || queryDepartments.length !== meta.departments.length
-    ) {
-      // For a large, explicit all-selection the unfiltered API already uses all grants.
+    } else if (hasAllActive && queryDepartments.length < meta.departments.length) {
+      p.set("include_archived", "false");
+    } else if (!largeReportScope || queryDepartments.length !== meta.departments.length) {
       for (const id of queryDepartments) p.append("department_id", id);
     }
-    if (location.pathname === "/")
+    if (overviewWorkspace && !p.has("include_archived"))
       p.set("include_archived", String(includeArchived));
     if (dates) {
       p.set("start", start);
@@ -684,12 +697,18 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
         hasArchivedDepartments: meta.departments.some(
           (venue) => venue.archived,
         ),
-        preserveDepartmentScope: () => {
-          if (!scope.selected.length && scope.venues.length < meta.departments.length) {
+        preserveDepartmentScope: (forHistoricalPoint = false) => {
+          if (
+            !scope.selected.length &&
+            ((forHistoricalPoint && automaticSalesDepartments) ||
+              scope.venues.length < meta.departments.length)
+          ) {
             setDepartmentSelection({
-              ids: scope.venues.map((venue) => venue.id),
-              fromActiveOverview: true,
+              ids: automaticSalesDepartments ?? scope.venues.map((venue) => venue.id),
+              overview: { syncOnly: automaticSalesDepartments !== null, includeArchived },
             });
+          } else if (!scope.selected.length && departmentSelection.overview) {
+            setDepartments([]);
           }
         },
         setDepartment: (id) =>
@@ -865,9 +884,7 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
                         restaurants={scope.venues}
                         value={automaticSalesDepartments ? [] : scope.selected}
                         defaultDepartments={salesDefault}
-                        onChange={(ids) => {
-                          if (ids.length || !automaticSalesDepartments) setDepartments(ids);
-                        }}
+                        onChange={setDepartments}
                       />
                     )}
                     {location.pathname === "/" &&
@@ -1009,6 +1026,11 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
                                 Нет активных заведений. Включите «Показать
                                 архивные», чтобы открыть историю.
                               </Alert>
+                            ) : automaticSalesDepartments?.length === 0 ? (
+                              <p className="section-note">
+                                Нет заведений с включённой синхронизацией. Для
+                                сохранённых продаж выберите прошедший период.
+                              </p>
                             ) : (
                               <Overview
                                 key={`${includeArchived}:${scope.venues.map((venue) => venue.id).join(",")}:${effectiveDepartments.join(",")}`}
