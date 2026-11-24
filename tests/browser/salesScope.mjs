@@ -39,7 +39,7 @@ export function salesResponse(params) {
         cost: 40,
         checks: 2,
         guests: 3,
-        reviewed: true,
+        reviewed: end !== "2026-10-09",
       }));
   return {
     start,
@@ -86,6 +86,10 @@ export async function verifySalesScopes(page) {
     "75,00 ₽",
   ]);
   assert.match(await picker.innerText(), /2 из 3/);
+  assert.doesNotMatch(
+    await page.locator("main").innerText(),
+    /Контрольные суммы совпадают|Сверка с вашими отчётами iiko ожидается|Дней с данными:/,
+  );
   const rows = page.locator("section.panel").getByRole("row");
   assert.deepEqual(await rows.getByRole("link").allTextContents(), [
     "Север",
@@ -167,4 +171,30 @@ export async function verifySalesScopes(page) {
     );
     await page.unroute(reportUrl, handler);
   }
+
+  const withDiscrepancy = (route) => {
+    const report = salesResponse(new URL(route.request().url()).searchParams);
+    const [venue] = report.rows;
+    return route.fulfill({
+      json: {
+        ...report,
+        reconciliation_issues: [{
+          date: report.start,
+          department_id: venue.department_id,
+          department: venue.department,
+          report: "hours",
+          field: "DishDiscountSumInt",
+          daily: "150",
+          actual: "140",
+          delta: "-10",
+        }],
+      },
+    });
+  };
+  await page.route(reportUrl, withDiscrepancy);
+  await page.reload();
+  await page.getByText("Есть расхождения между отчётами", { exact: true }).waitFor();
+  await page.getByText("Показать расхождения", { exact: true }).click();
+  await page.getByText(/Север.*Выручка.*разница -10/).waitFor();
+  await page.unroute(reportUrl, withDiscrepancy);
 }
