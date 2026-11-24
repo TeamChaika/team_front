@@ -97,6 +97,13 @@ const range = (p: { start: string; end: string }) =>
   p.start === p.end
     ? dateText(p.start)
     : `${dateText(p.start)} — ${dateText(p.end)}`;
+function onlyMissingPausedDay(period?: Period, pausedDay?: string) {
+  return Boolean(
+    pausedDay &&
+    period?.missing_dates.length === 1 &&
+    period.missing_dates[0] === pausedDay,
+  );
+}
 const percent = (value: string | null) =>
   value === null
     ? "—"
@@ -145,16 +152,19 @@ function Delta({
 function PeriodNotice({
   period,
   previous = false,
+  hideMissing = false,
 }: {
   period: Period;
   previous?: boolean;
+  hideMissing?: boolean;
 }) {
   const statusAvailable = dashboardSectionAvailable(
     useWorkspace().meta.sections,
     "status",
   );
   const issues = period.reconciliation_issues;
-  if (period.complete && !issues.length) return null;
+  const missing = !period.complete && !hideMissing;
+  if (!missing && !issues.length) return null;
   return (
     <Alert
       color="orange"
@@ -162,7 +172,7 @@ function PeriodNotice({
       role="status"
       mb="md"
     >
-      {!period.complete && (
+      {missing && (
         <div>
           За {range(period)} загружено {period.loaded_dates.length} из{" "}
           {period.days} дней.{" "}
@@ -668,6 +678,8 @@ export function Overview({ tenant = false }: { tenant?: boolean }) {
     state.data?.current.start === w.start && state.data.current.end === w.end
       ? state.data
       : null;
+  const pausedDay = data?.live?.status === "sync_paused" ? w.meta.today : undefined;
+  const pausedTodayMissing = onlyMissingPausedDay(data?.current, pausedDay);
   const recentData = samePeriod ? data : recent.data;
   const series =
     recentData?.trends?.[grain] ??
@@ -679,9 +691,10 @@ export function Overview({ tenant = false }: { tenant?: boolean }) {
       ? { ...recentData, trend: series }
       : null;
   const trendState = samePeriod ? state : recent;
+  const openSales = () => w.preserveDepartmentScope();
   const openPeriod = (p: Period) => {
     w.setPeriod(p.start, p.end);
-    w.preserveDepartmentScope();
+    w.preserveDepartmentScope(true);
     navigate("/sales?kind=daily");
   };
   const hour = Number(
@@ -780,11 +793,13 @@ export function Overview({ tenant = false }: { tenant?: boolean }) {
       <OverviewPortal target="overview-notifications">
         <OverviewNotifications
           data={data}
+          hideMissingSales={pausedTodayMissing}
+          hideMissingDishes={onlyMissingPausedDay(data?.dish_current, pausedDay)}
           loading={state.loading || (!data && !state.error)}
           error={state.error}
           prices={prices}
           onPrice={setSelectedPrice}
-          onSales={w.preserveDepartmentScope}
+          onSales={openSales}
           statusAvailable={canStatus}
         />
       </OverviewPortal>
@@ -803,8 +818,10 @@ export function Overview({ tenant = false }: { tenant?: boolean }) {
         {data && (
           <>
             <DataSourceNotice status={data.data_status} />
-            <LiveDataNotice source={data.live} onRefresh={state.reload} />
-            {(!data.current.complete ||
+            {data.live?.status !== "sync_paused" && (
+              <LiveDataNotice source={data.live} onRefresh={state.reload} />
+            )}
+            {((!data.current.complete && !pausedTodayMissing) ||
               data.current.reconciliation_issues.length > 0 ||
               (compare &&
                 (!data.previous.complete ||
@@ -812,20 +829,20 @@ export function Overview({ tenant = false }: { tenant?: boolean }) {
               <details className="overview-quality">
                 <summary>
                   <span className="status-dot amber" />
-                  {!data.current.complete
+                  {!data.current.complete && !pausedTodayMissing
                     ? `Продажи: загружено ${data.current.loaded_dates.length} из ${data.current.days} дней. Итоги недоступны.`
                     : data.current.reconciliation_issues.length
                       ? "В продажах есть расхождения контрольной сверки."
                       : "В периоде сравнения есть пропуски или расхождения."}
                 </summary>
-                <PeriodNotice period={data.current} />
+                <PeriodNotice period={data.current} hideMissing={pausedTodayMissing} />
                 {compare && <PeriodNotice period={data.previous} previous />}
               </details>
             )}
             <Kpis
               data={data}
               compare={compare}
-              onOpen={w.preserveDepartmentScope}
+              onOpen={openSales}
             />
             <Feedback
               state={{
@@ -853,7 +870,7 @@ export function Overview({ tenant = false }: { tenant?: boolean }) {
                   <h2>Рестораны</h2>
                   <Link
                     to="/sales?kind=daily"
-                    onClick={w.preserveDepartmentScope}
+                    onClick={openSales}
                     className="text-link"
                   >
                     Все рестораны <IconArrowRight size={14} />
@@ -958,7 +975,7 @@ export function Overview({ tenant = false }: { tenant?: boolean }) {
                     <h2>Топ-5 позиций по выручке</h2>
                     <Link
                       to="/sales?kind=dishes"
-                      onClick={w.preserveDepartmentScope}
+                      onClick={openSales}
                       className="text-link"
                     >
                       Все <IconArrowRight size={14} />
@@ -986,7 +1003,7 @@ export function Overview({ tenant = false }: { tenant?: boolean }) {
                               <td>
                                 <Link
                                   className="text-link"
-                                  onClick={w.preserveDepartmentScope}
+                                  onClick={openSales}
                                   to={
                                     "/sales?" +
                                     new URLSearchParams({
