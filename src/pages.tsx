@@ -1,8 +1,9 @@
 import { dashboardSectionAvailable } from "./dashboardRuntime";
 import { DataSourceNotice } from "./DataSourceNotice";
-import { useState, type ReactNode } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 import { ScheduledSync } from "./ScheduledSync";
-import { CommercialPdfButton } from "./CommercialInvoices";
+import { cashShiftPage } from "./statusSchedule";
+import { CommercialPdfButton } from "./CommercialPdfButton";
 import type { ScheduledSyncTask } from "./scheduledSyncModel";
 import { PartialDayNotice } from "./PartialDayNotice";
 import { Link, useParams, useSearchParams } from "react-router-dom";
@@ -15,6 +16,7 @@ import {
   SegmentedControl,
   Select,
   Modal,
+  Pagination,
 } from "@mantine/core";
 import {
   IconSearch,
@@ -1396,13 +1398,36 @@ export function DetailPage({ resource }: { resource: string }) {
 }
 export function StatusPage() {
   const w = useWorkspace();
-  const state = useData<{
-    events: Row[];
-    runs: Row[];
-    observations: Row[];
-    cash_shift_days: Row[];
-    scheduled?: ScheduledSyncTask[];
-  }>("/status?" + w.query(), true);
+  const query = w.query();
+  const scopeKey = JSON.stringify([
+    query,
+    w.meta.user,
+    w.meta.departments.map((d) => d.id),
+    w.meta.warehouse_scope,
+    w.meta.sections,
+    w.meta.can_manage,
+  ]);
+  return <StatusReport key={scopeKey} query={query} />;
+}
+
+type StatusData = {
+  events: Row[];
+  runs: Row[];
+  observations: Row[];
+  cash_shift_days: Row[];
+  scheduled?: ScheduledSyncTask[];
+};
+function StatusReport({ query }: { query: string }) {
+  const w = useWorkspace();
+  const state = useData<StatusData>("/status?" + query, true);
+  const [invalidated, setInvalidated] = useState<StatusData | null>(null);
+  const invalidate = useCallback(() => {
+    setInvalidated(state.data);
+    state.reload();
+  }, [state.data, state.reload]);
+  const [page, setPage] = useState(1);
+  const report = state.data !== invalidated ? state.data : null;
+  const cash = cashShiftPage(report?.cash_shift_days ?? [], page);
   return (
     <>
       <PageTitle
@@ -1418,24 +1443,32 @@ export function StatusPage() {
           </Button>
         }
       />
-      {state.data && state.error && (
+      {report && state.error && (
         <Alert color="red" mb="md" role="alert">
           Не удалось обновить статус: {state.error}
         </Alert>
       )}
-      <Feedback state={{ ...state, error: state.data ? "" : state.error }}>
-        {state.data && (
+      <Feedback
+        state={{
+          ...state,
+          error: report ? "" : state.error,
+          loading: !report && !state.error,
+        }}
+      >
+        {report && (
           <>
-            {!!state.data.scheduled?.length && (
+            {!!report.scheduled?.length && (
               <ScheduledSync
-                tasks={state.data.scheduled}
-                reload={state.reload}
+                tasks={report.scheduled}
+                path={"/status?view=schedule" + (query ? "&" + query : "")}
+                paused={state.refreshing}
+                invalidate={invalidate}
               />
             )}
             <section className="panel">
               <div className="panel-heading">
                 <h2>События ресторанов</h2>
-                <Badge variant="light">{state.data.events.length} RMS</Badge>
+                <Badge variant="light">{report.events.length} RMS</Badge>
               </div>
               <DataTable
                 columns={[
@@ -1445,7 +1478,7 @@ export function StatusPage() {
                   { key: "days", label: "Загружено дней" },
                   { key: "observed_at", label: "Последняя загрузка" },
                 ]}
-                rows={state.data.events}
+                rows={report.events}
               />
             </section>
             <section className="panel prose">
@@ -1476,10 +1509,18 @@ export function StatusPage() {
                   { key: "shifts", label: "Смен в доступных данных" },
                   { key: "observed_at", label: "Последняя загрузка" },
                 ]}
-                rows={state.data.cash_shift_days}
+                rows={cash.rows}
               />
+              {cash.pages > 1 && (
+                <Pagination
+                  total={cash.pages}
+                  value={cash.page}
+                  onChange={setPage}
+                  aria-label="Страницы истории кассовых смен"
+                />
+              )}
             </section>
-            {state.data.runs.length > 0 && (
+            {report.runs.length > 0 && (
               <section className="panel">
                 <div className="panel-heading">
                   <h2>Последние задания</h2>
@@ -1492,11 +1533,11 @@ export function StatusPage() {
                     { key: "finished_at", label: "Завершение" },
                     { key: "error_code", label: "Ошибка" },
                   ]}
-                  rows={state.data.runs}
+                  rows={report.runs}
                 />
               </section>
             )}
-            {state.data.observations.length > 0 && (
+            {report.observations.length > 0 && (
               <details className="panel provenance">
                 <summary>Последние наблюдения по источникам</summary>
                 <DataTable
@@ -1504,7 +1545,7 @@ export function StatusPage() {
                     { key: "resource", label: "Ресурс" },
                     { key: "observed_at", label: "Получено" },
                   ]}
-                  rows={state.data.observations}
+                  rows={report.observations}
                 />
               </details>
             )}

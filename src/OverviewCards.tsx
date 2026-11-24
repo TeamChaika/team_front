@@ -11,7 +11,8 @@ import {
   IconTrendingUp,
 } from "@tabler/icons-react";
 import { dateText } from "./api";
-import { PriceDetails, type PriceChange } from "./PurchasePrices";
+import type { PriceChange } from "./PurchasePrices";
+import { LazyPriceDetails } from "./LazyPriceDetails";
 import { Feedback } from "./pages";
 import type { OverviewData } from "./Overview";
 import type { useData } from "./useData";
@@ -293,7 +294,7 @@ export function OverviewPriceModal({
       closeButtonProps={{ "aria-label": "Закрыть динамику цены" }}
     >
       {row && (
-        <PriceDetails
+        <LazyPriceDetails
           key={row.product_id + row.unit_id}
           row={row}
           scope={scope}

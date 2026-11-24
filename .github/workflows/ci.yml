@@ -32,6 +32,26 @@ jobs:
         run: npm test
       - name: Check TypeScript and build
         run: npm run build
+      - name: Verify production static delivery
+        shell: bash
+        run: |
+          set -euo pipefail
+          container=$(docker run -d -p 127.0.0.1::80 \
+            -v "$PWD/ops/coolify-nginx.conf:/etc/nginx/conf.d/default.conf:ro" \
+            -v "$PWD/dist:/usr/share/nginx/html:ro" nginx:alpine)
+          trap 'docker rm -f "$container" >/dev/null' EXIT
+          base="http://$(docker port "$container" 80/tcp)"
+          curl -fsS --retry 10 --retry-connrefused "$base/purchase-prices" -D /tmp/spa.headers -o /tmp/spa.html
+          cmp dist/index.html /tmp/spa.html
+          grep -iq '^Cache-Control: no-cache' /tmp/spa.headers
+          asset=$(find dist/assets -name 'index-*.js' -size +1k -print -quit)
+          test -n "$asset"
+          curl -fsS -H 'Accept-Encoding: gzip' "$base/${asset#dist/}" -D /tmp/js.headers -o /tmp/asset.gz
+          grep -iq '^Content-Encoding: gzip' /tmp/js.headers
+          grep -iq '^Vary: .*Accept-Encoding' /tmp/js.headers
+          grep -iq '^Cache-Control: .*immutable' /tmp/js.headers
+          gzip -dc /tmp/asset.gz | cmp "$asset" -
+          test "$(curl -sS -o /dev/null -w '%{http_code}' "$base/assets/missing.js")" = 404
       - name: Save deployable frontend
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

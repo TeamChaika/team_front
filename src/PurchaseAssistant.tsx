@@ -10,6 +10,7 @@ import {
   IconChevronRight,
 } from "@tabler/icons-react";
 import { api } from "./api";
+import { useData } from "./useData";
 import "./purchase-assistant.css";
 
 export type AssistantSelection = {
@@ -63,9 +64,6 @@ export function PurchaseAssistant({
 }) {
   const [status, setStatus] = useState<Status | null>(null);
   const [chat, setChat] = useState<Chat | null>(null);
-  const [conversations, setConversations] = useState<
-    { id: string; title: string }[]
-  >([]);
   const [question, setQuestion] = useState("");
   const [pending, setPending] = useState("");
   const [error, setError] = useState("");
@@ -75,20 +73,19 @@ export function PurchaseAssistant({
   const controller = useRef<AbortController | null>(null);
   const messages = useRef<HTMLDivElement>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [historyRequested, setHistoryRequested] = useState(false);
+  const history = useData<{ id: string; title: string }[]>(
+    historyRequested ? "/assistant/conversations" : null,
+    true,
+  );
 
   useEffect(() => {
     const abort = new AbortController();
     setLoading(true);
     setError("");
-    Promise.all([
-      api<Status>("/assistant/status", { signal: abort.signal }),
-      api<{ id: string; title: string }[]>("/assistant/conversations", {
-        signal: abort.signal,
-      }),
-    ])
-      .then(([config, history]) => {
-        setStatus(config);
-        setConversations(history);
+    api<Status>("/assistant/status", { signal: abort.signal })
+      .then((config) => {
+        if (!abort.signal.aborted) setStatus(config);
       })
       .catch((e: unknown) => {
         if (!abort.signal.aborted)
@@ -151,11 +148,7 @@ export function PurchaseAssistant({
       });
       setChat(result);
       setQuestion("");
-      setConversations((old) =>
-        old.some((c) => c.id === result.id)
-          ? old
-          : [{ id: result.id, title: text.slice(0, 120) }, ...old].slice(0, 20),
-      );
+      if (historyRequested && result.id !== chat?.id) history.reload();
     } catch (e) {
       if (!abort.signal.aborted) {
         setError(e instanceof Error ? e.message : "Не удалось получить ответ.");
@@ -197,7 +190,10 @@ export function PurchaseAssistant({
             aria-expanded={showHistory}
             aria-controls="assistant-history"
             disabled={!!pending || loadingChat}
-            onClick={() => setShowHistory((v) => !v)}
+            onClick={() => {
+              setHistoryRequested(true);
+              setShowHistory((v) => !v);
+            }}
           >
             <IconHistory size={18} />
           </ActionIcon>
@@ -235,19 +231,29 @@ export function PurchaseAssistant({
       </div>
       {showHistory && (
         <div id="assistant-history" className="assistant-history">
-          {conversations.length > 0 ? (
+          {history.error && (
+            <div role="alert">
+              {history.error}{" "}
+              <Button size="xs" variant="subtle" onClick={history.reload}>
+                Повторить загрузку истории
+              </Button>
+            </div>
+          )}
+          {history.data?.length ? (
             <Select
               label="Мои диалоги"
               placeholder="Выберите диалог"
               value={chat?.id ?? null}
               disabled={!!pending || loadingChat}
               comboboxProps={{ withinPortal: false }}
-              data={conversations.map((c) => ({ value: c.id, label: c.title }))}
+              data={history.data.map((c) => ({ value: c.id, label: c.title }))}
               onChange={(id) => void loadChat(id)}
             />
-          ) : (
+          ) : history.data && !history.error ? (
             <p className="muted">Здесь появятся ваши сохранённые диалоги.</p>
-          )}
+          ) : !history.error ? (
+            <p role="status">Загружаю историю диалогов…</p>
+          ) : null}
         </div>
       )}
       <div

@@ -6,7 +6,8 @@ import { IconMessageCircle } from "@tabler/icons-react";
 import { api } from "./api";
 import { useAssistant } from "./AssistantContext";
 import { PurchaseAssistant, type AssistantSource } from "./PurchaseAssistant";
-import { PriceDetails, type PriceChange } from "./PurchasePrices";
+import type { PriceChange } from "./PurchasePrices";
+import { LazyPriceDetails } from "./LazyPriceDetails";
 import { PurchaseImpact } from "./PurchaseImpact";
 import { PurchaseModal } from "./PurchaseModal";
 
@@ -179,7 +180,7 @@ export function AssistantRail() {
         {preview?.kind === "impact" ? (
           <PurchaseImpact row={preview.row} scope="" />
         ) : (
-          preview && <PriceDetails row={preview.row} scope="" />
+          preview && <LazyPriceDetails row={preview.row} scope="" />
         )}
       </PurchaseModal>
     </>

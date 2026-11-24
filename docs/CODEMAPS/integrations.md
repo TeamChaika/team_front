@@ -6,7 +6,7 @@
 | --- | --- |
 | Цены, фильтры, история | [PurchasePrices.tsx](../../src/PurchasePrices.tsx): `GET /purchase-prices`, `GET /purchase-prices/history` |
 | Недельное влияние цены на блюда | [PurchaseImpact.tsx](../../src/PurchaseImpact.tsx): `GET /purchase-prices/impact` |
-| История помощника и вопросы | [PurchaseAssistant.tsx](../../src/PurchaseAssistant.tsx): `/assistant/status`, `/assistant/conversations`, `/assistant/conversations/:id`, `POST /assistant/messages` |
+| История помощника и вопросы | [PurchaseAssistant.tsx](../../src/PurchaseAssistant.tsx) запрашивает `/assistant/status` при открытии помощника, `/assistant/conversations` при первом раскрытии истории и `/assistant/conversations/:id` при выборе диалога. Отправка через `POST /assistant/messages` доступна независимо от загрузки истории. |
 | Панель помощника и источники | [AssistantContext.tsx](../../src/AssistantContext.tsx), [AssistantRail.tsx](../../src/AssistantRail.tsx) |
 | Список, карточка и Excel депозитов | [DepositsPage.tsx](../../src/DepositsPage.tsx): `/deposits`, `/deposits/:id`, `/deposits/venues`, `/deposits/creation-venues`, `/deposits/permissions`, `/deposits/export` |
 | Создание депозита | [CreateDeposit.tsx](../../src/CreateDeposit.tsx): `POST /deposits`; [depositDates.ts](../../src/depositDates.ts) — дата по времени Крыма |
