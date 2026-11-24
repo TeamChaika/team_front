@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { salesDepartments } from "./salesScope.mjs";
+import { salesDepartments, salesResponse } from "./salesScope.mjs";
 
 const today = "2026-10-09";
 const yesterday = "2026-10-08";
@@ -117,6 +117,30 @@ function overviewResponse(params, available, gap) {
   };
 }
 
+async function verifyAssistantLauncher(page) {
+  const trigger = page.getByRole("button", { name: "ИИ-ассистент", exact: true });
+  const panel = page.locator("#site-assistant");
+  const close = panel.getByRole("button", { name: "Свернуть чат" });
+  await trigger.waitFor();
+  if (await panel.isVisible()) await close.click();
+  const originalSize = page.viewportSize();
+  for (const size of [originalSize, { width: 390, height: 844 }]) {
+    await page.setViewportSize(size);
+    assert.equal(await trigger.count(), 1);
+    assert.equal(await page.getByRole("button", { name: "Чат с ИИ" }).count(), 0);
+    const bounds = await trigger.boundingBox();
+    assert.ok(bounds && bounds.x >= 0 && bounds.x + bounds.width <= size.width);
+    await trigger.click();
+    await close.waitFor();
+    assert.equal(await trigger.getAttribute("aria-expanded"), "true");
+    await close.press("Escape");
+    await panel.waitFor({ state: "hidden" });
+    assert.equal(await trigger.getAttribute("aria-expanded"), "false");
+    assert.ok(await trigger.evaluate((el) => el === document.activeElement));
+  }
+  await page.setViewportSize(originalSize);
+}
+
 export async function verifyOverviewScope(context) {
   const page = await context.newPage();
   try {
@@ -147,6 +171,7 @@ export async function verifyOverviewScope(context) {
       exact: false,
     });
     await cards.first().waitFor();
+    await verifyAssistantLauncher(page);
     assert.deepEqual(await cards.allInnerTexts(), [
       "300 ₽",
       "80 ₽",
@@ -197,6 +222,7 @@ export async function verifyOverviewScope(context) {
       .locator("strong");
     await page.getByRole("heading", { name: "Продажи", exact: true }).waitFor();
     await salesRevenue.waitFor();
+    await verifyAssistantLauncher(page);
     assert.equal(await salesRevenue.innerText(), "300,00 ₽");
     assert.equal(
       await page.getByLabel("Начало периода").inputValue(),
@@ -247,9 +273,74 @@ export async function verifyOverviewScope(context) {
     await cards.first().getByText("300 ₽", { exact: true }).waitFor();
     assert.match(await picker.innerText(), /2 из 3/);
 
+    // An explicitly included archived restaurant survives its Overview → Sales drilldown.
+    const salesRequests = [];
+    await page.route("**/api/sales/daily?*", (route) => {
+      const params = new URL(route.request().url()).searchParams;
+      salesRequests.push(params);
+      return route.fulfill({ json: salesResponse(params, venues) });
+    });
+    const archive = page.getByRole("checkbox", { name: "Показать архивные" });
+    const saleRows = page.locator("section.panel tbody");
+    await selectYesterday();
+    await cards.first().getByText("450 ₽", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "Юг", exact: true }).click();
+    await saleRows.getByRole("link", { name: "Юг" }).waitFor();
+    assert.ok(await archive.isChecked());
+    assert.equal(await picker.innerText(), "Юг");
+    assert.equal(await salesRevenue.innerText(), "150,00 ₽");
+
+    // A direct visit hides archived venues and their sales, including for past periods.
+    await page.goto("https://client.example.test/sales");
+    await picker.getByText(/1 из 2/).waitFor();
+    await salesRevenue.getByText("150,00 ₽", { exact: true }).waitFor();
+    assert.equal(await archive.isChecked(), false);
+    await selectYesterday();
+    await saleRows.getByRole("link", { name: "Запад" }).waitFor();
+    assert.equal(await salesRevenue.innerText(), "300,00 ₽");
+    assert.equal(await saleRows.getByRole("link", { name: "Юг" }).count(), 0);
+    await archive.check();
+    await saleRows.getByRole("link", { name: "Юг" }).waitFor();
+    assert.equal(await salesRevenue.innerText(), "450,00 ₽");
+    await archive.uncheck();
+    await salesRevenue.getByText("300,00 ₽", { exact: true }).waitFor();
+    assert.equal(await saleRows.getByRole("link", { name: "Юг" }).count(), 0);
+
+    venues = salesDepartments.map((v) => ({ ...v, archived: true }));
+    salesRequests.length = 0;
+    await page.reload();
+    await page.getByText(/Нет активных заведений/).waitFor();
+    assert.equal(salesRequests.length, 0);
+    await archive.check();
+    await salesRevenue.getByText("300,00 ₽", { exact: true }).waitFor();
+
+    // More than 100 venues use compact server-side filters with the same archive scope.
+    venues = Array.from({ length: 103 }, (_, index) => ({
+      id: `10000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
+      name: `Точка ${index + 1}`,
+      sync_enabled: index !== 101,
+      archived: index === 102,
+    }));
+    salesRequests.length = 0;
+    await page.reload();
+    await picker.getByText(/101 из 102/).waitFor();
+    await salesRevenue.waitFor();
+    const largeCurrent = salesRequests.at(-1);
+    assert.equal(largeCurrent.get("sync_only"), "true");
+    assert.equal(largeCurrent.get("include_archived"), "false");
+    assert.equal(largeCurrent.getAll("department_id").length, 0);
+    await selectYesterday();
+    await picker.getByText(/Все рестораны \(102\)/).waitFor();
+    await saleRows.getByRole("link", { name: "Точка 1", exact: true }).waitFor();
+    const largePast = salesRequests.at(-1);
+    assert.equal(largePast.get("end"), yesterday);
+    assert.equal(largePast.get("sync_only"), null);
+    assert.equal(largePast.get("include_archived"), "false");
+    assert.equal(largePast.getAll("department_id").length, 0);
+
     venues = salesDepartments.map((v) => ({ ...v, sync_enabled: false }));
     requests.length = 0;
-    await page.reload();
+    await page.goto("https://client.example.test/");
     await picker.getByText(/0 из 3/).waitFor();
     assert.equal(requests.filter((p) => p.get("end") === today).length, 0);
     assert.equal(await page.locator(".overview-quality").count(), 0);

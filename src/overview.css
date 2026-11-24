@@ -213,7 +213,11 @@
   display: none;
 }
 #overview-toolbar {
+  display: contents;
+}
+.overview-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   flex: 1;
   gap: 10px;
@@ -631,7 +635,7 @@
   .is-overview .restaurant-select {
     flex-grow: 1;
   }
-  .is-overview #overview-toolbar {
+  .is-overview .overview-toolbar {
     flex-basis: 100%;
   }
   .overview-bottom {

@@ -1,4 +1,3 @@
-import { DataSourceNotice } from "./DataSourceNotice";
 import { useCallback, useState, type ReactNode } from "react";
 import { ScheduledSync } from "./ScheduledSync";
 import { cashShiftPage } from "./statusSchedule";
@@ -10,6 +9,7 @@ import {
   Alert,
   Badge,
   Button,
+  Group,
   Loader,
   TextInput,
   SegmentedControl,
@@ -43,7 +43,7 @@ import { useData } from "./useData";
 import { useWorkspace } from "./App";
 import { KITCHEN_HEATMAP_PATH } from "./kitchenHeatmap";
 import { DiscountDrilldown } from "./DiscountDrilldown";
-import { LiveDataNotice } from "./LiveDataNotice";
+import { SalesDataNotice } from "./LiveDataNotice";
 import { EmployeeEditor, EmployeePending } from "./EmployeeEditor";
 export function PageTitle({
   title,
@@ -51,14 +51,14 @@ export function PageTitle({
   action,
 }: {
   title: string;
-  subtitle: string;
+  subtitle?: string;
   action?: ReactNode;
 }) {
   return (
     <div className="page-title">
       <div>
         <h1>{title}</h1>
-        <p>{subtitle}</p>
+        {subtitle && <p>{subtitle}</p>}
       </div>
       {action}
     </div>
@@ -363,6 +363,12 @@ const salesNames: Record<string, string> = {
   waiters: "Официанты",
   hours: "По часам",
 };
+const rowPlural = new Intl.PluralRules("ru");
+function salesRowCount(count: number) {
+  const plural = rowPlural.select(count);
+  const noun = plural === "one" ? "строка" : plural === "few" ? "строки" : "строк";
+  return `${number(count)} ${noun}`;
+}
 function ReviewNotice({ data }: { data: Sales }) {
   const issues = data.reconciliation_issues;
   if (!data.complete || !issues?.length) return null;
@@ -707,14 +713,7 @@ export function SalesPage({
     : { columns: [], rows: [] };
   return (
     <>
-      <PageTitle
-        title="Продажи"
-        subtitle={
-          w.meta.supported_sales_kinds
-            ? "Отчёты продаж из iiko"
-            : "Семь согласованных между собой разрезов OLAP. Час открытия и группа → тип оплаты."
-        }
-      />
+      <PageTitle title="Продажи" />
       {w.meta.kitchen_heatmap_enabled === true && (
         <Button component={Link} to={KITCHEN_HEATMAP_PATH} variant="light" mb="md">
           Тепловая карта цехов
@@ -742,14 +741,8 @@ export function SalesPage({
         )}
         {!emptyLiveScope && state.data && (
           <>
-            <DataSourceNotice status={state.data.data_status} />
+            <SalesDataNotice data={state.data} onRefresh={state.reload} />
             <ReviewNotice data={state.data} />
-            {state.data.live && state.data.live.status !== "sync_paused" && (
-              <LiveDataNotice
-                source={state.data.live}
-                onRefresh={state.reload}
-              />
-            )}
             {!state.data.live && (
               <PartialDayNotice days={state.data.partial_days} />
             )}
@@ -833,29 +826,37 @@ export function SalesPage({
                 </Button>
               </div>
             )}
-            {kind === "daily" && <Kpis data={state.data} />}
-            <div className="report-summary">
-              <span>
-                {kind === "discounts" ? "Выручка со скидками" : "Выручка"}{" "}
-                <strong>{money(state.data.totals.revenue)} ₽</strong>
-              </span>
-              {kind === "discounts" && (
+            {kind === "daily" ? (
+              <Kpis data={state.data} />
+            ) : (
+              <div className="report-summary">
                 <span>
-                  Скидки <strong>{money(state.data.totals.discount)} ₽</strong>
+                  {kind === "discounts" ? "Выручка со скидками" : "Выручка"}{" "}
+                  <strong>{money(state.data.totals.revenue)} ₽</strong>
                 </span>
-              )}
-              {kind === "returns" && (
-                <span>
-                  Возвраты{" "}
-                  <strong>{money(state.data.totals.return_sum)} ₽</strong>
-                </span>
-              )}
-              <span>{number(state.data.rows.length)} строк</span>
-            </div>
+                {kind === "discounts" && (
+                  <span>
+                    Скидки <strong>{money(state.data.totals.discount)} ₽</strong>
+                  </span>
+                )}
+                {kind === "returns" && (
+                  <span>
+                    Возвраты{" "}
+                    <strong>{money(state.data.totals.return_sum)} ₽</strong>
+                  </span>
+                )}
+                <span>{salesRowCount(state.data.rows.length)}</span>
+              </div>
+            )}
             {kind === "hours" && <HoursChart data={state.data} />}
             <section className="panel">
               <div className="panel-heading">
-                <h2>{salesNames[kind]}</h2>
+                <Group gap="xs" align="baseline">
+                  <h2>{salesNames[kind]}</h2>
+                  {kind === "daily" && (
+                    <small className="muted">{salesRowCount(state.data.rows.length)}</small>
+                  )}
+                </Group>
                 <ExportButton
                   name={"sales-" + kind + "-" + w.start}
                   columns={table.columns}
