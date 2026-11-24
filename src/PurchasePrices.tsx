@@ -30,7 +30,7 @@ type SourceLine = {
   document_number: string | null;
   num: number;
   num_occurrence: number;
-  supplier: string;
+  supplier: string | null;
   store: string;
   department: string | null;
   amount: string;
@@ -1041,7 +1041,6 @@ export function PriceDetails({
       {selected && (
         <>
           <PriceDetailSummary row={selected} />
-          {selected.previous.count !== 1 && <PriceChart row={selected} />}
           <div
             className={
               selected.previous.receipts.length === 1
@@ -1049,6 +1048,12 @@ export function PriceDetails({
                 : "price-latest-receipt"
             }
           >
+            <Sources
+              title="Последнее поступление"
+              value={selected.current}
+              unit={selected.unit}
+              latest
+            />
             {selected.previous.receipts.length === 1 && (
               <Sources
                 title="Предыдущее поступление"
@@ -1056,14 +1061,8 @@ export function PriceDetails({
                 unit={selected.unit}
               />
             )}
-            <Sources
-              title="Последнее поступление"
-              value={selected.current}
-              unit={selected.unit}
-              latest
-            />
           </div>
-          {selected.previous.count === 1 && <PriceChart row={selected} />}
+          <PriceChart row={selected} />
           <section className="price-history">
             <div className="panel-heading">
               <h3>Предыдущие поступления · {selected.previous.count}</h3>
@@ -1086,6 +1085,7 @@ export function PriceDetails({
                 <thead>
                   <tr>
                     <th>Дата</th>
+                    <th scope="col">Поставщик</th>
                     <th className="numeric">Цена, ₽/{selected.unit}</th>
                     <th className="numeric">Количество, {selected.unit}</th>
                     <th className="numeric">Сумма, ₽</th>
@@ -1097,6 +1097,9 @@ export function PriceDetails({
                     <tr key={receipt.date}>
                       <td className="price-receipt-date">
                         {dateText(receipt.date)}
+                      </td>
+                      <td className="price-history-suppliers">
+                        <SupplierNames lines={receipt.lines} />
                       </td>
                       <td className="numeric">{price(receipt.price)}</td>
                       <td className="numeric">{number(receipt.amount)}</td>
@@ -1130,6 +1133,7 @@ export function PriceDetails({
                     {number(receipt.amount)} {selected.unit} ·{" "}
                     {price(receipt.sum)} ₽
                   </p>
+                  <SupplierNames lines={receipt.lines} labelled />
                   <ReceiptLinks receipt={receipt} />
                 </li>
               ))}
@@ -1152,6 +1156,39 @@ export function PriceDetails({
   );
 }
 
+function supplierName(line: SourceLine) {
+  const name = line.supplier?.trim();
+  if (!name || name === "—") return "Не указан";
+  // The API returns the counteragent UUID when its directory name is missing.
+  if (/^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i.test(name))
+    return "Название не найдено";
+  return name;
+}
+
+function SupplierNames({
+  lines,
+  labelled = false,
+}: {
+  lines: SourceLine[];
+  labelled?: boolean;
+}) {
+  const names = [...new Set(lines.map(supplierName))];
+  return (
+    <div className="price-supplier-names">
+      {labelled && (
+        <span className="price-supplier-label">
+          {names.length > 1 ? "Поставщики" : "Поставщик"}
+        </span>
+      )}
+      {names.length ? (
+        names.map((name) => <strong key={name}>{name}</strong>)
+      ) : (
+        <strong>Не указан</strong>
+      )}
+    </div>
+  );
+}
+
 function receiptDocuments(receipt: Observation) {
   const documents = new Map<string, SourceLine[]>();
   for (const line of receipt.lines) {
@@ -1166,21 +1203,27 @@ const invoiceCountRules = new Intl.PluralRules("ru");
 function ReceiptLinks({ receipt }: { receipt: Observation }) {
   const documents = receiptDocuments(receipt);
   if (!documents.length) return <span className="muted">—</span>;
+  const multipleSuppliers =
+    new Set(documents.map(([line]) => supplierName(line))).size > 1;
   const links = (
     <div className="price-receipt-links">
       {documents.map(([line]) => (
-        <Link
-          key={line.document_id}
-          className="text-link price-history-link"
-          to={"/invoices/" + line.document_id}
-        >
-          <span>
-            {line.document_number
-              ? "№" + line.document_number
-              : "Накладная без номера"}
-          </span>
-          <IconArrowUpRight size={14} aria-hidden="true" />
-        </Link>
+        <div key={line.document_id}>
+          <Link
+            className="text-link price-history-link"
+            to={"/invoices/" + line.document_id}
+          >
+            <span>
+              {line.document_number
+                ? "№" + line.document_number
+                : "Накладная без номера"}
+            </span>
+            <IconArrowUpRight size={14} aria-hidden="true" />
+          </Link>
+          {multipleSuppliers && (
+            <span className="price-invoice-supplier">{supplierName(line)}</span>
+          )}
+        </div>
       ))}
     </div>
   );
@@ -1385,6 +1428,9 @@ function Sources({
           </small>
         </p>
       )}
+      {value.lines.length === 0 && (
+        <SupplierNames lines={value.lines} labelled />
+      )}
       {receiptDocuments(value).map((lines) => {
         const document = lines[0];
         const stores = [...new Set(lines.map(sourceWarehouse).filter(Boolean))];
@@ -1392,7 +1438,7 @@ function Sources({
           <div className="price-source" key={document.document_id}>
             <div className="price-document-heading">
               <div>
-                <strong>{document.supplier}</strong>
+                <SupplierNames lines={lines} labelled />
                 {stores.map((store) => (
                   <small className="price-subtext" key={store}>
                     {store}
