@@ -30,17 +30,30 @@ function purchase(date, price, documents) {
 export function withPriceComparison(row) {
   const earlier = purchase("2026-10-01", 80, [{ amount: 5, supplier: null }]);
   const later = purchase("2026-10-02", 100, [
-    { amount: 5, supplier: "Ферма Заречье" },
     { amount: 10, supplier: "Молочный дом" },
+    { amount: 5, supplier: "Ферма Заречье" },
   ]);
-  // Two invoice lines belong to the first document, so the disclosure still counts two invoices.
-  const first = later.lines[0];
-  later.lines.splice(
-    0,
-    1,
-    { ...first, amount: "2", sum: "200" },
-    { ...first, num: 2, amount: "3", sum: "300" },
-  );
+  // Input order is №10 then №2. The latter contains two differently priced lines.
+  const [milk, farm] = later.lines;
+  later.lines = [
+    { ...milk, document_number: "10", price: "114", sum: "1140" },
+    {
+      ...farm,
+      document_number: "2",
+      num: 1,
+      amount: "2",
+      price: "60",
+      sum: "120",
+    },
+    {
+      ...farm,
+      document_number: "2",
+      num: 2,
+      amount: "3",
+      price: "80",
+      sum: "240",
+    },
+  ];
   return {
     ...row,
     current: purchase("2026-10-09", 114, [
@@ -58,6 +71,112 @@ export function withPriceComparison(row) {
     delta: "19",
     percent: "20",
   };
+}
+
+const priorInvoices = [
+  {
+    date: "02.10.2026",
+    number: "2",
+    id: "invoice-2026-10-02-2",
+    supplier: "Ферма Заречье",
+    price: "72",
+    amount: "5",
+    sum: "360",
+  },
+  {
+    date: "02.10.2026",
+    number: "10",
+    id: "invoice-2026-10-02-1",
+    supplier: "Молочный дом",
+    price: "114",
+    amount: "10",
+    sum: "1 140",
+  },
+  {
+    date: "01.10.2026",
+    number: "2026-10-01/1",
+    id: "invoice-2026-10-01-1",
+    supplier: "Не указан",
+    price: "80",
+    amount: "5",
+    sum: "400",
+  },
+];
+
+function normalized(text) {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+async function verifyInvoiceRows(dialog, desktop) {
+  const rows = desktop
+    ? dialog.locator(".price-history-table tbody tr")
+    : dialog
+        .getByRole("list", { name: "Предыдущие накладные", exact: true })
+        .getByRole("listitem");
+  await rows.first().waitFor();
+  assert.equal(await rows.count(), priorInvoices.length);
+  await dialog
+    .getByRole("heading", { name: "Предыдущие накладные · 3", exact: true })
+    .waitFor();
+  for (const [index, expected] of priorInvoices.entries()) {
+    const row = rows.nth(index);
+    const link = row.getByRole("link");
+    assert.equal(await link.count(), 1);
+    assert.ok(await link.isVisible());
+    assert.equal(normalized(await link.innerText()), "№" + expected.number);
+    assert.equal(await link.getAttribute("href"), "/invoices/" + expected.id);
+    if (desktop) {
+      const cells = (await row.getByRole("cell").allInnerTexts()).map(
+        normalized,
+      );
+      assert.deepEqual(cells.slice(0, 5), [
+        expected.date,
+        expected.supplier,
+        expected.price,
+        expected.amount,
+        expected.sum,
+      ]);
+    } else {
+      const card = normalized(await row.innerText());
+      for (const value of [
+        expected.date,
+        expected.supplier,
+        expected.price + " ₽/кг",
+        expected.amount + " кг",
+        expected.sum + " ₽",
+      ])
+        assert.ok(card.includes(value), value + " in " + card);
+      assert.ok(card.includes("Поставщик"));
+    }
+  }
+}
+
+async function verifyInvoiceCsv(page, dialog) {
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    dialog.getByRole("button", { name: "CSV истории", exact: true }).click(),
+  ]);
+  const stream = await download.createReadStream();
+  stream.setEncoding("utf8");
+  let csv = "";
+  for await (const chunk of stream) csv += chunk;
+  const records = csv.trim().split("\r\n").slice(1);
+  assert.equal(records.length, 1 + priorInvoices.length);
+  assert.ok(records[0].includes("invoice-2026-10-09-1"));
+  assert.ok(records[0].includes("Крымская маслодельня"));
+  for (const [index, expected] of priorInvoices.entries()) {
+    const record = records[index + 1];
+    assert.ok(record.includes(expected.id));
+    const numeric = record
+      .split('";"')
+      .slice(1, 4)
+      .map((value) => Number(value.replace(",", ".")));
+    assert.deepEqual(numeric, [
+      Number(expected.price),
+      Number(expected.amount),
+      Number(expected.sum.replaceAll(" ", "")),
+    ]);
+  }
 }
 
 export async function verifyPriceComparison(page, productName) {
@@ -137,60 +256,15 @@ export async function verifyPriceComparison(page, productName) {
         "price summary stays above scrolling content",
       );
 
-      const receipts =
-        width > 600
-          ? dialog.locator(".price-history-table tbody tr")
-          : dialog.locator(".price-receipt-list > li");
-      await receipts.first().waitFor();
-      assert.equal(await receipts.count(), 2);
-      assert.match(await receipts.first().innerText(), /02\.10\.2026/);
-      assert.match(await receipts.last().innerText(), /01\.10\.2026/);
+      await verifyInvoiceRows(dialog, width > 600);
       if (width > 600) {
         assert.ok(
           await dialog
             .getByRole("columnheader", { name: "Поставщик", exact: true })
             .isVisible(),
         );
-      } else {
-        assert.match(await receipts.first().innerText(), /Поставщики/);
-        assert.match(await receipts.last().innerText(), /Поставщик/);
+        await verifyInvoiceCsv(page, dialog);
       }
-      // All suppliers are visible before any invoice or technical details are opened.
-      const suppliedReceipt = await receipts.first().innerText();
-      for (const supplier of ["Ферма Заречье", "Молочный дом"]) {
-        assert.equal(suppliedReceipt.split(supplier).length - 1, 1);
-      }
-      assert.match(await receipts.last().innerText(), /Не указан/i);
-      const bundle = receipts.first().getByText("2 накладные", { exact: true });
-      const invoice = (container, number) =>
-        container.getByRole("link", { name: "№" + number, exact: true });
-      assert.equal(
-        await invoice(receipts.first(), "2026-10-02/1").isVisible(),
-        false,
-      );
-      await bundle.click();
-      for (const [suffix, supplier] of [
-        [1, "Ферма Заречье"],
-        [2, "Молочный дом"],
-      ]) {
-        const link = invoice(receipts.first(), "2026-10-02/" + suffix);
-        assert.equal(
-          await link.getAttribute("href"),
-          "/invoices/invoice-2026-10-02-" + suffix,
-        );
-        assert.ok(await link.isVisible());
-        assert.ok(
-          await link
-            .locator("..")
-            .getByText(supplier, { exact: true })
-            .isVisible(),
-        );
-      }
-      await bundle.click();
-      await invoice(receipts.first(), "2026-10-02/1").waitFor({
-        state: "hidden",
-      });
-      assert.ok(await invoice(receipts.last(), "2026-10-01/1").isVisible());
 
       const latest = dialog.locator("section").filter({
         has: page.getByRole("heading", {

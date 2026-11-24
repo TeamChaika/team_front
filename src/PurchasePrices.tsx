@@ -11,6 +11,7 @@ import { PurchaseImpact } from "./PurchaseImpact";
 import { PurchaseModal } from "./PurchaseModal";
 import { price, signed, csvPrice } from "./purchasePriceFormat";
 import { priceTimeline, visibleChartLabels } from "./purchasePriceChart";
+import { purchaseInvoiceRows, type PurchaseInvoiceRow } from "./purchaseInvoiceHistory";
 import { todayReservation } from "./depositDates";
 import { useAssistant } from "./AssistantContext";
 import {
@@ -45,6 +46,7 @@ type Observation = {
   price: string;
   lines: SourceLine[];
 };
+type InvoiceRow = PurchaseInvoiceRow<SourceLine>;
 type Baseline = {
   date_from: string | null;
   date: string | null;
@@ -896,9 +898,9 @@ function PriceWorkspace({
         </p>
         <p>
           Сравниваются один UUID товара и одна единица измерения по всей сети.
-          Накладные с одинаковыми датой и временем считаются одним поступлением
-          с общей суммой и количеством. Смена поставщика допустима; поставщики
-          видны в сравнении.
+          Для графика и средней цены накладные с одинаковыми датой и временем
+          считаются одним поступлением. В истории для каждой накладной видны
+          поставщик, количество, сумма и цена выбранного товара.
         </p>
         <p>
           Черновики, удалённые документы и дополнительные расходы исключены.
@@ -1033,9 +1035,14 @@ export function PriceDetails({
     "/purchase-prices/history?" + params.toString(),
   );
   const selected = state.data;
-  const receiptsNewestFirst = selected
-    ? [...selected.previous.receipts].reverse()
-    : [];
+  const previousInvoices = useMemo(
+    () => (selected ? purchaseInvoiceRows(selected.previous.receipts) : []),
+    [selected],
+  );
+  const currentInvoices = useMemo(
+    () => (selected ? purchaseInvoiceRows([selected.current]) : []),
+    [selected],
+  );
   return (
     <Feedback state={state}>
       {selected && (
@@ -1050,23 +1057,32 @@ export function PriceDetails({
           >
             <Sources
               title="Последнее поступление"
-              value={selected.current}
+              invoices={currentInvoices}
               unit={selected.unit}
-              latest
+              showFigures={currentInvoices.length > 1}
             />
             {selected.previous.receipts.length === 1 && (
               <Sources
                 title="Предыдущее поступление"
-                value={selected.previous.receipts[0]}
+                invoices={previousInvoices}
                 unit={selected.unit}
+                showFigures
               />
             )}
           </div>
           <PriceChart row={selected} />
           <section className="price-history">
             <div className="panel-heading">
-              <h3>Предыдущие поступления · {selected.previous.count}</h3>
-              <Button variant="default" onClick={() => exportHistory(selected)}>
+              <h3>Предыдущие накладные · {previousInvoices.length}</h3>
+              <Button
+                variant="default"
+                onClick={() =>
+                  exportHistory(selected, [
+                    ...currentInvoices,
+                    ...previousInvoices,
+                  ])
+                }
+              >
                 CSV истории
               </Button>
             </div>
@@ -1089,23 +1105,23 @@ export function PriceDetails({
                     <th className="numeric">Цена, ₽/{selected.unit}</th>
                     <th className="numeric">Количество, {selected.unit}</th>
                     <th className="numeric">Сумма, ₽</th>
-                    <th>Накладные</th>
+                    <th>Накладная</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {receiptsNewestFirst.map((receipt) => (
-                    <tr key={receipt.date}>
+                  {previousInvoices.map((invoice) => (
+                    <tr key={invoice.document_id}>
                       <td className="price-receipt-date">
-                        {dateText(receipt.date)}
+                        {dateText(invoice.date)}
                       </td>
                       <td className="price-history-suppliers">
-                        <SupplierNames lines={receipt.lines} />
+                        <SupplierNames lines={invoice.lines} />
                       </td>
-                      <td className="numeric">{price(receipt.price)}</td>
-                      <td className="numeric">{number(receipt.amount)}</td>
-                      <td className="numeric">{price(receipt.sum)}</td>
+                      <td className="numeric">{price(invoice.price)}</td>
+                      <td className="numeric">{number(invoice.amount)}</td>
+                      <td className="numeric">{price(invoice.sum)}</td>
                       <td>
-                        <ReceiptLinks receipt={receipt} />
+                        <InvoiceLink invoice={invoice} />
                       </td>
                     </tr>
                   ))}
@@ -1114,38 +1130,38 @@ export function PriceDetails({
             </div>
             <ol
               className="price-receipt-list"
-              aria-label="Предыдущие поступления"
+              aria-label="Предыдущие накладные"
             >
-              {receiptsNewestFirst.map((receipt) => (
-                <li className="price-receipt-card" key={receipt.date}>
+              {previousInvoices.map((invoice) => (
+                <li className="price-receipt-card" key={invoice.document_id}>
                   <div className="price-receipt-heading">
                     <time
                       className="price-receipt-date"
-                      dateTime={receipt.date}
+                      dateTime={invoice.date}
                     >
-                      {dateText(receipt.date)}
+                      {dateText(invoice.date)}
                     </time>
                     <strong>
-                      {price(receipt.price)} ₽/{selected.unit}
+                      {price(invoice.price)} ₽/{selected.unit}
                     </strong>
                   </div>
                   <p className="price-receipt-meta">
-                    {number(receipt.amount)} {selected.unit} ·{" "}
-                    {price(receipt.sum)} ₽
+                    {number(invoice.amount)} {selected.unit} ·{" "}
+                    {price(invoice.sum)} ₽
                   </p>
-                  <SupplierNames lines={receipt.lines} labelled />
-                  <ReceiptLinks receipt={receipt} />
+                  <SupplierNames lines={invoice.lines} labelled />
+                  <InvoiceLink invoice={invoice} />
                 </li>
               ))}
             </ol>
             <details className="price-method">
-              <summary>Строки предыдущих накладных и поставщики</summary>
-              {receiptsNewestFirst.map((receipt) => (
-                <Sources
-                  key={receipt.date}
-                  title="Поступление"
-                  value={receipt}
+              <summary>Строки предыдущих накладных</summary>
+              {previousInvoices.map((invoice) => (
+                <InvoiceSource
+                  key={invoice.document_id}
+                  invoice={invoice}
                   unit={selected.unit}
+                  showFigures
                 />
               ))}
             </details>
@@ -1189,97 +1205,55 @@ function SupplierNames({
   );
 }
 
-function receiptDocuments(receipt: Observation) {
-  const documents = new Map<string, SourceLine[]>();
-  for (const line of receipt.lines) {
-    const lines = documents.get(line.document_id);
-    if (lines) lines.push(line);
-    else documents.set(line.document_id, [line]);
-  }
-  return [...documents.values()];
-}
-
-const invoiceCountRules = new Intl.PluralRules("ru");
-function ReceiptLinks({ receipt }: { receipt: Observation }) {
-  const documents = receiptDocuments(receipt);
-  if (!documents.length) return <span className="muted">—</span>;
-  const multipleSuppliers =
-    new Set(documents.map(([line]) => supplierName(line))).size > 1;
-  const links = (
-    <div className="price-receipt-links">
-      {documents.map(([line]) => (
-        <div key={line.document_id}>
-          <Link
-            className="text-link price-history-link"
-            to={"/invoices/" + line.document_id}
-          >
-            <span>
-              {line.document_number
-                ? "№" + line.document_number
-                : "Накладная без номера"}
-            </span>
-            <IconArrowUpRight size={14} aria-hidden="true" />
-          </Link>
-          {multipleSuppliers && (
-            <span className="price-invoice-supplier">{supplierName(line)}</span>
-          )}
-        </div>
-      ))}
-    </div>
-  );
-  if (documents.length === 1) return links;
-  const plural = invoiceCountRules.select(documents.length);
-  const noun =
-    plural === "one"
-      ? "накладная"
-      : plural === "few"
-        ? "накладные"
-        : "накладных";
+function InvoiceLink({
+  invoice,
+  fullLabel = false,
+}: {
+  invoice: InvoiceRow;
+  fullLabel?: boolean;
+}) {
+  const label = invoice.document_number
+    ? (fullLabel ? "Накладная №" : "№") + invoice.document_number
+    : "Накладная без номера";
   return (
-    <details className="price-invoice-group">
-      <summary>
-        {documents.length} {noun}
-      </summary>
-      {links}
-    </details>
+    <Link
+      className={fullLabel ? "text-link" : "text-link price-history-link"}
+      to={"/invoices/" + invoice.document_id}
+    >
+      {label} <IconArrowUpRight size={14} aria-hidden="true" />
+    </Link>
   );
 }
 
-function exportHistory(row: PriceChange) {
+function exportHistory(row: PriceChange, invoices: InvoiceRow[]) {
   csv(
     "Динамика цены — " + row.product,
     [
       ["date", "Дата поступления"],
-      ["price", "Цена поступления"],
-      ["amount", "Количество поступления"],
-      ["sum", "Сумма поступления"],
+      ["price", "Цена за единицу"],
+      ["amount", "Количество товара"],
+      ["sum", "Сумма по товару"],
       ["unit", "Единица"],
       ["latest", "Последнее поступление"],
-      ["documents", "Накладные и UUID"],
-      ["suppliers", "Поставщики"],
+      ["documents", "Накладная и UUID"],
+      ["suppliers", "Поставщик"],
       ["stores", "Склады поступления"],
       ["source_lines", "Исходные строки: номер, вхождение, количество, сумма"],
     ].map(([key, label]) => ({ key, label })),
-    [...row.previous.receipts, row.current].map((o) => ({
-      date: o.date,
-      price: csvPrice(o.price),
-      amount: csvPrice(o.amount),
-      sum: csvPrice(o.sum),
+    invoices.map((invoice) => ({
+      date: invoice.date,
+      price: csvPrice(invoice.price),
+      amount: csvPrice(invoice.amount),
+      sum: csvPrice(invoice.sum),
       unit: row.unit,
-      latest: o.date === row.current.date ? "Да" : "Нет",
-      documents: [
-        ...new Set(
-          o.lines.map(
-            (l) => `${l.document_number ?? l.document_id} [${l.document_id}]`,
-          ),
-        ),
-      ].join("; "),
-      suppliers: [...new Set(o.lines.map((l) => l.supplier))].join("; "),
-      stores: [...new Set(o.lines.map((l) => l.store))].join("; "),
-      source_lines: o.lines
+      latest: invoice.date === row.current.date ? "Да" : "Нет",
+      documents: `${invoice.document_number ?? "Без номера"} [${invoice.document_id}]`,
+      suppliers: [...new Set(invoice.lines.map(supplierName))].join("; "),
+      stores: [...new Set(invoice.lines.map((line) => line.store))].join("; "),
+      source_lines: invoice.lines
         .map(
-          (l) =>
-            `${l.document_id}, ${l.num}.${l.num_occurrence}, ${l.store}: ${l.amount} ${row.unit}, ${csvPrice(l.sum)} ₽`,
+          (line) =>
+            `${line.document_id}, ${line.num}.${line.num_occurrence}, ${line.store}: ${line.amount} ${row.unit}, ${csvPrice(line.sum)} ₽`,
         )
         .join("; "),
     })),
@@ -1405,81 +1379,90 @@ function sourceWarehouse(line: SourceLine) {
 
 function Sources({
   title,
-  value,
+  invoices,
   unit,
-  latest = false,
+  showFigures,
 }: {
   title: string;
-  value: Observation;
+  invoices: InvoiceRow[];
   unit: string;
-  latest?: boolean;
+  showFigures: boolean;
 }) {
   return (
     <section>
       <h3>{title}</h3>
-      {!latest && (
+      {invoices.length === 0 && <SupplierNames lines={[]} labelled />}
+      {invoices.map((invoice) => (
+        <InvoiceSource
+          key={invoice.document_id}
+          invoice={invoice}
+          unit={unit}
+          showFigures={showFigures}
+        />
+      ))}
+    </section>
+  );
+}
+
+function InvoiceSource({
+  invoice,
+  unit,
+  showFigures,
+}: {
+  invoice: InvoiceRow;
+  unit: string;
+  showFigures: boolean;
+}) {
+  const stores = [
+    ...new Set(invoice.lines.map(sourceWarehouse).filter(Boolean)),
+  ];
+  return (
+    <div className="price-source">
+      {showFigures && (
         <p>
-          {dateText(value.date)} ·{" "}
+          {dateText(invoice.date)} ·{" "}
           <strong>
-            {price(value.price)} ₽/{unit}
+            {price(invoice.price)} ₽/{unit}
           </strong>
           <small className="price-subtext">
-            {price(value.sum)} ₽ за {number(value.amount)} {unit}
+            {price(invoice.sum)} ₽ за {number(invoice.amount)} {unit}
           </small>
         </p>
       )}
-      {value.lines.length === 0 && (
-        <SupplierNames lines={value.lines} labelled />
-      )}
-      {receiptDocuments(value).map((lines) => {
-        const document = lines[0];
-        const stores = [...new Set(lines.map(sourceWarehouse).filter(Boolean))];
-        return (
-          <div className="price-source" key={document.document_id}>
-            <div className="price-document-heading">
-              <div>
-                <SupplierNames lines={lines} labelled />
-                {stores.map((store) => (
-                  <small className="price-subtext" key={store}>
-                    {store}
-                  </small>
-                ))}
-              </div>
-              <Link
-                className="text-link"
-                to={"/invoices/" + document.document_id}
-              >
-                Накладная №{document.document_number ?? document.document_id}{" "}
-                <IconArrowUpRight size={14} aria-hidden="true" />
-              </Link>
-            </div>
-            <details className="price-source-details">
-              <summary>Подробности</summary>
-              {lines.map((line) => (
-                <div
-                  className="price-source-line"
-                  key={line.num + "/" + line.num_occurrence}
-                >
-                  <strong>
-                    Строка {line.num}
-                    {line.num_occurrence > 1 &&
-                      " · вхождение " + line.num_occurrence}
-                  </strong>
-                  {stores.length > 1 && <span>{sourceWarehouse(line)}</span>}
-                  <span>
-                    {number(line.amount)} {unit} · {price(line.sum)} ₽
-                  </span>
-                  <span>
-                    Исходная цена iiko:{" "}
-                    {line.price === null ? "—" : price(line.price) + " ₽"}
-                  </span>
-                  <span>Загружено: {dateText(line.last_seen_at)}</span>
-                </div>
-              ))}
-            </details>
+      <div className="price-document-heading">
+        <div>
+          <SupplierNames lines={invoice.lines} labelled />
+          {stores.map((store) => (
+            <small className="price-subtext" key={store}>
+              {store}
+            </small>
+          ))}
+        </div>
+        <InvoiceLink invoice={invoice} fullLabel />
+      </div>
+      <details className="price-source-details">
+        <summary>Подробности</summary>
+        {invoice.lines.map((line) => (
+          <div
+            className="price-source-line"
+            key={line.num + "/" + line.num_occurrence}
+          >
+            <strong>
+              Строка {line.num}
+              {line.num_occurrence > 1 && " · вхождение " + line.num_occurrence}
+            </strong>
+            {stores.length > 1 && <span>{sourceWarehouse(line)}</span>}
+            <span>
+              {number(line.amount)} {unit} · {price(line.sum)} ₽
+            </span>
+            <span>
+              Исходная цена iiko:{" "}
+              {line.price === null ? "—" : price(line.price) + " ₽"}
+            </span>
+            <span>Загружено: {dateText(line.last_seen_at)}</span>
           </div>
-        );
-      })}
-    </section>
+        ))}
+      </details>
+    </div>
   );
 }

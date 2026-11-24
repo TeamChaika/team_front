@@ -156,9 +156,14 @@
   font-size: 12px;
 }
 .price-history-link {
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   margin: 4px 0;
   overflow-wrap: anywhere;
+}
+.price-history-link svg {
+  flex-shrink: 0;
 }
 .price-history-table {
   min-width: 620px;
@@ -180,8 +185,7 @@
   color: var(--text);
   font-weight: 600;
 }
-.price-supplier-label,
-.price-invoice-supplier {
+.price-supplier-label {
   display: block;
   color: var(--muted);
   font-size: 12px;
@@ -189,20 +193,6 @@
 .price-receipt-date {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
-}
-.price-receipt-links .price-history-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  white-space: nowrap;
-}
-.price-receipt-links .price-history-link svg {
-  flex-shrink: 0;
-}
-.price-receipt-links {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
 }
 .price-receipt-list {
   display: none;
@@ -416,13 +406,7 @@
   .price-receipt-card .price-supplier-names {
     margin: 6px 0;
   }
-  .price-receipt-links {
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 0 14px;
-    margin: 0;
-  }
-  .price-receipt-links .price-history-link {
+  .price-receipt-card .price-history-link {
     margin: 0;
     min-height: 44px;
     max-width: 100%;
@@ -436,7 +420,6 @@
   }
 }
 
-.price-invoice-group > summary,
 .price-source-details > summary {
   width: fit-content;
   color: var(--accent, #65d7e5);
@@ -456,7 +439,6 @@
   color: var(--text);
 }
 @media (max-width: 640px) {
-  .price-invoice-group > summary,
   .price-source-details > summary {
     padding-block: 12px;
   }
