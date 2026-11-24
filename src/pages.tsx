@@ -364,57 +364,34 @@ const salesNames: Record<string, string> = {
   hours: "По часам",
 };
 function ReviewNotice({ data }: { data: Sales }) {
-  if (!data.complete) return null;
-  const days =
-    Math.round((Date.parse(data.end) - Date.parse(data.start)) / 86400000) + 1;
-  if (data.reconciliation_issues?.length) {
-    const fields: Record<string, string> = {
-      DishDiscountSumInt: "Выручка",
-      "ProductCostBase.ProductCost": "Себестоимость",
-      UniqOrderId: "Чеки",
-      GuestNum: "Гости",
-    };
-    return (
-      <Alert
-        color="orange"
-        title="Есть расхождения между отчётами"
-        role="status"
-      >
-        Все {data.loaded_dates.length} дней загружены. Суммы сохранены как в
-        iiko; контрольная сверка выявила расхождения (
-        {data.reconciliation_issues.length}).
-        <details>
-          <summary>Показать расхождения</summary>
-          <ul>
-            {data.reconciliation_issues.slice(0, 20).map((issue, index) => (
-              <li key={index}>
-                {dateText(issue.date)} · {issue.department || "Ресторан"} ·{" "}
-                {salesNames[issue.report]} ·{" "}
-                {fields[issue.field] || "Показатель"}: дневной отчёт{" "}
-                {number(issue.daily)}, этот отчёт {number(issue.actual)},
-                разница {number(issue.delta)}.
-              </li>
-            ))}
-          </ul>
-          {data.reconciliation_issues.length > 20 && (
-            <p>Показаны первые 20 расхождений.</p>
-          )}
-        </details>
-      </Alert>
-    );
-  }
+  const issues = data.reconciliation_issues;
+  if (!data.complete || !issues?.length) return null;
+  const fields: Record<string, string> = {
+    DishDiscountSumInt: "Выручка",
+    "ProductCostBase.ProductCost": "Себестоимость",
+    UniqOrderId: "Чеки",
+    GuestNum: "Гости",
+  };
   return (
-    <div className="data-notice">
-      <span className="status-dot amber" />
-      <span>
-        {!data.rows.length
-          ? "Нет строк OLAP для выбранных условий."
-          : data.rows.some((r) => !r.reviewed)
-            ? "Контрольные суммы совпадают между отчётами. Сверка с вашими отчётами iiko ожидается."
-            : "Данные согласованы."}{" "}
-        Дней с данными: {data.loaded_dates.length} из {days}.{" "}
-      </span>
-    </div>
+    <Alert color="orange" title="Есть расхождения между отчётами" role="status">
+      Все {data.loaded_dates.length} дней загружены. Суммы сохранены как в
+      iiko; контрольная сверка выявила расхождения ({issues.length}).
+      <details>
+        <summary>Показать расхождения</summary>
+        <ul>
+          {issues.slice(0, 20).map((issue, index) => (
+            <li key={index}>
+              {dateText(issue.date)} · {issue.department || "Ресторан"} ·{" "}
+              {salesNames[issue.report]} ·{" "}
+              {fields[issue.field] || "Показатель"}: дневной отчёт{" "}
+              {number(issue.daily)}, этот отчёт {number(issue.actual)},
+              разница {number(issue.delta)}.
+            </li>
+          ))}
+        </ul>
+        {issues.length > 20 && <p>Показаны первые 20 расхождений.</p>}
+      </details>
+    </Alert>
   );
 }
 function Kpis({ data }: { data: Sales }) {
