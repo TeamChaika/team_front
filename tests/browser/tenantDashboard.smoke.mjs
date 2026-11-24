@@ -67,6 +67,8 @@ let assignedSections = sections;
 let actorKind = "platform_owner";
 let featureReadiness;
 let paymentSurface = false;
+let workspaceRequests = 0;
+let dashboardSessionRequests = 0;
 const guestCode = "S".repeat(32);
 try {
   const context = await browser.newContext({
@@ -150,6 +152,7 @@ try {
             })
           : json({ detail: "Войдите" }, 401);
       case "/api/saas-tenant/test-customer/workspace":
+        workspaceRequests++;
         return json({
           company: {
             ...company,
@@ -164,7 +167,35 @@ try {
           setup_available: setupAvailable,
           feature_readiness: featureReadiness,
         });
+      case "/api/saas-tenant/test-customer/dashboard/me":
+        dashboardSessionRequests++;
+        return json(
+          {
+            detail: {
+              code: "full_portal_required",
+              message: "Используйте основной кабинет",
+            },
+          },
+          403,
+        );
       case "/api/me":
+        dashboardSessionRequests++;
+        if (
+          setupAvailable &&
+          !workingAvailable &&
+          !fullReady &&
+          !available &&
+          actorKind !== "platform_owner"
+        )
+          return json(
+            {
+              detail: {
+                code: "setup_owner_required",
+                message: "Настройка доступна владельцу платформы",
+              },
+            },
+            403,
+          );
         return json({
           user,
           departments: salesDepartments,
@@ -193,6 +224,18 @@ try {
           departments: [],
           warehouses: [],
           venues: [],
+        });
+      case "/api/management/operation-settings":
+        assert.equal(request.method(), "GET");
+        return json({
+          revision: 1,
+          sync: { mode: "all", department_ids: [] },
+          writeoff: { mode: "all", store_ids: [] },
+          waybill: { mode: "all", store_ids: [] },
+          departments: [],
+          stores: [],
+          updated_at: null,
+          updated_by: null,
         });
       case "/api/management/venues":
         return json({ venues: [], terminals: [], tenant_payments: true });
@@ -411,14 +454,28 @@ try {
     fullPage: true,
   });
   // A company member receives truthful pending state without owner setup access.
+  const dashboardRequestsBeforeSetupWait = dashboardSessionRequests;
   actorKind = "company_member";
   assignedSections = [];
   await page.goto("https://client.example.test/");
-  await page
-    .getByText(
-      "Компания ещё запускается. Рабочие разделы появятся после завершения первоначальной настройки.",
-    )
-    .waitFor();
+  const waiting = page.getByRole("status").filter({
+    hasText: "Компания ещё настраивается",
+  });
+  const retryReadiness = page.getByRole("button", {
+    name: "Проверить готовность",
+  });
+  await waiting.waitFor();
+  const initialWorkspaceRequests = workspaceRequests;
+  assert.equal(dashboardSessionRequests, dashboardRequestsBeforeSetupWait);
+  assert.equal(
+    await page.getByRole("heading", { name: company.name }).count(),
+    1,
+  );
+  assert.equal(
+    await page.getByRole("button", { name: "Сообщить о проблеме" }).count(),
+    1,
+  );
+  assert.equal(await page.getByRole("button", { name: "Выйти" }).count(), 1);
   assert.equal(
     await page.getByRole("link", { name: "Управление", exact: true }).count(),
     0,
@@ -427,12 +484,17 @@ try {
     await page.getByRole("link", { name: "В SaaS ↗", exact: true }).count(),
     0,
   );
-  // Empty assigned ACL remains a permissions message once the runtime is ready.
-  actorKind = "company_member";
+
+  // The setup socket can disappear before any data is ready.
   setupAvailable = false;
+  await retryReadiness.click();
+  await waiting.waitFor();
+  assert.equal(workspaceRequests, initialWorkspaceRequests + 1);
+  assert.equal(dashboardSessionRequests, dashboardRequestsBeforeSetupWait);
+
+  // Empty assigned ACL remains a permissions message once the runtime is ready.
   workingAvailable = true;
-  assignedSections = [];
-  await page.goto("https://client.example.test/");
+  await retryReadiness.click();
   await page
     .getByText(
       "Доступ к разделам пока не назначен. Обратитесь к администратору.",

@@ -9,6 +9,7 @@
 | Маршруты, меню, доступ к разделам, сессия | [App.tsx](../src/App.tsx), [interface.md](CODEMAPS/interface.md) |
 | Личный кабинет, пароль и Telegram | [ProfilePage.tsx](../src/ProfilePage.tsx), [PasswordForm.tsx](../src/PasswordForm.tsx), [App.tsx](../src/App.tsx), [api.ts](../src/api.ts) |
 | Tenant: восстановление до входа | `main.tsx`, `TenantPasswordRecovery.tsx`, `tenantRecoveryRequest.ts`; только точные `/forgot-password` и `/reset-password` после company context + full readiness, свои API/бот, запросы без cookies, бренд компании |
+| Tenant: ожидание готовности компании | [SaasTenant.tsx](../src/SaasTenant.tsx): сотрудник в компании с доступной только первоначальной настройкой видит экран ожидания, повторно читает свой `/workspace` по кнопке и открывает рабочие разделы после подтверждения готовности. Поддержка и выход доступны во время ожидания. |
 | Забытый пароль через Telegram | [PasswordRecovery.tsx](../src/PasswordRecovery.tsx), [passwordRecoveryRules.ts](../src/passwordRecoveryRules.ts); публичные `/forgot-password`, `/reset-password`, API `/auth/recovery/*` |
 | Общие фильтры заведений и дат | [App.tsx](../src/App.tsx), [RestaurantPicker.tsx](../src/RestaurantPicker.tsx) |
 | Обзор и карточки | [Overview.tsx](../src/Overview.tsx), [interface.md](CODEMAPS/interface.md). Для периода, включающего сегодня, фильтр использует видимые заведения с включённой синхронизацией из `GET /me`. Состав заведений общий для карточек, сравнения, графика, закупочных цен и расшифровок. |
