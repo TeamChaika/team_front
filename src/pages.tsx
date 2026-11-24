@@ -424,28 +424,28 @@ function Kpis({ data }: { data: Sales }) {
       {[
         {
           label: "Выручка",
-          value: money(t.revenue) + " ₽",
+          value: t.revenue,
           note: "Сумма после скидок",
           icon: IconCurrencyRubel,
           color: "cyan",
         },
         {
           label: "Себестоимость продаж",
-          value: money(t.cost) + " ₽",
+          value: t.cost,
           note: "По данным OLAP iiko",
           icon: IconChartBar,
           color: "purple",
         },
         {
           label: "Валовая прибыль",
-          value: money(t.gross_profit) + " ₽",
+          value: t.gross_profit,
           note: "Выручка − себестоимость",
           icon: IconArrowUpRight,
           color: "green",
         },
         {
           label: "Средний чек",
-          value: money(t.average_check) + " ₽",
+          value: t.average_check,
           note: number(t.checks) + " чеков · " + number(t.guests) + " гостей",
           icon: IconReceipt,
           color: "orange",
@@ -463,7 +463,7 @@ function Kpis({ data }: { data: Sales }) {
               <k.icon size={19} />
             </span>
           </div>
-          <strong>{t.revenue === null ? "—" : k.value}</strong>
+          <strong>{k.value == null ? "—" : money(k.value) + " ₽"}</strong>
           <small>
             {data.complete ? k.note : "Итог за период недоступен"} · ↗
           </small>
@@ -695,7 +695,11 @@ function DiscountDepartment({
   );
 }
 
-export function SalesPage() {
+export function SalesPage({
+  emptyLiveScope = false,
+}: {
+  emptyLiveScope?: boolean;
+}) {
   const w = useWorkspace(),
     [params, setParams] = useSearchParams();
   const availableKinds = Object.entries(salesNames).filter(
@@ -713,7 +717,9 @@ export function SalesPage() {
     }
   }
   const state = useData<Sales>(
-    "/sales/" + kind + "?" + w.query(true) + "&" + dishFilter,
+    emptyLiveScope
+      ? null
+      : "/sales/" + kind + "?" + w.query(true) + "&" + dishFilter,
   );
   const [expanded, setExpanded] = useState(false);
   const selectedRow = state.data?.rows.find(
@@ -754,7 +760,10 @@ export function SalesPage() {
         ))}
       </div>
       <Feedback state={state}>
-        {state.data && (
+        {emptyLiveScope && (
+          <Empty text="Нет заведений с включённой синхронизацией. Для сохранённых продаж выберите прошедший период." />
+        )}
+        {!emptyLiveScope && state.data && (
           <>
             <DataSourceNotice status={state.data.data_status} />
             <ReviewNotice data={state.data} />
@@ -973,8 +982,14 @@ export function SalesPage() {
             <details className="panel provenance">
               <summary>Источник и параметры расчёта</summary>
               <p>
-                Строки сохранены из OLAP iiko; для этого разреза отдельные чеки
-                не выгружались. Источник доступен до строки отчёта.
+                Заведения в отчёте: {w.meta.departments
+                  .filter((venue) => !w.departments.length || w.departments.includes(venue.id))
+                  .map((venue) => venue.name)
+                  .join(", ")}.
+              </p>
+              <p>
+                Источник строк — отчёты OLAP iiko. Для этого разреза отдельные
+                чеки не выгружались.
               </p>
               <DataTable
                 columns={[

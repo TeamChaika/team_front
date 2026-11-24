@@ -4,6 +4,11 @@ import assert from "node:assert/strict";
 import { readFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { createRequire } from "node:module";
+import {
+  salesDepartments,
+  salesResponse,
+  verifySalesScopes,
+} from "./salesScope.mjs";
 const require = createRequire(import.meta.url);
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 const build = path.resolve(process.env.DASHBOARD_DIST || "dist");
@@ -161,8 +166,13 @@ try {
       case "/api/me":
         return json({
           user,
-          departments: [],
-          sales_dates: [],
+          departments: salesDepartments,
+          warehouse_scope: {
+            mode: "selected",
+            warehouse_ids: ["30000000-0000-4000-8000-000000000001"],
+          },
+          sales_dates: ["2026-10-08"],
+          live_sales_enabled: true,
           balance_dates: [],
           sections: assignedSections,
           can_manage: canManage,
@@ -174,23 +184,7 @@ try {
       case "/api/profile/telegram":
         return json({ available: false, linked: false });
       case "/api/sales/daily":
-        return json({
-          start: "2026-10-09",
-          end: "2026-10-09",
-          complete: false,
-          loaded_dates: [],
-          missing_dates: ["2026-10-09"],
-          rows: [],
-          totals: {
-            revenue: null,
-            cost: null,
-            gross_profit: null,
-            average_check: null,
-            checks: null,
-            guests: null,
-          },
-          live: { source: "stored", status: "sync_paused", stale: true },
-        });
+        return json(salesResponse(url.searchParams));
       case "/api/management/accounts":
         return json({
           users: [],
@@ -253,16 +247,7 @@ try {
     path: path.join(artifacts, "tenant-desktop.png"),
     fullPage: true,
   });
-  await page.getByRole("link", { name: "Продажи", exact: true }).click();
-  const salesRevenue = page.getByRole("link", {
-    name: "Выручка — открыть расшифровку",
-  });
-  await salesRevenue.waitFor();
-  assert.equal(await salesRevenue.locator("strong").innerText(), "—");
-  assert.doesNotMatch(
-    await page.locator("main").innerText(),
-    /Недостаточно данных за выбранный период|Сохранённые строки доступны|Сегодня · сохранённые данные|Синхронизация с iiko приостановлена/,
-  );
+  await verifySalesScopes(page);
   await page.getByRole("link", { name: "Мой профиль", exact: true }).click();
   fullReady = false;
   await page.reload();
