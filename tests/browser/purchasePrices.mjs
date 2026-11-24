@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { verifyPriceComparison, withPriceComparison } from "./purchasePriceHistory.mjs";
 
 const cutoff = "2026-09-09";
 const reportUrl = "https://client.example.test/purchase-prices";
@@ -13,7 +14,7 @@ const receipt = (date, price) => ({
 const earlier = receipt("2026-07-15", "100");
 const rows = Array.from({ length: 54 }, (_, i) => {
   const date = ["2026-09-08", cutoff][i] ?? (i === 53 ? "2026-10-09" : "2026-10-08");
-  return {
+  const row = {
     product_id: `90000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
     product: "Ингредиент " + i,
     unit_id: "91000000-0000-4000-8000-000000000001",
@@ -25,6 +26,7 @@ const rows = Array.from({ length: 54 }, (_, i) => {
     delta: "20.12345",
     percent: "20.12345",
   };
+  return i === 53 ? withPriceComparison(row) : row;
 });
 
 export async function verifyPurchasePrices(context, meta) {
@@ -81,6 +83,7 @@ export async function verifyPurchasePrices(context, meta) {
     await heading(53).waitFor();
     assert.equal(await recent.isChecked(), true);
     await firstItem.getByRole("link", { name: "Ингредиент 53", exact: true }).waitFor();
+    await verifyPriceComparison(page, "Ингредиент 53");
     await page.getByRole("button", { name: "Сначала ранние поступления" }).click();
     await firstItem.getByRole("link", { name: "Ингредиент 1", exact: true }).waitFor();
     await recent.click();

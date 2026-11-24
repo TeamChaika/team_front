@@ -10,6 +10,7 @@ import { Feedback, PageTitle } from "./pages";
 import { PurchaseImpact } from "./PurchaseImpact";
 import { PurchaseModal } from "./PurchaseModal";
 import { price, signed, csvPrice } from "./purchasePriceFormat";
+import { priceTimeline, visibleChartLabels } from "./purchasePriceChart";
 import { todayReservation } from "./depositDates";
 import { useAssistant } from "./AssistantContext";
 import {
@@ -890,8 +891,8 @@ function PriceWorkspace({
         <p>
           Цена единицы = сумма строк товара ÷ количество по накладной. Сумма
           берётся из iiko без вычитания НДС и без повторного вычитания скидки.
-          Цены сравниваются с точностью до 4 знаков. В таблицах, графике и CSV
-          цены, суммы и проценты округлены до одного знака после запятой.
+          Цены сравниваются с точностью до четырёх знаков после запятой.
+          CSV сохраняет точность расчёта, включая изменения меньше копейки.
         </p>
         <p>
           Сравниваются один UUID товара и одна единица измерения по всей сети.
@@ -953,6 +954,69 @@ function PriceWorkspace({
     </>
   );
 }
+const summaryPercent = new Intl.NumberFormat("ru-RU", {
+  maximumFractionDigits: 1,
+  signDisplay: "exceptZero",
+});
+
+function PriceDetailSummary({ row }: { row: PriceChange }) {
+  const { current, previous, delta, percent, unit } = row;
+  const unitPrice = "₽/" + unit;
+  const percentText =
+    percent !== null && Math.abs(Number(percent)) >= 1
+      ? summaryPercent.format(Number(percent))
+      : signed(percent);
+  const countLabel =
+    previous.count === 1
+      ? "поступление"
+      : previous.count < 5
+        ? "поступления"
+        : "поступлений";
+  return (
+    <section
+      className="price-detail-summary"
+      aria-label="Сравнение закупочной цены"
+    >
+      <div className="price-detail-headline">
+        <strong>
+          {price(current.price)} <span>{unitPrice}</span>
+        </strong>
+        {delta !== null && (
+          <span
+            className={
+              Number(delta) > 0
+                ? "price-rise"
+                : Number(delta) < 0
+                  ? "price-fall"
+                  : "muted"
+            }
+          >
+            {Number(delta) === 0
+              ? "Без изменения"
+              : `${signed(delta)} ${unitPrice}`}
+            {Number(delta) !== 0 && percent !== null && ` (${percentText}%)`}
+          </span>
+        )}
+      </div>
+      {previous.count > 0 ? (
+        <p>
+          Средневзвешенная —{" "}
+          <b>
+            {price(previous.price)} {unitPrice}
+          </b>{" "}
+          · {previous.count} {countLabel}, {number(previous.amount)} {unit}
+        </p>
+      ) : (
+        <p>Первое поступление в истории</p>
+      )}
+      <p className="price-detail-meta">
+        Последняя закупка · {dateText(current.date)} · {number(current.amount)}{" "}
+        {unit} · {row.scope_label}
+      </p>
+    </section>
+  );
+}
+
 export function PriceDetails({
   row,
   scope,
@@ -969,69 +1033,34 @@ export function PriceDetails({
     "/purchase-prices/history?" + params.toString(),
   );
   const selected = state.data;
-  const historySize = 6;
+  const receiptsNewestFirst = selected
+    ? [...selected.previous.receipts].reverse()
+    : [];
   return (
     <Feedback state={state}>
       {selected && (
         <>
-          <p>
-            {selected.scope_label} · {selected.unit}
-          </p>
-          <p className="price-comparison-total">
-            {selected.previous.count > 0 && (
-              <>{price(selected.previous.price)} → </>
-            )}
-            {price(selected.current.price)} ₽/{selected.unit}{" "}
-            <Percent row={selected} />
-          </p>
+          <PriceDetailSummary row={selected} />
           {selected.previous.count !== 1 && <PriceChart row={selected} />}
-          <div className="price-comparison">
-            {selected.previous.receipts.length === 1 ? (
+          <div
+            className={
+              selected.previous.receipts.length === 1
+                ? "price-comparison"
+                : "price-latest-receipt"
+            }
+          >
+            {selected.previous.receipts.length === 1 && (
               <Sources
                 title="Предыдущее поступление"
                 value={selected.previous.receipts[0]}
                 unit={selected.unit}
               />
-            ) : (
-              <section>
-                <h3>Средняя предыдущих поступлений</h3>
-                <p>
-                  Поступлений: {selected.previous.count} из {historySize}
-                </p>
-                {selected.previous.count === 0 && (
-                  <p className="muted">
-                    Это первое загруженное поступление. Сравнивать пока не с
-                    чем.
-                  </p>
-                )}
-                <strong>
-                  {price(selected.previous.price)} ₽/{selected.unit}
-                </strong>
-                {selected.previous.count > 0 && (
-                  <>
-                    <p>
-                      {price(selected.previous.sum)} ₽ ÷{" "}
-                      {number(selected.previous.amount)} {selected.unit}
-                    </p>
-                  </>
-                )}
-                <p className="muted">
-                  {dateText(selected.previous.date_from)} —{" "}
-                  {dateText(selected.previous.date)}
-                </p>
-                {selected.previous.count > 0 &&
-                  selected.previous.count < historySize && (
-                    <p className="muted">
-                      В истории доступно меньше 6 поступлений. Средняя
-                      рассчитана по указанным ниже документам.
-                    </p>
-                  )}
-              </section>
             )}
             <Sources
               title="Последнее поступление"
               value={selected.current}
               unit={selected.unit}
+              latest
             />
           </div>
           {selected.previous.count === 1 && <PriceChart row={selected} />}
@@ -1042,10 +1071,16 @@ export function PriceDetails({
                 CSV истории
               </Button>
             </div>
-            <p className="muted">
-              От раннего к последнему. Текущее поступление в расчёт средней не
-              включено.
-            </p>
+            {selected.previous.count > 0 && (
+              <p className="muted">
+                {dateText(selected.previous.date_from)}
+                {selected.previous.date_from !== selected.previous.date &&
+                  ` — ${dateText(selected.previous.date)}`}
+                {" · "}
+                {price(selected.previous.sum)} ₽ за{" "}
+                {number(selected.previous.amount)} {selected.unit}
+              </p>
+            )}
             <div className="table-scroll price-history-desktop">
               <table className="price-history-table">
                 <thead>
@@ -1058,7 +1093,7 @@ export function PriceDetails({
                   </tr>
                 </thead>
                 <tbody>
-                  {selected.previous.receipts.map((receipt) => (
+                  {receiptsNewestFirst.map((receipt) => (
                     <tr key={receipt.date}>
                       <td className="price-receipt-date">
                         {dateText(receipt.date)}
@@ -1078,7 +1113,7 @@ export function PriceDetails({
               className="price-receipt-list"
               aria-label="Предыдущие поступления"
             >
-              {selected.previous.receipts.map((receipt) => (
+              {receiptsNewestFirst.map((receipt) => (
                 <li className="price-receipt-card" key={receipt.date}>
                   <div className="price-receipt-heading">
                     <time
@@ -1101,10 +1136,10 @@ export function PriceDetails({
             </ol>
             <details className="price-method">
               <summary>Строки предыдущих накладных и поставщики</summary>
-              {selected.previous.receipts.map((receipt, index) => (
+              {receiptsNewestFirst.map((receipt) => (
                 <Sources
                   key={receipt.date}
-                  title={"Поступление " + (index + 1)}
+                  title="Поступление"
                   value={receipt}
                   unit={selected.unit}
                 />
@@ -1117,13 +1152,23 @@ export function PriceDetails({
   );
 }
 
+function receiptDocuments(receipt: Observation) {
+  const documents = new Map<string, SourceLine[]>();
+  for (const line of receipt.lines) {
+    const lines = documents.get(line.document_id);
+    if (lines) lines.push(line);
+    else documents.set(line.document_id, [line]);
+  }
+  return [...documents.values()];
+}
+
+const invoiceCountRules = new Intl.PluralRules("ru");
 function ReceiptLinks({ receipt }: { receipt: Observation }) {
-  const documents = [
-    ...new Map(receipt.lines.map((line) => [line.document_id, line])).values(),
-  ];
-  return (
+  const documents = receiptDocuments(receipt);
+  if (!documents.length) return <span className="muted">—</span>;
+  const links = (
     <div className="price-receipt-links">
-      {documents.map((line) => (
+      {documents.map(([line]) => (
         <Link
           key={line.document_id}
           className="text-link price-history-link"
@@ -1138,6 +1183,22 @@ function ReceiptLinks({ receipt }: { receipt: Observation }) {
         </Link>
       ))}
     </div>
+  );
+  if (documents.length === 1) return links;
+  const plural = invoiceCountRules.select(documents.length);
+  const noun =
+    plural === "one"
+      ? "накладная"
+      : plural === "few"
+        ? "накладные"
+        : "накладных";
+  return (
+    <details className="price-invoice-group">
+      <summary>
+        {documents.length} {noun}
+      </summary>
+      {links}
+    </details>
   );
 }
 
@@ -1186,9 +1247,6 @@ function exportHistory(row: PriceChange) {
 function PriceChart({ row }: { row: PriceChange }) {
   const { ref, width } = useElementSize<HTMLDivElement>();
   const chartWidth = Math.max(280, Math.round(width || 740));
-  const compact = chartWidth < 520;
-  const left = compact ? 70 : 85;
-  const right = chartWidth - (compact ? 18 : 85);
   const observations = [...row.previous.receipts, row.current];
   const values = observations.map((o) => Number(o.price));
   const min = Math.min(...values),
@@ -1196,16 +1254,35 @@ function PriceChart({ row }: { row: PriceChange }) {
   const padding = Math.max((max - min) * 0.15, max * 0.03, 1);
   const low = Math.max(0, min - padding),
     high = max + padding;
-  const x = (i: number) =>
-    observations.length === 1
-      ? (left + right) / 2
-      : left + (i * (right - left)) / (observations.length - 1);
+  const valueLabelWidth =
+    Math.max(...observations.map((o) => price(o.price).length)) * 8;
+  const axisLabelWidth = Math.max(price(low).length, price(high).length) * 8;
+  const left = Math.max(52, axisLabelWidth + 12, valueLabelWidth / 2 + 8);
+  const right = chartWidth - Math.max(26, valueLabelWidth / 2 + 8);
+  const positions = priceTimeline(
+    observations.map((o) => o.date),
+    left,
+    right,
+  );
+  const points = observations.flatMap((receipt, i) => {
+    const x = positions[i];
+    if (x === null) return [];
+    const [day, time] = dateText(receipt.date).split(", ");
+    return [{ receipt, x, day, time }];
+  });
+  if (!points.length) return null;
+  const firstYear = points[0].day.slice(6);
+  const singleYear = points.every((point) => point.day.slice(6) === firstYear);
+  const xs = points.map((p) => p.x);
+  const dateLabels = visibleChartLabels(xs, 50);
+  const valueLabels = visibleChartLabels(xs, valueLabelWidth + 12);
   const y = (v: number) => 200 - ((v - low) / (high - low)) * 150;
   return (
     <section className="price-chart">
       <h3>Динамика закупочной цены</h3>
       <p className="muted">
-        До 6 предыдущих поступлений и последнее · ₽/{row.unit}
+        ₽/{row.unit}
+        {singleYear && ` · ${firstYear}`}
       </p>
       <div className="price-chart-canvas" ref={ref}>
         <svg
@@ -1229,116 +1306,134 @@ function PriceChart({ row }: { row: PriceChange }) {
             </g>
           ))}
           <polyline
-            points={values.map((v, i) => `${x(i)},${y(v)}`).join(" ")}
+            points={points
+              .map((p) => `${p.x},${y(Number(p.receipt.price))}`)
+              .join(" ")}
             fill="none"
             stroke="#65d7e5"
             strokeWidth="3"
           />
-          {observations.map((o, i) => (
-            <g key={o.date}>
-              <circle
-                cx={x(i)}
-                cy={y(Number(o.price))}
-                r={i === observations.length - 1 ? 6 : 4}
-                fill={i === observations.length - 1 ? "#65d7b6" : "#65d7e5"}
-              />
-              {(!compact || i === 0 || i === observations.length - 1) && (
-                <text
-                  x={x(i)}
-                  y={y(Number(o.price)) - 13}
-                  textAnchor={compact ? (i === 0 ? "start" : "end") : "middle"}
+          {points.map(({ receipt, x, day, time }, i) => {
+            const cy = y(Number(receipt.price));
+            const current = receipt === row.current;
+            const sameDay = points.some((p, j) => i !== j && p.day === day);
+            const dateDetail =
+              sameDay && time ? time : singleYear ? null : day.slice(6);
+            return (
+              <g key={receipt.date}>
+                <circle
+                  cx={x}
+                  cy={cy}
+                  r={current ? 6 : 4}
+                  fill={current ? "#65d7b6" : "#65d7e5"}
                 >
-                  {price(o.price)}
-                </text>
-              )}
-              {(!compact ||
-                i === 0 ||
-                i === observations.length - 1 ||
-                i === Math.floor(observations.length / 2)) && (
-                <g>
-                  <text
-                    x={x(i)}
-                    y="231"
-                    textAnchor={
-                      compact && i === 0
-                        ? "start"
-                        : compact && i === observations.length - 1
-                          ? "end"
-                          : "middle"
-                    }
-                  >
-                    {o.date.slice(8, 10)}.{o.date.slice(5, 7)}
+                  <title>
+                    {dateText(receipt.date)} · {price(receipt.price)} ₽/
+                    {row.unit}
+                  </title>
+                </circle>
+                {valueLabels.has(i) && (
+                  <text x={x} y={cy - 13} textAnchor="middle">
+                    {price(receipt.price)}
                   </text>
-                  <text
-                    x={x(i)}
-                    y="248"
-                    textAnchor={
-                      compact && i === 0
-                        ? "start"
-                        : compact && i === observations.length - 1
-                          ? "end"
-                          : "middle"
-                    }
-                  >
-                    {o.date.slice(0, 4)}
+                )}
+                {dateLabels.has(i) && (
+                  <text x={x} y="231" textAnchor="middle">
+                    {day.slice(0, 5)}
+                    {dateDetail && (
+                      <tspan x={x} dy="17">
+                        {dateDetail}
+                      </tspan>
+                    )}
                   </text>
-                </g>
-              )}
-            </g>
-          ))}
+                )}
+              </g>
+            );
+          })}
         </svg>
       </div>
     </section>
   );
 }
 
+function sourceWarehouse(line: SourceLine) {
+  return [line.department, line.store].filter(Boolean).join(" · ");
+}
+
 function Sources({
   title,
   value,
   unit,
+  latest = false,
 }: {
   title: string;
   value: Observation;
   unit: string;
+  latest?: boolean;
 }) {
   return (
     <section>
       <h3>{title}</h3>
-      <p>{dateText(value.date)}</p>
-      <strong>
-        {price(value.price)} ₽/{unit}
-      </strong>
-      <p>
-        {price(value.sum)} ₽ ÷ {number(value.amount)} {unit}
-      </p>
-      {value.lines.map((l) => (
-        <div
-          className="price-source"
-          key={[l.document_id, l.num, l.num_occurrence].join("/")}
-        >
-          <Link className="text-link" to={"/invoices/" + l.document_id}>
-            Накладная №{l.document_number ?? l.document_id}{" "}
-            <IconArrowUpRight size={14} />
-          </Link>
+      {!latest && (
+        <p>
+          {dateText(value.date)} ·{" "}
+          <strong>
+            {price(value.price)} ₽/{unit}
+          </strong>
           <small className="price-subtext">
-            Строка {l.num}
-            {l.num_occurrence > 1 ? " · вхождение " + l.num_occurrence : ""}
+            {price(value.sum)} ₽ за {number(value.amount)} {unit}
           </small>
-          <p>{l.supplier}</p>
-          <small className="price-subtext">
-            {l.department ? l.department + " · " : ""}
-            {l.store}
-          </small>
-          <p>
-            {number(l.amount)} {unit} · {price(l.sum)} ₽
-          </p>
-          <small className="muted">
-            Исходная цена iiko: {l.price === null ? "—" : price(l.price)} ₽
-            <br />
-            Загружено: {dateText(l.last_seen_at)}
-          </small>
-        </div>
-      ))}
+        </p>
+      )}
+      {receiptDocuments(value).map((lines) => {
+        const document = lines[0];
+        const stores = [...new Set(lines.map(sourceWarehouse).filter(Boolean))];
+        return (
+          <div className="price-source" key={document.document_id}>
+            <div className="price-document-heading">
+              <div>
+                <strong>{document.supplier}</strong>
+                {stores.map((store) => (
+                  <small className="price-subtext" key={store}>
+                    {store}
+                  </small>
+                ))}
+              </div>
+              <Link
+                className="text-link"
+                to={"/invoices/" + document.document_id}
+              >
+                Накладная №{document.document_number ?? document.document_id}{" "}
+                <IconArrowUpRight size={14} aria-hidden="true" />
+              </Link>
+            </div>
+            <details className="price-source-details">
+              <summary>Подробности</summary>
+              {lines.map((line) => (
+                <div
+                  className="price-source-line"
+                  key={line.num + "/" + line.num_occurrence}
+                >
+                  <strong>
+                    Строка {line.num}
+                    {line.num_occurrence > 1 &&
+                      " · вхождение " + line.num_occurrence}
+                  </strong>
+                  {stores.length > 1 && <span>{sourceWarehouse(line)}</span>}
+                  <span>
+                    {number(line.amount)} {unit} · {price(line.sum)} ₽
+                  </span>
+                  <span>
+                    Исходная цена iiko:{" "}
+                    {line.price === null ? "—" : price(line.price) + " ₽"}
+                  </span>
+                  <span>Загружено: {dateText(line.last_seen_at)}</span>
+                </div>
+              ))}
+            </details>
+          </div>
+        );
+      })}
     </section>
   );
 }
