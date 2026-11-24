@@ -14,6 +14,7 @@ const defaultContext: AssistantContext = {
   kind: "unlinked",
   exclude_household: true,
   recent_only: true,
+  recent_period: "month",
 };
 type Request = {
   context: AssistantContext;

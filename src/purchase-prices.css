@@ -43,6 +43,21 @@
   margin-top: 6px;
   font-size: 12px;
 }
+.price-sample-link {
+  display: block;
+  margin: 4px 0 0 auto;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: #9ad8e3;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.price-sample-link:hover,
+.price-sample-link:focus-visible {
+  text-decoration: underline;
+}
 .price-method {
   padding: 20px;
   margin-top: 20px;

@@ -4,7 +4,7 @@ import { cashShiftPage } from "./statusSchedule";
 import { CommercialPdfButton } from "./CommercialPdfButton";
 import type { ScheduledSyncTask } from "./scheduledSyncModel";
 import { PartialDayNotice } from "./PartialDayNotice";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
 import {
   Alert,
   Badge,
@@ -1248,6 +1248,9 @@ const headerNames: Record<string, string> = {
 export function DetailPage({ resource }: { resource: string }) {
   const w = useWorkspace(),
     { id } = useParams();
+  const location = useLocation();
+  const returnQuery = location.state?.purchasePricesSearch;
+  const priceList = resource === "products" && typeof returnQuery === "string";
   const state = useData<{
     header: Row;
     items: Row[];
@@ -1256,8 +1259,11 @@ export function DetailPage({ resource }: { resource: string }) {
   }>("/resources/" + resource + "/" + id + "?" + w.query());
   return (
     <>
-      <Link className="back-link" to={"/" + resource}>
-        <IconArrowLeft size={16} /> Назад к списку
+      <Link
+        className="back-link"
+        to={priceList ? { pathname: "/purchase-prices", search: returnQuery } : "/" + resource}
+      >
+        <IconArrowLeft size={16} /> {priceList ? "Назад к закупочным ценам" : "Назад к списку"}
       </Link>
       {resource === "employees" && id && (
         <EmployeeEditor id={id} onSaved={state.reload} />

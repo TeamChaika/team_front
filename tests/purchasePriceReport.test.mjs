@@ -4,9 +4,32 @@ import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import {
   canReadPurchaseImpact,
+  purchasePriceFilters,
   purchaseImpactNotice,
   purchasePriceReportPath,
+  updatePurchasePriceFilters,
+  waitingForPurchaseImpact,
 } from "../src/purchasePriceReport.ts";
+import { csvPrice, price, signed } from "../src/purchasePriceFormat.ts";
+
+test("sub-kopeck changes remain visible and exports preserve the API decimal", () => {
+  assert.equal(price("654.4556"), "654,46");
+  assert.equal(price("654.4532"), "654,45");
+  assert.equal(signed("0.0024"), "рост < 0,01");
+  assert.equal(signed("-0.0024"), "снижение < 0,01");
+  assert.equal(signed("0"), "0");
+  assert.equal(signed(null), "—");
+  assert.equal(csvPrice("-0.00036671835358127976148638283073564"), "-0,00036671835358127976148638283073564");
+  assert.equal(csvPrice(null), null);
+});
+
+test("only a complete prepared window ending on the target day stops refreshes", () => {
+  const period = { status: "ready", end: "2026-11-23", target_end: "2026-11-24", coverage: { complete: true } };
+  assert.equal(waitingForPurchaseImpact(period), true);
+  assert.equal(waitingForPurchaseImpact({ ...period, end: period.target_end }), false);
+  assert.equal(waitingForPurchaseImpact({ ...period, end: period.target_end, coverage: { complete: false } }), true);
+  assert.equal(waitingForPurchaseImpact({ status: "pending" }), true);
+});
 
 test("warehouse scope controls impact eligibility and strips injected impact flag", () => {
   assert.equal(canReadPurchaseImpact("selected"), false);
@@ -23,6 +46,26 @@ test("warehouse scope controls impact eligibility and strips injected impact fla
   assert.equal(params.get("rms_id"), "abc");
   assert.equal(params.has("include_impact"), false);
   assert.equal(params.get("exclude_household"), "false");
+  assert.equal(params.get("recent_period"), "month");
+  const fullHistory = new URL(purchasePriceReportPath("", "all", true, false, false), "https://test.local");
+  assert.equal(fullHistory.searchParams.get("recent_only"), "false");
+});
+
+test("price filters reset the page while keeping other selections and unrelated URL keys", () => {
+  const saved = new URLSearchParams("page=8&sort=date_asc&recent_only=false&product=p1&tab=summary");
+  const changed = updatePurchasePriceFilters(saved, { kind: "linked", product: null });
+  assert.equal(changed.get("tab"), "summary");
+  assert.equal(changed.has("page"), false);
+  assert.equal(changed.has("product"), false);
+  assert.equal(purchasePriceFilters(changed).kind, "linked");
+  assert.equal(purchasePriceFilters(changed).recent_only, false);
+  assert.equal(purchasePriceFilters(changed).sort, "date_asc");
+  assert.equal(updatePurchasePriceFilters(changed, { page: 3 }).get("page"), "3");
+  assert.equal(saved.get("page"), "8");
+  assert.deepEqual(
+    purchasePriceFilters(new URLSearchParams("kind=invalid&direction=invalid&sort=invalid&threshold=-1&page=-1")),
+    purchasePriceFilters(new URLSearchParams()),
+  );
 });
 
 test("pending or missing prepared impact gives one update notice", () => {
@@ -49,7 +92,7 @@ const stubs = {
   "./api":
     'export { reportTimeText } from "./src/api.ts";export const dateText=v=>v;export const number=v=>v;export const csv=()=>{};',
   "react-router-dom":
-    'import React from "react";export const Link=({children})=>React.createElement("a",null,children);',
+    'import React from "react";export const Link=({children,to,state})=>React.createElement("a",{href:to,"data-return-query":state?.purchasePricesSearch},children);export const useSearchParams=()=>[new URLSearchParams(globalThis.purchaseTestSearch),()=>{}];',
   "@mantine/core":
     'import React from "react";export const Button=({children,disabled,onClick})=>{globalThis.purchaseTestButtons?.set(children,onClick);return React.createElement("button",{disabled},children)};export const Select=()=>null;export const Checkbox=()=>null;',
   "@mantine/hooks": "export const useElementSize=()=>({ref:null,width:740});",
@@ -63,6 +106,7 @@ const bundled = await build({
       import { LiveDataNotice, SalesDataNotice } from "./src/LiveDataNotice";
       import { renderToStaticMarkup } from "react-dom/server";
       import React from "react";
+      export { csv as saveCsv } from "./src/api.ts";
       export const render = () => renderToStaticMarkup(React.createElement(PurchasePrices));
       export const liveNotice = source => renderToStaticMarkup(React.createElement(LiveDataNotice, { source }));
       export const salesNotice = (data, onRefresh) => renderToStaticMarkup(React.createElement(SalesDataNotice, { data, onRefresh }));
@@ -95,9 +139,26 @@ const bundled = await build({
     },
   ],
 });
-const { render, liveNotice, salesNotice } = await import(
+const { render, liveNotice, salesNotice, saveCsv } = await import(
   `data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString("base64")}`
 );
+test("CSV retains numeric negative decimals while escaping spreadsheet formulas", async () => {
+  let href;
+  const previous = globalThis.document;
+  globalThis.document = { createElement: () => ({ click() { href = this.href; } }) };
+  try {
+    saveCsv("Закупки", [{ key: "price", label: "Цена" }, { key: "item", label: "Товар" }], [
+      { price: csvPrice("-0.00002400001"), item: "=TEXT()" },
+      { price: "-1+2", item: "-00024" },
+    ], ["price"]);
+    const content = await (await fetch(href)).text();
+    assert.match(content, /"-0,00002400001";"'=TEXT\(\)"/);
+    assert.match(content, /"'-1\+2";"'-00024"/);
+  } finally {
+    if (previous === undefined) delete globalThis.document;
+    else globalThis.document = previous;
+  }
+});
 const row = {
   product_id: "p1",
   product: "Тестовый товар",
@@ -138,6 +199,35 @@ function renderReport(mode, period, rows = [row]) {
   };
   return render();
 }
+test("latest receipts are first and saved filters, order and page are restored from the URL", () => {
+  const rows = Array.from({ length: 55 }, (_, i) => ({
+    ...row,
+    product: `Позиция ${i}`,
+    product_id: String(i),
+    percent: String(i),
+    current: { ...row.current, date: i === 54 ? "2026-11-14" : "2026-11-01" },
+  }));
+  const defaultHtml = renderReport("selected", undefined, rows);
+  function before(html, first, second) {
+    assert.ok(html.includes(first) && html.indexOf(first) < html.indexOf(second));
+  }
+  before(defaultHtml, "Позиция 54<", "Позиция 0<");
+  before(defaultHtml, "Позиция 9<", "Позиция 10<");
+  try {
+    globalThis.purchaseTestSearch = "sort=date_asc";
+    const earliest = renderReport("selected", undefined, rows.toReversed());
+    before(earliest, "Позиция 0<", "Позиция 1<");
+    assert.doesNotMatch(earliest, /Позиция 54</);
+    globalThis.purchaseTestSearch = "sort=percent_asc&direction=rise&threshold=1&page=2";
+    const restored = renderReport("selected", undefined, rows);
+    assert.match(restored, /51–54 из 54/);
+    assert.match(restored, /Позиция 51</);
+    assert.match(restored, /data-return-query="sort=percent_asc&amp;direction=rise&amp;threshold=1&amp;page=2"/);
+    assert.doesNotMatch(globalThis.purchaseTestCalls[0], /sort=|threshold=|direction=|page=/);
+  } finally {
+    delete globalThis.purchaseTestSearch;
+  }
+});
 test("price totals use all matching rows even when only 50 are displayed", () => {
   const rows = Array.from({ length: 55 }, (_, i) => ({
     ...row,

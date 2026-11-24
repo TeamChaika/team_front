@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
-export function useData<T>(path: string | null, keepPreviousOnReload = false) {
+export function useData<T>(
+  path: string | null,
+  keepPreviousOnReload = false,
+  dataVersion?: string,
+) {
   const fetchedPath = useRef<string | null>(null);
   const [data, setData] = useState<T | null>(null),
     [error, setError] = useState(""),
@@ -42,7 +46,7 @@ export function useData<T>(path: string | null, keepPreviousOnReload = false) {
       live = false;
       controller.abort();
     };
-  }, [path, revision, keepPreviousOnReload]);
+  }, [path, revision, keepPreviousOnReload, dataVersion]);
   const reload = useCallback(() => setRevision((x) => x + 1), []);
   return { data, error, loading, refreshing, reload };
 }

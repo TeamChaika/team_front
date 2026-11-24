@@ -6,6 +6,7 @@ import { csv, dateText } from "./api";
 import { Feedback } from "./pages";
 import { useData } from "./useData";
 import type { PriceChange } from "./PurchasePrices";
+import { csvPrice, price, signed as delta } from "./purchasePriceFormat";
 
 type Edge = {
   chart_id: string;
@@ -74,14 +75,6 @@ type Report = {
 };
 const fmt = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 });
 const qty = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 3 });
-const signed = new Intl.NumberFormat("ru-RU", {
-  maximumFractionDigits: 1,
-  signDisplay: "exceptZero",
-});
-const money = (value: string | null) =>
-  value === null ? "—" : fmt.format(Number(value));
-const delta = (value: string | null) =>
-  value === null ? "—" : signed.format(Number(value));
 const tone = (value: string | null) =>
   Number(value) > 0 ? "price-rise" : Number(value) < 0 ? "price-fall" : "muted";
 function norm(value: string, unit: string | null) {
@@ -95,9 +88,11 @@ function norm(value: string, unit: string | null) {
 export function PurchaseImpact({
   row,
   scope,
+  periodVersion,
 }: {
   row: PriceChange;
   scope: string;
+  periodVersion?: string;
 }) {
   const [salesVenue, setSalesVenue] = useState<string | null>(null);
   const params = new URLSearchParams(scope);
@@ -113,7 +108,11 @@ export function PurchaseImpact({
   params.delete("store_id");
   params.set("unit_id", row.unit_id);
   params.set("linked", String(row.linked));
-  const state = useData<Report>("/purchase-prices/impact?" + params);
+  const state = useData<Report>(
+    "/purchase-prices/impact?" + params,
+    false,
+    periodVersion,
+  );
   const report = state.data;
   return (
     <>
@@ -127,7 +126,7 @@ export function PurchaseImpact({
           </small>
         </p>
         <p>
-          Последние 30 завершённых дней
+          Период продаж для расчёта
           {report && (
             <small className="price-subtext">
               {dateText(report.start)} — {dateText(report.end)}
@@ -162,18 +161,21 @@ export function PurchaseImpact({
               <div>
                 <span>Цена последнего поступления</span>
                 <strong>
-                  {money(report.price.current.price)} ₽/{report.price.unit}
+                  {price(report.price.current.price)} ₽/{report.price.unit}
                 </strong>
                 <small className="price-subtext">
                   {dateText(report.price.current.date)} · предыдущая средняя{" "}
-                  {money(report.price.previous.price)} ₽ · поступлений{" "}
+                  {price(report.price.previous.price)} ₽ · поступлений{" "}
                   {report.price.previous.count} из 6
                 </small>
               </div>
               <div>
                 <span>Потребность в неделю по норме</span>
                 <strong>
-                  {money(report.totals.weekly_amount)} {report.norm_unit}
+                  {report.totals.weekly_amount === null
+                    ? "—"
+                    : qty.format(Number(report.totals.weekly_amount))}{" "}
+                  {report.norm_unit}
                 </strong>
                 <small className="price-subtext">
                   По {report.rows.length} позициям · продано{" "}
@@ -404,9 +406,9 @@ export function PurchaseImpact({
                 Норма учитывает выход полуфабрикатов. Изменение на порцию =
                 норма × (последняя цена − средневзвешенная предыдущих 6
                 поступлений). Недельное изменение = изменение на порцию ×
-                продажи за 30 дней × 7 ÷ {report.coverage.days}. В строке «Итого»
-                изменение на порцию усредняется с учётом количества проданных
-                порций каждого блюда.
+                продажи за 30 дней × 7 ÷ {report.coverage.days}. В строке
+                «Итого» изменение на порцию усредняется с учётом количества
+                проданных порций каждого блюда.
               </p>
               <p>
                 Используются доступные техкарты на указанную дату, а не
@@ -459,7 +461,7 @@ export function PurchaseImpact({
                         <td className="numeric">
                           {qty.format(Number(o.amount))}
                         </td>
-                        <td className="numeric">{money(o.price)}</td>
+                        <td className="numeric">{price(o.price)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -493,8 +495,6 @@ function SalesSources({ dish }: { dish: Dish }) {
 }
 
 function exportImpact(r: Report) {
-  const flat = (v: string | null) =>
-    v === null ? null : money(v).replace(/\s/g, "");
   const columns = [
     ["dish", "Блюдо"],
     ["status", "Расчёт"],
@@ -525,51 +525,64 @@ function exportImpact(r: Report) {
     start: r.start,
     end: r.end,
     recipe_day: r.recipe_day,
-    old_price: flat(r.price.previous.price),
-    new_price: flat(r.price.current.price),
+    old_price: csvPrice(r.price.previous.price),
+    new_price: csvPrice(r.price.current.price),
     history_count: r.price.previous.count,
     linked: r.price.linked ? "Да" : "Нет",
     method:
       "Текущие техкарты; стандартная порция 1; продажи за 30 дней × 7 / 30; сценарий закупки по последней цене сети",
   };
-  csv("Влияние цены — " + r.price.product, columns, [
-    ...r.rows.map((d) => {
-      const n = norm(d.amount_per_portion, r.norm_unit);
-      return {
+  csv(
+    "Влияние цены — " + r.price.product,
+    columns,
+    [
+      ...r.rows.map((d) => {
+        return {
+          ...common,
+          ...d,
+          status: r.blockers.length ? "Прогноз отключён" : "Включено",
+          quantity: csvPrice(d.quantity),
+          norm: csvPrice(d.amount_per_portion),
+          norm_unit: r.norm_unit,
+          portion_delta: csvPrice(d.portion_delta),
+          weekly_delta: csvPrice(d.weekly_delta),
+          reason: r.blockers.join("; "),
+          charts: d.chart_ids.join("; "),
+        };
+      }),
+      ...r.excluded.map((d) => ({
         ...common,
         ...d,
-        status: r.blockers.length ? "Прогноз отключён" : "Включено",
-        norm: fmt.format(n.value).replace(/\s/g, ""),
-        norm_unit: n.unit,
-        portion_delta: flat(d.portion_delta),
-        weekly_delta: flat(d.weekly_delta),
-        reason: r.blockers.join("; "),
+        status: "Исключено",
+        quantity: csvPrice(d.quantity),
+        reason: d.reasons.join("; "),
         charts: d.chart_ids.join("; "),
-      };
-    }),
-    ...r.excluded.map((d) => ({
-      ...common,
-      ...d,
-      status: "Исключено",
-      reason: d.reasons.join("; "),
-      charts: d.chart_ids.join("; "),
-    })),
-    ...(r.rows.length
-      ? [
-          {
-            ...common,
-            dish: "Итого по рассчитанным позициям",
-            status: r.blockers.length ? "Прогноз отключён" : "Итого",
-            quantity: r.totals.quantity,
-            portion_delta: flat(r.totals.average_portion_delta),
-            weekly_delta: flat(r.totals.weekly_delta),
-            reason: [
-              "На порцию — среднее, взвешенное по количеству проданных блюд",
-              ...r.blockers,
-            ].join("; "),
-            department: r.analysis_departments.map((d) => d.name).join("; "),
-          },
-        ]
-      : []),
-  ]);
+      })),
+      ...(r.rows.length
+        ? [
+            {
+              ...common,
+              dish: "Итого по рассчитанным позициям",
+              status: r.blockers.length ? "Прогноз отключён" : "Итого",
+              quantity: csvPrice(r.totals.quantity),
+              portion_delta: csvPrice(r.totals.average_portion_delta),
+              weekly_delta: csvPrice(r.totals.weekly_delta),
+              reason: [
+                "На порцию — среднее, взвешенное по количеству проданных блюд",
+                ...r.blockers,
+              ].join("; "),
+              department: r.analysis_departments.map((d) => d.name).join("; "),
+            },
+          ]
+        : []),
+    ],
+    [
+      "old_price",
+      "new_price",
+      "quantity",
+      "norm",
+      "portion_delta",
+      "weekly_delta",
+    ],
+  );
 }
