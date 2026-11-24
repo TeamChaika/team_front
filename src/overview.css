@@ -194,7 +194,9 @@
   min-height: 64px;
 }
 .is-overview .restaurant-select {
-  width: 205px;
+  flex-basis: 232px;
+  min-width: min(232px, 100%);
+  max-width: 100%;
 }
 .is-overview .restaurant-select input {
   font-size: 11px;
@@ -627,8 +629,7 @@
 }
 @media (max-width: 950px) {
   .is-overview .restaurant-select {
-    width: 210px;
-    flex: 1;
+    flex-grow: 1;
   }
   .is-overview #overview-toolbar {
     flex-basis: 100%;
