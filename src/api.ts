@@ -281,7 +281,13 @@ export type Meta = {
     all_departments?: boolean;
     password_change_required?: boolean;
   };
-  departments: { id: string; name: string; code: string; archived?: boolean }[];
+  departments: {
+    id: string;
+    name: string;
+    code: string;
+    archived?: boolean;
+    sync_enabled?: boolean;
+  }[];
   sales_dates: string[];
   balance_dates: string[];
 };

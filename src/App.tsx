@@ -1,4 +1,5 @@
 import { venueScope, drilldownDepartments } from "./venueArchiveModel";
+import { salesDefaultDepartments } from "./salesScope";
 import Support from "./Support";
 import { companyIntegrationsAllowed } from "./companyIntegrationsModel";
 import {
@@ -302,29 +303,49 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
   const requestEpoch = useRef(0);
   const currentUserId = useRef<string | null>(null);
   currentUserId.current = meta?.user.id ?? null;
-  const [departments, setDepartments] = useState<string[]>([]);
+  const [departmentSelection, setDepartmentSelection] = useState<{
+    ids: string[];
+    fromActiveOverview?: boolean;
+  }>({ ids: [] });
+  function setDepartments(ids: string[]) {
+    setDepartmentSelection({ ids });
+  }
   const [start, setStart] = useState(""),
     [end, setEnd] = useState(""),
     [mobile, setMobile] = useState(false);
   const location = useLocation();
   const [includeArchived, setIncludeArchived] = useState(false);
+  const salesWorkspace = location.pathname === "/sales" || location.pathname === "/sales/";
   const archiveScope =
     location.pathname === "/" || location.pathname === "/indicators";
   const scope = venueScope(
     meta?.departments ?? [],
-    departments,
+    departmentSelection.ids,
     !archiveScope || includeArchived,
   );
-  const effectiveDepartments = scope.selected;
+  let salesDefault =
+    salesWorkspace && meta
+      ? salesDefaultDepartments(meta, start, end)
+      : null;
+  if (salesDefault && departmentSelection.fromActiveOverview) {
+    salesDefault = salesDefault.filter((id) => scope.selected.includes(id));
+  }
+  const automaticSalesDepartments =
+    !scope.selected.length || departmentSelection.fromActiveOverview
+      ? salesDefault
+      : null;
+  const effectiveDepartments = automaticSalesDepartments ?? scope.selected;
   useEffect(() => {
     if (archiveScope) {
-      setDepartments((ids) => {
+      setDepartmentSelection((selection) => {
         const next = venueScope(
           meta?.departments ?? [],
-          ids,
+          selection.ids,
           includeArchived,
         ).selected;
-        return next.length === ids.length ? ids : next;
+        return next.length === selection.ids.length
+          ? selection
+          : { ...selection, ids: next };
       });
     }
   }, [archiveScope, includeArchived, meta?.departments]);
@@ -618,9 +639,8 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
   const commercialWorkspace =
     ["/invoices", "/outgoing"].includes(location.pathname) &&
     new URLSearchParams(location.search).get("view") !== "analytics";
-  const datesEnabled = [
+  const datesEnabled = salesWorkspace || [
     "/",
-    "/sales",
     "/cash-shifts",
     "/invoices",
     "/outgoing",
@@ -634,7 +654,18 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
       location.pathname === "/"
         ? drilldownDepartments(scope.venues, effectiveDepartments)
         : effectiveDepartments;
-    for (const id of queryDepartments) p.append("department_id", id);
+    const largeSalesScope = salesWorkspace && queryDepartments.length > 100;
+    if (largeSalesScope && automaticSalesDepartments) {
+      p.set("sync_only", "true");
+      if (departmentSelection.fromActiveOverview) {
+        p.set("include_archived", "false");
+      }
+    } else if (
+      !largeSalesScope || queryDepartments.length !== meta.departments.length
+    ) {
+      // For a large, explicit all-selection the unfiltered API already uses all grants.
+      for (const id of queryDepartments) p.append("department_id", id);
+    }
     if (location.pathname === "/")
       p.set("include_archived", String(includeArchived));
     if (dates) {
@@ -653,10 +684,14 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
         hasArchivedDepartments: meta.departments.some(
           (venue) => venue.archived,
         ),
-        preserveDepartmentScope: () =>
-          setDepartments(
-            drilldownDepartments(scope.venues, effectiveDepartments),
-          ),
+        preserveDepartmentScope: () => {
+          if (!scope.selected.length && scope.venues.length < meta.departments.length) {
+            setDepartmentSelection({
+              ids: scope.venues.map((venue) => venue.id),
+              fromActiveOverview: true,
+            });
+          }
+        },
         setDepartment: (id) =>
           setDepartments(
             venueScope(scope.venues, id ? [id] : [], true).selected,
@@ -828,8 +863,11 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
                     ) : (
                       <RestaurantPicker
                         restaurants={scope.venues}
-                        value={effectiveDepartments}
-                        onChange={setDepartments}
+                        value={automaticSalesDepartments ? [] : scope.selected}
+                        defaultDepartments={salesDefault}
+                        onChange={(ids) => {
+                          if (ids.length || !automaticSalesDepartments) setDepartments(ids);
+                        }}
                       />
                     )}
                     {location.pathname === "/" &&
@@ -882,7 +920,7 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
                         )}
                         {meta.live_sales_enabled &&
                           (location.pathname === "/" ||
-                            location.pathname === "/sales") && (
+                            salesWorkspace) && (
                             <button
                               className="reset-date"
                               onClick={() => {
@@ -1008,7 +1046,15 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
                             />
                           }
                         />
-                        <Route path="/sales" element={<SalesPage />} />
+                        <Route
+                          path="/sales"
+                          element={
+                            <SalesPage
+                              key={query(true)}
+                              emptyLiveScope={automaticSalesDepartments?.length === 0}
+                            />
+                          }
+                        />
                         <Route
                           path={KITCHEN_HEATMAP_PATH}
                           element={

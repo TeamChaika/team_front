@@ -11,17 +11,23 @@ type Restaurant = { id: string; name: string };
 export function RestaurantPicker({
   restaurants,
   value,
+  defaultDepartments,
   onChange,
 }: {
   restaurants: Restaurant[];
   value: string[];
+  defaultDepartments?: string[] | null;
   onChange: (ids: string[]) => void;
 }) {
   const [opened, setOpened] = useState(false);
   const [draft, setDraft] = useState(value);
   const [search, setSearch] = useState("");
+  const allLabel = `Все рестораны (${restaurants.length})`;
+  const defaultLabel = defaultDepartments
+    ? `С синхронизацией (${defaultDepartments.length} из ${restaurants.length})`
+    : allLabel;
   const label = !value.length
-    ? `Все рестораны (${restaurants.length})`
+    ? defaultLabel
     : value.length === 1
       ? (restaurants.find((r) => r.id === value[0])?.name ??
         "Выбранный ресторан")
@@ -78,11 +84,25 @@ export function RestaurantPicker({
           data-autofocus
         />
         <Checkbox
-          label={`Все рестораны (${restaurants.length})`}
+          label={defaultLabel}
           checked={draft.length === 0}
           onChange={() => setDraft([])}
           className="restaurant-picker-all"
         />
+        {defaultDepartments && (
+          <Checkbox
+            label={allLabel}
+            checked={draft.length === restaurants.length}
+            onChange={() =>
+              setDraft(
+                draft.length === restaurants.length
+                  ? []
+                  : restaurants.map((venue) => venue.id),
+              )
+            }
+            className="restaurant-picker-all"
+          />
+        )}
         <div
           className="restaurant-picker-options"
           role="group"
@@ -101,7 +121,11 @@ export function RestaurantPicker({
         </div>
         <div className="restaurant-picker-actions">
           <span className="muted" aria-live="polite">
-            {draft.length ? `Выбрано: ${draft.length}` : "Вся доступная сеть"}
+            {draft.length
+              ? `Выбрано: ${draft.length}`
+              : defaultDepartments
+                ? `Выбрано: ${defaultDepartments.length}`
+                : "Вся доступная сеть"}
           </span>
           <Button
             size="xs"
