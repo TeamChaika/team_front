@@ -163,6 +163,29 @@
 .price-history-table {
   min-width: 620px;
 }
+.price-history-table :is(th, td) {
+  padding-inline: 9px;
+}
+.price-history-suppliers {
+  min-width: 8em;
+  white-space: normal;
+}
+.price-supplier-names {
+  display: grid;
+  gap: 2px;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+.price-supplier-names strong {
+  color: var(--text);
+  font-weight: 600;
+}
+.price-supplier-label,
+.price-invoice-supplier {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
 .price-receipt-date {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -352,6 +375,8 @@
   .price-history .panel-heading button {
     min-height: 44px;
   }
+}
+@media (max-width: 720px) {
   .price-history-desktop {
     display: none;
   }
@@ -387,6 +412,9 @@
     color: var(--muted);
     font-size: 12px;
     font-variant-numeric: tabular-nums;
+  }
+  .price-receipt-card .price-supplier-names {
+    margin: 6px 0;
   }
   .price-receipt-links {
     flex-direction: row;

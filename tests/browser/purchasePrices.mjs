@@ -3,15 +3,16 @@ import { verifyPriceComparison, withPriceComparison } from "./purchasePriceHisto
 
 const cutoff = "2026-09-09";
 const reportUrl = "https://client.example.test/purchase-prices";
-const receipt = (date, price) => ({
+const receipt = (date, price, supplier = "Тестовый поставщик") => ({
   date, price, amount: "1", sum: price,
   lines: [{
     document_id: "invoice-" + date, document_number: date, num: 1, num_occurrence: 1,
-    supplier: "Тестовый поставщик", store: "Тестовый склад", department: null,
+    supplier, store: "Тестовый склад", department: null,
     amount: "1", sum: price, price, last_seen_at: date,
   }],
 });
-const earlier = receipt("2026-07-15", "100");
+const missingSupplierName = "92000000-0000-4000-8000-000000000001";
+const earlier = receipt("2026-07-15", "100", missingSupplierName);
 const rows = Array.from({ length: 54 }, (_, i) => {
   const date = ["2026-09-08", cutoff][i] ?? (i === 53 ? "2026-10-09" : "2026-10-08");
   const row = {
@@ -95,7 +96,11 @@ export async function verifyPurchasePrices(context, meta) {
     assert.equal(await recent.isChecked(), true);
     await firstItem.getByRole("button", { name: /Сравнение за один день закупок/ }).click();
     const dialog = page.getByRole("dialog");
-    await dialog.getByRole("cell", { name: "15.07.2026", exact: true }).waitFor();
+    const earlierRow = dialog.getByRole("row").filter({
+      has: page.getByRole("cell", { name: "15.07.2026", exact: true }),
+    });
+    await earlierRow.getByText("Название не найдено", { exact: true }).waitFor();
+    assert.ok(!(await earlierRow.innerText()).includes(missingSupplierName));
     await dialog.getByRole("link", {name: "Накладная №2026-07-15", exact: true}).waitFor();
     await dialog.getByRole("link", {name: "Накладная №2026-09-09", exact: true}).waitFor();
     await dialog.getByRole("button", { name: "Закрыть сравнение накладных" }).click();

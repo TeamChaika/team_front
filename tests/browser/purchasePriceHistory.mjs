@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 
-function purchase(date, price, quantities) {
-  const lines = quantities.map((amount, index) => ({
+function purchase(date, price, documents) {
+  const lines = documents.map(({ amount, supplier }, index) => ({
     document_id: `invoice-${date}-${index + 1}`,
     document_number: `${date}/${index + 1}`,
     num: index + 1,
     num_occurrence: 1,
-    supplier: "Поставщик " + date,
+    supplier,
     store: "Склад тестового ресторана",
     department: null,
     amount: String(amount),
@@ -14,7 +14,10 @@ function purchase(date, price, quantities) {
     sum: String(amount * price),
     last_seen_at: date,
   }));
-  const amount = quantities.reduce((total, value) => total + value, 0);
+  const amount = documents.reduce(
+    (total, document) => total + document.amount,
+    0,
+  );
   return {
     date,
     price: String(price),
@@ -25,8 +28,11 @@ function purchase(date, price, quantities) {
 }
 
 export function withPriceComparison(row) {
-  const earlier = purchase("2026-10-01", 80, [5]);
-  const later = purchase("2026-10-02", 100, [5, 10]);
+  const earlier = purchase("2026-10-01", 80, [{ amount: 5, supplier: null }]);
+  const later = purchase("2026-10-02", 100, [
+    { amount: 5, supplier: "Ферма Заречье" },
+    { amount: 10, supplier: "Молочный дом" },
+  ]);
   // Two invoice lines belong to the first document, so the disclosure still counts two invoices.
   const first = later.lines[0];
   later.lines.splice(
@@ -37,7 +43,9 @@ export function withPriceComparison(row) {
   );
   return {
     ...row,
-    current: purchase("2026-10-09", 114, [10]),
+    current: purchase("2026-10-09", 114, [
+      { amount: 10, supplier: "Крымская маслодельня" },
+    ]),
     previous: {
       date_from: earlier.date,
       date: later.date,
@@ -137,6 +145,22 @@ export async function verifyPriceComparison(page, productName) {
       assert.equal(await receipts.count(), 2);
       assert.match(await receipts.first().innerText(), /02\.10\.2026/);
       assert.match(await receipts.last().innerText(), /01\.10\.2026/);
+      if (width > 600) {
+        assert.ok(
+          await dialog
+            .getByRole("columnheader", { name: "Поставщик", exact: true })
+            .isVisible(),
+        );
+      } else {
+        assert.match(await receipts.first().innerText(), /Поставщики/);
+        assert.match(await receipts.last().innerText(), /Поставщик/);
+      }
+      // All suppliers are visible before any invoice or technical details are opened.
+      const suppliedReceipt = await receipts.first().innerText();
+      for (const supplier of ["Ферма Заречье", "Молочный дом"]) {
+        assert.equal(suppliedReceipt.split(supplier).length - 1, 1);
+      }
+      assert.match(await receipts.last().innerText(), /Не указан/i);
       const bundle = receipts.first().getByText("2 накладные", { exact: true });
       const invoice = (container, number) =>
         container.getByRole("link", { name: "№" + number, exact: true });
@@ -145,13 +169,22 @@ export async function verifyPriceComparison(page, productName) {
         false,
       );
       await bundle.click();
-      for (const suffix of [1, 2]) {
+      for (const [suffix, supplier] of [
+        [1, "Ферма Заречье"],
+        [2, "Молочный дом"],
+      ]) {
         const link = invoice(receipts.first(), "2026-10-02/" + suffix);
         assert.equal(
           await link.getAttribute("href"),
           "/invoices/invoice-2026-10-02-" + suffix,
         );
         assert.ok(await link.isVisible());
+        assert.ok(
+          await link
+            .locator("..")
+            .getByText(supplier, { exact: true })
+            .isVisible(),
+        );
       }
       await bundle.click();
       await invoice(receipts.first(), "2026-10-02/1").waitFor({
@@ -159,15 +192,16 @@ export async function verifyPriceComparison(page, productName) {
       });
       assert.ok(await invoice(receipts.last(), "2026-10-01/1").isVisible());
 
-      const latest = dialog
-        .locator("section")
-        .filter({
-          has: page.getByRole("heading", {
-            name: "Последнее поступление",
-            exact: true,
-          }),
-        });
-      await latest.getByText("Поставщик 2026-10-09", { exact: true }).waitFor();
+      const latest = dialog.locator("section").filter({
+        has: page.getByRole("heading", {
+          name: "Последнее поступление",
+          exact: true,
+        }),
+      });
+      assert.match(
+        (await latest.innerText()).replace(/\s+/g, " "),
+        /Поставщик\s*:?\s*Крымская маслодельня/,
+      );
       assert.ok(
         await latest
           .getByText("Склад тестового ресторана", { exact: true })
