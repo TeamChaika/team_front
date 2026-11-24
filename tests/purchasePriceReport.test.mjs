@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import {
   canReadPurchaseImpact,
@@ -34,9 +35,10 @@ test("pending or missing prepared impact gives one update notice", () => {
   assert.equal(purchaseImpactNotice(false), null);
 });
 
-const root = new URL("../", import.meta.url).pathname;
+const root = fileURLToPath(new URL("../", import.meta.url));
 const stubs = {
-  "./App": "export const useWorkspace=()=>globalThis.purchaseTestWorkspace;",
+  "./App":
+    "export const useWorkspace=()=>globalThis.purchaseTestWorkspace ?? {meta:{sales_dates:[]}};",
   "./useData":
     'export function useData(path) {globalThis.purchaseTestCalls.push(path);return {data:globalThis.purchaseTestReport,error:"",loading:false};}',
   "./AssistantContext": "export const useAssistant=()=>({open(){}});",
@@ -49,15 +51,21 @@ const stubs = {
   "react-router-dom":
     'import React from "react";export const Link=({children})=>React.createElement("a",null,children);',
   "@mantine/core":
-    'import React from "react";export const Button=({children,disabled})=>React.createElement("button",{disabled},children);export const Select=()=>null;export const Checkbox=()=>null;',
+    'import React from "react";export const Button=({children,disabled,onClick})=>{globalThis.purchaseTestButtons?.set(children,onClick);return React.createElement("button",{disabled},children)};export const Select=()=>null;export const Checkbox=()=>null;',
   "@mantine/hooks": "export const useElementSize=()=>({ref:null,width:740});",
   "@tabler/icons-react":
     "export const IconArrowUpRight=()=>null;export const IconDownload=()=>null;",
 };
 const bundled = await build({
   stdin: {
-    contents:
-      'import {PurchasePrices} from "./src/PurchasePrices";import {renderToStaticMarkup} from "react-dom/server";import React from "react";export const render=()=>renderToStaticMarkup(React.createElement(PurchasePrices));',
+    contents: `
+      import { PurchasePrices } from "./src/PurchasePrices";
+      import { LiveDataNotice } from "./src/LiveDataNotice";
+      import { renderToStaticMarkup } from "react-dom/server";
+      import React from "react";
+      export const render = () => renderToStaticMarkup(React.createElement(PurchasePrices));
+      export const liveNotice = source => renderToStaticMarkup(React.createElement(LiveDataNotice, { source }));
+    `,
     resolveDir: root,
   },
   bundle: true,
@@ -85,7 +93,7 @@ const bundled = await build({
     },
   ],
 });
-const { render } = await import(
+const { render, liveNotice } = await import(
   `data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString("base64")}`
 );
 const row = {
@@ -105,7 +113,7 @@ const row = {
   delta: "20",
   percent: "20",
 };
-function renderReport(mode, period) {
+function renderReport(mode, period, rows = [row]) {
   globalThis.purchaseTestWorkspace = {
     meta: { warehouse_scope: { mode } },
     query: () => "rms_id=abc",
@@ -123,11 +131,82 @@ function renderReport(mode, period) {
       unchanged: 0,
       short_history: 0,
     },
-    rows: [row],
+    rows,
     impact_period: period,
   };
   return render();
 }
+test("price totals use all matching rows even when only 50 are displayed", () => {
+  const rows = Array.from({ length: 55 }, (_, i) => ({
+    ...row,
+    product_id: String(i),
+    product: `Товар номер ${i}`,
+    delta: i < 51 ? "20" : "-5",
+  }));
+  const html = renderReport("selected", undefined, rows);
+  assert.match(html, /Товаров в выборке<\/span><strong>55<\/strong>/);
+  assert.match(html, /class="price-rise">51<\/strong>/);
+  assert.match(html, /class="price-fall">4<\/strong>/);
+  assert.match(html, /Товар номер 49/);
+  assert.doesNotMatch(html, /Товар номер 50/);
+});
+
+test("stored data explains paused sync even when the response lacks live timestamps and cache duration", () => {
+  const html = liveNotice({
+    source: "stored",
+    status: "sync_paused",
+    stale: true,
+  });
+  assert.match(html, /сохранённые данные/);
+  assert.match(html, /Синхронизация с iiko приостановлена/);
+  assert.match(html, /Обновить/);
+  assert.doesNotMatch(html, /NaN|Кеш|iiko API|занят или недоступен/);
+  assert.equal(liveNotice(undefined), "");
+});
+
+test("live data keeps the current snapshot's metadata and omits missing fields", () => {
+  const html = liveNotice({
+    source: "iiko_api",
+    stale: true,
+    observed_at: "2026-11-24",
+    cache_seconds: 300,
+  });
+  assert.match(html, /2026-11-24/);
+  assert.match(html, /Кеш — 5 мин/);
+  assert.match(html, /последний полученный срез/);
+  const partial = liveNotice({ source: "iiko_api", stale: false });
+  assert.match(partial, /iiko API/);
+  assert.doesNotMatch(partial, /Кеш|NaN|недоступен|undefined/);
+});
+
+test("paused sync can open the most recent available earlier date without changing venue selection", () => {
+  const paused = { source: "stored", status: "sync_paused", stale: true };
+  const today = "2026-11-24";
+  const periods = [];
+  globalThis.purchaseTestButtons = new Map();
+  globalThis.purchaseTestWorkspace = {
+    meta: {
+      today,
+      sales_dates: ["2026-11-20", "2026-11-25", today, "2026-11-22"],
+    },
+    setPeriod: (...dates) => periods.push(dates),
+  };
+  try {
+    const label = "Открыть 2026-11-22";
+    assert.match(liveNotice(paused), /Открыть 2026-11-22/);
+    globalThis.purchaseTestButtons.get(label)();
+    assert.deepEqual(periods, [["2026-11-22", "2026-11-22"]]);
+    assert.doesNotMatch(
+      liveNotice({ source: "iiko_api", stale: true }),
+      /Открыть/,
+    );
+    globalThis.purchaseTestWorkspace.meta.sales_dates = [today, "2026-11-25"];
+    assert.doesNotMatch(liveNotice(paused), /Открыть/);
+  } finally {
+    delete globalThis.purchaseTestButtons;
+    delete globalThis.purchaseTestWorkspace;
+  }
+});
 test("opening unrestricted report makes one prepared request and preserves prices/CSV while pending", () => {
   const html = renderReport("all", { status: "pending" });
   assert.equal(globalThis.purchaseTestCalls.length, 1);

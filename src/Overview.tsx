@@ -76,13 +76,17 @@ type Dish = {
   previous_revenue: string | null;
   change: Change;
 };
-export type OverviewData = {
-  data_status?: Sales["data_status"];
-  live?: Sales["live"];
+type TrendData = {
   current: Period;
   previous: Period;
-  changes: Record<Metric, Change>;
   trend: Trend[];
+  granularity?: string;
+  trends?: Record<string, Trend[]>;
+};
+export type OverviewData = TrendData & {
+  data_status?: Sales["data_status"];
+  live?: Sales["live"];
+  changes: Record<Metric, Change>;
   trends: Record<string, Trend[]>;
   restaurants: Restaurant[];
   top_dishes: Dish[];
@@ -324,7 +328,7 @@ function TrendChart({
   metric,
   setMetric,
 }: {
-  data: OverviewData;
+  data: TrendData;
   compare: boolean;
   grain: string;
   onGrain: (v: string) => void;
@@ -638,9 +642,13 @@ export function Overview({ tenant = false }: { tenant?: boolean }) {
   const trendParams = new URLSearchParams(w.query());
   trendParams.set("start", trendPeriod.start);
   trendParams.set("end", trendPeriod.end);
+  if (!tenant) {
+    trendParams.set("view", "trend");
+    trendParams.set("granularity", grain);
+  }
   const samePeriod = w.start === trendPeriod.start && w.end === trendPeriod.end;
   const state = useData<OverviewData>("/overview?" + w.query(true));
-  const recent = useData<OverviewData>(
+  const recent = useData<TrendData>(
     samePeriod ||
       !canLoadRecentOverview(tenant, state.loading, state.data?.current, {
         start: w.start,
@@ -654,17 +662,21 @@ export function Overview({ tenant = false }: { tenant?: boolean }) {
       ? null
       : "/purchase-prices?" +
           w.query() +
-          "&kind=unlinked&exclude_household=true&recent_only=true",
+          "&kind=unlinked&exclude_household=true&recent_only=true&view=top_increases",
   );
   const data =
     state.data?.current.start === w.start && state.data.current.end === w.end
-      ? { ...state.data, trend: state.data.trends[grain] }
+      ? state.data
       : null;
   const recentData = samePeriod ? data : recent.data;
+  const series =
+    recentData?.trends?.[grain] ??
+    (recentData?.granularity === grain ? recentData.trend : null);
   const trendData =
+    series &&
     recentData?.current.start === trendPeriod.start &&
     recentData.current.end === trendPeriod.end
-      ? { ...recentData, trend: recentData.trends[grain] }
+      ? { ...recentData, trend: series }
       : null;
   const trendState = samePeriod ? state : recent;
   const openPeriod = (p: Period) => {

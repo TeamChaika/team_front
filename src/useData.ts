@@ -25,7 +25,12 @@ export function useData<T>(path: string | null, keepPreviousOnReload = false) {
           }
         })
         .catch((e) => {
-          if (live && e.name !== "AbortError") setError(e.message);
+          if (!live || e.name === "AbortError") return;
+          if (e.status === 401 || e.status === 403) {
+            fetchedPath.current = null;
+            setData(null);
+          }
+          setError(e.message);
         })
         .finally(() => {
           if (live) {

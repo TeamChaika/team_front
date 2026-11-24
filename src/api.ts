@@ -80,6 +80,32 @@ export function renewSession(): Promise<Response> {
       });
   return refresh;
 }
+
+export function startSessionRenewal(renewImmediately: boolean) {
+  const interval = 20 * 60_000;
+  let lastAttempt = renewImmediately ? -Infinity : Date.now();
+  const renew = () => {
+    if (
+      document.visibilityState !== "visible" ||
+      Date.now() - lastAttempt < interval
+    )
+      return;
+    lastAttempt = Date.now();
+    void renewSession().catch(() => {
+      // The next API request can still recover an expired session on 401.
+    });
+  };
+  renew();
+  const timer = window.setInterval(renew, 60_000);
+  window.addEventListener("focus", renew);
+  document.addEventListener("visibilitychange", renew);
+  return () => {
+    window.clearInterval(timer);
+    window.removeEventListener("focus", renew);
+    document.removeEventListener("visibilitychange", renew);
+  };
+}
+
 async function request(
   path: string,
   init: RequestInit = {},
@@ -119,11 +145,18 @@ async function request(
       throw error;
     }
   }
+  const method = (init.method ?? "GET").toUpperCase();
+  const headers = new Headers(init.headers);
+  if (
+    (init.body != null || (method !== "GET" && method !== "HEAD")) &&
+    !headers.has("Content-Type")
+  )
+    headers.set("Content-Type", "application/json");
   const send = () =>
     fetch(apiBase + path, {
       ...init,
       credentials: "include",
-      headers: { "Content-Type": "application/json", ...init.headers },
+      headers,
     });
   const r = await ([
     "/auth/login",
@@ -308,42 +341,45 @@ export type Sales = {
   end: string;
 };
 export type LiveSource = {
-  source: "iiko_api";
-  date: string;
-  observed_at: string;
+  source: "iiko_api" | "stored";
+  status?: "sync_paused";
+  date?: string;
+  observed_at?: string | null;
   stale: boolean;
-  cache_seconds: number;
+  cache_seconds?: number | null;
 };
+const moneyFormat = new Intl.NumberFormat("ru-RU", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+const numberFormat = new Intl.NumberFormat("ru-RU", {
+  maximumFractionDigits: 6,
+});
+const dateOptions: Intl.DateTimeFormatOptions = {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  timeZone: "Europe/Simferopol",
+};
+const dateFormat = new Intl.DateTimeFormat("ru-RU", dateOptions);
+const dateTimeFormat = new Intl.DateTimeFormat("ru-RU", {
+  ...dateOptions,
+  hour: "2-digit",
+  minute: "2-digit",
+});
 export const money = (v: unknown) =>
-  v === null || v === undefined
-    ? "—"
-    : new Intl.NumberFormat("ru-RU", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      }).format(Number(v));
+  v === null || v === undefined ? "—" : moneyFormat.format(Number(v));
 export const number = (v: unknown) =>
-  v === null || v === undefined
-    ? "—"
-    : new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 6 }).format(
-        Number(v),
-      );
+  v === null || v === undefined ? "—" : numberFormat.format(Number(v));
 export function dateText(v: unknown) {
   if (!v) return "—";
-  let raw = String(v).replace(" ", "T");
+  const text = String(v);
+  let raw = text.replace(" ", "T");
   if (/^\d{4}-\d{2}-\d{2}T/.test(raw) && !/(Z|[+-]\d{2}:?\d{2})$/.test(raw))
     raw += "+03:00";
   const d = new Date(raw);
-  return Number.isNaN(d.getTime())
-    ? String(v)
-    : new Intl.DateTimeFormat("ru-RU", {
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-        ...(String(v).includes(":")
-          ? { hour: "2-digit" as const, minute: "2-digit" as const }
-          : {}),
-        timeZone: "Europe/Simferopol",
-      }).format(d);
+  if (Number.isNaN(d.getTime())) return text;
+  return (text.includes(":") ? dateTimeFormat : dateFormat).format(d);
 }
 export function csv(name: string, cols: Column[], rows: Row[]) {
   const cell = (v: unknown) => {

@@ -62,7 +62,7 @@ import {
   api,
   clearPasswordRequirement,
   getPasswordRequirementVersion,
-  renewSession,
+  startSessionRenewal,
   type Meta,
 } from "./api";
 import {
@@ -414,28 +414,9 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
   }, []);
   useEffect(() => {
     if ((tenant && !tenant.fullDashboard) || !meta?.user.id) return;
-    let lastAttempt = 0;
-    const renew = () => {
-      if (
-        document.visibilityState !== "visible" ||
-        Date.now() - lastAttempt < 20 * 60_000
-      )
-        return;
-      lastAttempt = Date.now();
-      void renewSession().catch(() => {
-        // A temporary outage keeps the current session; the next API request retries.
-      });
-    };
-    renew();
-    const timer = window.setInterval(renew, 60_000);
-    window.addEventListener("focus", renew);
-    document.addEventListener("visibilitychange", renew);
-    return () => {
-      window.clearInterval(timer);
-      window.removeEventListener("focus", renew);
-      document.removeEventListener("visibilitychange", renew);
-    };
-  }, [meta?.user.id]);
+    // Primary /me already validated the session. Full tenants retain their own renewal flow.
+    return startSessionRenewal(!!tenant);
+  }, [meta?.user.id, tenant?.fullDashboard]);
   useEffect(() => {
     if ((tenant && !tenant.fullDashboard) || !meta?.user.id || passwordRequired)
       return;

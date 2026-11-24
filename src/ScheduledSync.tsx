@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Badge, Button } from "@mantine/core";
 import { IconPlayerPlay } from "@tabler/icons-react";
 import { api, ApiError, dateText } from "./api";
+import { watchSchedule } from "./statusSchedule";
 import {
   manualSyncControl,
   reconcileSyncRequests,
@@ -19,12 +20,24 @@ const labels: Record<string, string> = {
 };
 
 export function ScheduledSync({
-  tasks,
-  reload,
+  tasks: initialTasks,
+  path,
+  paused,
+  invalidate,
 }: {
   tasks: ScheduledSyncTask[];
-  reload: () => void;
+  path: string;
+  paused: boolean;
+  invalidate: () => void;
 }) {
+  const [sample, setSample] = useState<{
+    seed: ScheduledSyncTask[];
+    tasks: ScheduledSyncTask[];
+  }>();
+  const tasks = sample?.seed === initialTasks ? sample.tasks : initialTasks;
+  const [pollError, setPollError] = useState("");
+  const watcher = useRef<ReturnType<typeof watchSchedule> | null>(null);
+  const refreshAfterFull = useRef(false);
   const sampledAt = useMemo(() => Date.now(), [tasks]);
   const [now, setNow] = useState(Date.now);
   const [sending, setSending] = useState<Record<string, boolean>>({});
@@ -66,19 +79,40 @@ export function ScheduledSync({
   }, [tasks]);
   useEffect(() => {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    const poll = window.setInterval(() => {
-      if (!document.hidden) reload();
-    }, 15000);
-    const onVisible = () => {
-      if (!document.hidden) reload();
-    };
-    document.addEventListener("visibilitychange", onVisible);
+    return () => window.clearInterval(timer);
+  }, []);
+  useEffect(() => {
+    if (paused) return;
+    setPollError("");
+    const poll = watchSchedule(
+      document,
+      (signal) => api(path, { signal }),
+      (updated) => {
+        // Losing the schedule may also remove access to the unrestricted history.
+        if (!updated.length) return invalidate();
+        setSample({ seed: initialTasks, tasks: updated });
+        setPollError("");
+      },
+      (error) => {
+        if (error instanceof ApiError && [401, 403].includes(error.status))
+          return invalidate();
+        setPollError(
+          error instanceof Error
+            ? error.message
+            : "Не удалось обновить расписание.",
+        );
+      },
+    );
+    watcher.current = poll;
+    if (refreshAfterFull.current) {
+      refreshAfterFull.current = false;
+      poll.refresh();
+    }
     return () => {
-      window.clearInterval(timer);
-      window.clearInterval(poll);
-      document.removeEventListener("visibilitychange", onVisible);
+      poll.stop();
+      watcher.current = null;
     };
-  }, [reload]);
+  }, [path, initialTasks, paused, invalidate]);
 
   async function run(task: ScheduledSyncTask) {
     if (
@@ -131,7 +165,8 @@ export function ScheduledSync({
         },
       }));
     } finally {
-      reload();
+      if (watcher.current) watcher.current.refresh();
+      else refreshAfterFull.current = true;
       inFlight.current.delete(task.job);
       setSending((old) => ({ ...old, [task.job]: false }));
     }
@@ -148,6 +183,11 @@ export function ScheduledSync({
           </p>
         </div>
       </div>
+      {pollError && (
+        <Alert color="red" role="alert">
+          {pollError}
+        </Alert>
+      )}
       <div className="table-scroll">
         <table className="data-table scheduled-sync-table">
           <thead>

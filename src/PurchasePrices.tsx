@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button, Checkbox, Select } from "@mantine/core";
 import { useElementSize } from "@mantine/hooks";
@@ -129,6 +129,7 @@ function Percent({ row }: { row: PriceChange }) {
 }
 const identity = (r: PriceChange) =>
   [r.product_id, r.store_id, r.unit_id, r.linked, r.current.date].join("/");
+const emptyRows: PriceChange[] = [];
 
 export function PurchasePrices() {
   const w = useWorkspace();
@@ -197,69 +198,92 @@ function PriceWorkspace({
       row?.product ?? null,
     );
   }
-  const all = report?.rows ?? [];
+  const all = report?.rows ?? emptyRows;
   const historySize = report?.history_size ?? 6;
-  const rows = all
-    .filter(
-      (r) =>
-        (!product || r.product_id === product) &&
-        (direction === "all" ||
-          (r.delta === null
-            ? "no_history"
-            : Number(r.delta) === 0
-              ? "unchanged"
-              : Number(r.delta) > 0
-                ? "rise"
-                : "fall") === direction) &&
-        (threshold === "0" ||
-          (r.percent !== null &&
-            Math.abs(Number(r.percent)) >= Number(threshold))),
-    )
-    .sort((a, b) => {
-      const byDate = b.current.date.localeCompare(a.current.date);
-      if (sort === "date") return byDate;
-      if (sort === "weekly_desc" || sort === "weekly_asc") {
-        const left = a.impact?.weekly_delta ?? null;
-        const right = b.impact?.weekly_delta ?? null;
-        if (left === null || right === null)
-          return left === right ? byDate : left === null ? 1 : -1;
-        return (
-          (sort === "weekly_asc"
-            ? Number(left) - Number(right)
-            : Number(right) - Number(left)) || byDate
-        );
-      }
-      // A zero baseline has no percentage; keep those rows last in either direction.
-      if (a.percent === null || b.percent === null) {
-        return a.percent === b.percent ? byDate : a.percent === null ? 1 : -1;
-      }
-      const left = Number(a.percent);
-      const right = Number(b.percent);
-      const difference =
-        sort === "percent"
-          ? Math.abs(right) - Math.abs(left)
-          : sort === "percent_asc"
-            ? left - right
-            : right - left;
-      return difference || byDate;
-    });
+  const rows = useMemo(
+    () =>
+      all
+        .filter(
+          (r) =>
+            (!product || r.product_id === product) &&
+            (direction === "all" ||
+              (r.delta === null
+                ? "no_history"
+                : Number(r.delta) === 0
+                  ? "unchanged"
+                  : Number(r.delta) > 0
+                    ? "rise"
+                    : "fall") === direction) &&
+            (threshold === "0" ||
+              (r.percent !== null &&
+                Math.abs(Number(r.percent)) >= Number(threshold))),
+        )
+        .sort((a, b) => {
+          const byDate = b.current.date.localeCompare(a.current.date);
+          if (sort === "date") return byDate;
+          if (sort === "weekly_desc" || sort === "weekly_asc") {
+            const left = a.impact?.weekly_delta ?? null;
+            const right = b.impact?.weekly_delta ?? null;
+            if (left === null || right === null)
+              return left === right ? byDate : left === null ? 1 : -1;
+            return (
+              (sort === "weekly_asc"
+                ? Number(left) - Number(right)
+                : Number(right) - Number(left)) || byDate
+            );
+          }
+          // A zero baseline has no percentage; keep those rows last in either direction.
+          if (a.percent === null || b.percent === null) {
+            return a.percent === b.percent
+              ? byDate
+              : a.percent === null
+                ? 1
+                : -1;
+          }
+          const left = Number(a.percent);
+          const right = Number(b.percent);
+          const difference =
+            sort === "percent"
+              ? Math.abs(right) - Math.abs(left)
+              : sort === "percent_asc"
+                ? left - right
+                : right - left;
+          return difference || byDate;
+        }),
+    [all, product, direction, threshold, sort],
+  );
   const currentPage = Math.min(
     page,
     Math.max(0, Math.ceil(rows.length / 50) - 1),
   );
   const visible = rows.slice(currentPage * 50, currentPage * 50 + 50);
-  const choices = () =>
-    [
-      ...new Map(
-        all.map((r) => [
-          r.product_id,
-          {
-            value: r.product_id,
-            label: r.product + (r.code ? " · " + r.code : ""),
-          },
-        ]),
-      ).values(),
-    ].sort((a, b) => a.label.localeCompare(b.label, "ru"));
+  const choices = useMemo(
+    () =>
+      [
+        ...new Map(
+          all.map((r) => [
+            r.product_id,
+            {
+              value: r.product_id,
+              label: r.product + (r.code ? " · " + r.code : ""),
+            },
+          ]),
+        ).values(),
+      ].sort((a, b) => a.label.localeCompare(b.label, "ru")),
+    [all],
+  );
+  const counts = useMemo(() => {
+    const products = new Set<string>();
+    let rises = 0;
+    let falls = 0;
+    for (const row of rows) {
+      products.add(row.product_id);
+      const delta = Number(row.delta);
+      if (delta > 0) rises++;
+      if (delta < 0) falls++;
+    }
+    return { products: products.size, rises, falls };
+  }, [rows]);
   function exportRows() {
     const cols = [
       ["product", "Товар"],
@@ -384,7 +408,7 @@ function PriceWorkspace({
               setProduct(v);
               setPage(0);
             }}
-            data={choices()}
+            data={choices}
             nothingFoundMessage="Товар не найден в поступлениях"
           />
           <Select
@@ -455,19 +479,15 @@ function PriceWorkspace({
             <div className="price-summary" aria-label="Итоги изменений">
               <div>
                 <span>Товаров в выборке</span>
-                <strong>{new Set(rows.map((r) => r.product_id)).size}</strong>
+                <strong>{counts.products}</strong>
               </div>
               <div>
                 <span>Повышений цены</span>
-                <strong className="price-rise">
-                  {rows.filter((r) => Number(r.delta) > 0).length}
-                </strong>
+                <strong className="price-rise">{counts.rises}</strong>
               </div>
               <div>
                 <span>Снижений цены</span>
-                <strong className="price-fall">
-                  {rows.filter((r) => Number(r.delta) < 0).length}
-                </strong>
+                <strong className="price-fall">{counts.falls}</strong>
               </div>
             </div>
             <section className="panel">
