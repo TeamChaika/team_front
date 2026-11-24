@@ -1,5 +1,6 @@
 import type { FeatureReadiness } from "./tenantFeatureReadiness";
 import { getDashboardRuntime } from "./dashboardRuntime";
+import { parseReportDate } from "./reportDate";
 export class ApiError extends Error {
   constructor(
     message: string,
@@ -382,12 +383,6 @@ export const money = (v: unknown) =>
   v === null || v === undefined ? "—" : moneyFormat.format(Number(v));
 export const number = (v: unknown) =>
   v === null || v === undefined ? "—" : numberFormat.format(Number(v));
-function parseReportDate(text: string) {
-  let raw = text.replace(" ", "T");
-  if (/^\d{4}-\d{2}-\d{2}T/.test(raw) && !/(Z|[+-]\d{2}:?\d{2})$/.test(raw))
-    raw += "+03:00";
-  return new Date(raw);
-}
 export function reportTimeText(value?: string | null) {
   if (!value?.includes(":")) return null;
   const date = parseReportDate(value);
