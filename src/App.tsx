@@ -1046,6 +1046,9 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
                           element={
                             <ManagementPage
                               documentsEnabled={meta.documents_enabled}
+                              purchaseDigestEnabled={
+                                !tenant && meta.can_manage === true && meta.purchase_digest_enabled === true
+                              }
                               integrationsEnabled={canManageIntegrations}
                               integrationsOnly={
                                 canManageIntegrations &&

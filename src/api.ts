@@ -268,6 +268,7 @@ export type Meta = {
   };
   supported_sales_kinds?: string[];
   kitchen_heatmap_enabled?: boolean;
+  purchase_digest_enabled?: boolean;
   documents_enabled?: boolean;
   sections?: string[];
   can_manage?: boolean;
