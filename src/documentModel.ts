@@ -53,6 +53,7 @@ export type DocumentRecord = DocumentDraft & {
   status: string;
   submission_state: string;
   receipt_state?: "none" | "pending_sender" | "accepted" | "rejected";
+  auto_receipt_due_at?: string | null;
   store: string;
   counteragent?: string;
   created_by: string;
@@ -89,6 +90,60 @@ export const receiptStatuses: Record<string, string> = {
   accepted: "Расхождение подтверждено",
   rejected: "Расхождение отклонено",
 };
+
+const receiptDay = new Intl.DateTimeFormat("ru-RU", {
+  timeZone: "Europe/Moscow",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+});
+const receiptTime = new Intl.DateTimeFormat("ru-RU", {
+  timeZone: "Europe/Moscow",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+function autoReceiptDeadline(doc: DocumentRecord) {
+  const value = doc.auto_receipt_due_at;
+  if (
+    doc.kind !== "waybill" ||
+    doc.status !== "Created" ||
+    doc.submission_state !== "idle" ||
+    doc.receipt_state !== "none" ||
+    !value ||
+    !/(?:Z|[+-]\d{2}:\d{2})$/.test(value)
+  )
+    return null;
+  const deadline = Date.parse(value);
+  return Number.isFinite(deadline) ? deadline : null;
+}
+
+export function autoReceiptLabel(doc: DocumentRecord, now = Date.now()) {
+  const deadline = autoReceiptDeadline(doc);
+  if (deadline === null) return null;
+  if (deadline <= now) return "Срок автоприёмки наступил";
+  let day = receiptDay.format(deadline);
+  if (day === receiptDay.format(now)) day = "сегодня";
+  else if (day === receiptDay.format(now + 86_400_000)) day = "завтра";
+  return `Будет принято автоматически ${day} в ${receiptTime.format(deadline)} МСК`;
+}
+
+export function documentPollDelay(
+  docs: readonly DocumentRecord[],
+  now = Date.now(),
+) {
+  let delay = Infinity;
+  for (const doc of docs) {
+    if (["queued", "sending"].includes(doc.submission_state))
+      delay = Math.min(delay, 5000);
+    if (writeoffReconciliationLabel(doc)) delay = Math.min(delay, 60_000);
+    const deadline = autoReceiptDeadline(doc);
+    if (deadline !== null) {
+      delay = Math.min(delay, 60_000, deadline > now ? deadline - now : 5000);
+    }
+  }
+  return Number.isFinite(delay) ? delay : null;
+}
 export function documentWorkflowLabel(doc: DocumentRecord) {
   if (doc.receipt_state === "pending_sender")
     return receiptStatuses.pending_sender;
