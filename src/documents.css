@@ -157,7 +157,8 @@
   gap: 12px;
   align-items: start;
 }
-.writeoff-cost-summary {
+.writeoff-cost-summary,
+.writeoff-reconciliation {
   padding: 14px;
   border: 1px solid var(--mantine-color-default-border);
   border-radius: 8px;

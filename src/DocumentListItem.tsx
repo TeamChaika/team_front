@@ -3,13 +3,13 @@ import { Link } from "react-router-dom";
 import { Badge, Group, Text } from "@mantine/core";
 import { dateText } from "./api";
 import { useDocumentCache, useDocumentSnapshot } from "./DocumentData";
+import { WriteoffReconciliation } from "./WriteoffReconciliation";
 import {
   writeoffListCostText,
   writeoffListEstimate,
 } from "./writeoffCostModel";
 import {
-  documentStatuses,
-  receiptStatuses,
+  documentWorkflowLabel,
   submissionLabel,
   type DocumentKind,
   type DocumentRecord,
@@ -31,13 +31,18 @@ export function DocumentListItem({
     kind === "writeoff" ? path : null,
   );
   const prefetch = useCallback(() => cache.prefetch(path), [cache, path]);
+  const checkedAt = doc.iiko_reconciliation?.checked_at;
   useEffect(() => {
     const previous = cache.get<DocumentRecord>(path).data;
     if (
       previous &&
       (previous.version !== doc.version ||
         previous.status !== doc.status ||
-        previous.submission_state !== doc.submission_state)
+        previous.submission_state !== doc.submission_state ||
+        (checkedAt &&
+          (!previous.iiko_reconciliation?.checked_at ||
+            Date.parse(checkedAt) >
+              Date.parse(previous.iiko_reconciliation.checked_at))))
     )
       cache.invalidate(path, true);
     if (!link.current || !window.IntersectionObserver) return;
@@ -52,7 +57,15 @@ export function DocumentListItem({
     );
     observer.observe(link.current);
     return () => observer.disconnect();
-  }, [cache, path, prefetch, doc.version, doc.status, doc.submission_state]);
+  }, [
+    cache,
+    path,
+    prefetch,
+    doc.version,
+    doc.status,
+    doc.submission_state,
+    checkedAt,
+  ]);
   return (
     <Link
       ref={link}
@@ -81,25 +94,17 @@ export function DocumentListItem({
               {writeoffListCostText(writeoffListEstimate(doc, detail))}
             </Text>
           )}
-          {["queued", "sending", "unknown", "rejected"].includes(
-            doc.submission_state,
-          ) && (
-            <Text c="orange" size="sm">
-              {submissionLabel(doc.submission_state)}
-            </Text>
-          )}
+          {kind === "writeoff" && <WriteoffReconciliation doc={doc} compact />}
+          {!(doc.iiko_reconciliation && doc.submission_state === "unknown") &&
+            ["queued", "sending", "unknown", "rejected"].includes(
+              doc.submission_state,
+            ) && (
+              <Text c="orange" size="sm">
+                {submissionLabel(doc.submission_state)}
+              </Text>
+            )}
         </div>
-        <Badge size="sm">
-          {doc.receipt_state === "pending_sender"
-            ? receiptStatuses.pending_sender
-            : doc.submission_state === "queued"
-              ? "Согласован · в очереди"
-              : doc.submission_state === "sending"
-                ? "Отправляется"
-                : doc.receipt_state === "rejected"
-                  ? receiptStatuses.rejected
-                  : documentStatuses[doc.status] || doc.status}
-        </Badge>
+        <Badge size="sm">{documentWorkflowLabel(doc)}</Badge>
       </Group>
     </Link>
   );
