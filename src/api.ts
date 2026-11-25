@@ -259,6 +259,7 @@ export type DataStatus = {
   timezone?: string;
 };
 export type Meta = {
+  profit_loss_access?: import("./profitLossModel").FinanceAccess | null;
   feature_readiness?: FeatureReadiness;
   data_status?: DataStatus;
   warehouse_scope?: { mode: "all" | "selected"; warehouse_ids: string[] };
@@ -287,6 +288,8 @@ export type Meta = {
     id: string;
     name: string;
     code: string;
+    type?: string;
+    present_in_latest?: boolean;
     archived?: boolean;
     sync_enabled?: boolean;
   }[];

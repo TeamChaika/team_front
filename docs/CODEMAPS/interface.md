@@ -8,6 +8,7 @@
 | График за 30 завершённых дней | В основном кабинете отдельный `GET /overview` получает `view=trend` и выбранную календарную группировку. Смена показателя использует те же данные. При совпадении периода с полным обзором график берётся из него; клиентский кабинет сохраняет действующий запрос полного отчёта. |
 | `/indicators` | [Indicators.tsx](../../src/Indicators.tsx), [indicatorPeriods.ts](../../src/indicatorPeriods.ts); `GET /indicators/filters`, `POST /indicators/metric/:key` |
 | `/sales?kind=...` | `SalesPage` в [pages.tsx](../../src/pages.tsx); `GET /sales/:kind` |
+| `/profit-loss` | [ProfitLoss.tsx](../../src/ProfitLoss.tsx), [ExpenseEditor.tsx](../../src/ExpenseEditor.tsx) и [ExpenseDetails.tsx](../../src/ExpenseDetails.tsx). В основном Dashboard поле `/me.profit_loss_access` открывает журнал `/profit-loss/expenses`; владелец также получает `GET /profit-loss/report`. По умолчанию период с начала месяца по сегодня, расход относится к дате расхода. Запись, исправление и аннулирование используют UUID запроса или ревизию записи. |
 | `/sales/kitchen-heatmap` | [KitchenHeatmapPage.tsx](../../src/KitchenHeatmapPage.tsx) → `GET /sales/kitchen/heatmap`; доступ к продажам и `meta.kitchen_heatmap_enabled=true` |
 | `/cash-shifts`, `/invoices`, `/outgoing`, `/products`, `/charts`, `/employees`, `/events` | `ResourcePage` в [pages.tsx](../../src/pages.tsx); `GET /resources/:resource` |
 | `/:resource/:id` | `DetailPage` в [pages.tsx](../../src/pages.tsx); `GET /resources/:resource/:id` |

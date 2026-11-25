@@ -4,6 +4,7 @@
 npm run build
 BROWSER_CHANNEL=chrome node tests/browser/tenantDashboard.smoke.mjs
 BROWSER_CHANNEL=chrome node tests/browser/purchaseDigest.mjs
+BROWSER_CHANNEL=chrome node tests/browser/profitLoss.mjs
 ```
 
 Нужен доступный пакет `playwright` и установленный Chrome. При необходимости
@@ -11,6 +12,8 @@ BROWSER_CHANNEL=chrome node tests/browser/purchaseDigest.mjs
 `BROWSER_CHANNEL` используется Chromium, установленный Playwright.
 
 `purchaseDigest.mjs` проверяет вкладку рассылки в основной сборке: выбор канала по ссылке на сообщение, включение, отключение, конфликт версий и доступность по признаку из `/me`.
+
+`profitLoss.mjs` проверяет роли владельца, бухгалтерии и менеджера, мобильную форму, повтор после потери ответа, правку, аннулирование и историю расходов.
 
 Проверка читает production-файлы `dist`; `DASHBOARD_DIST` меняет этот путь.
 Для SaaS entrypoint используйте `DASHBOARD_DIST=dist-saas-admin` и

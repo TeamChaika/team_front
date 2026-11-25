@@ -1,5 +1,6 @@
 import { venueScope, drilldownDepartments } from "./venueArchiveModel";
 import { salesDefaultDepartments } from "./salesScope";
+import { hasProfitLossAccess } from "./profitLossModel";
 import Support from "./Support";
 import { companyIntegrationsAllowed } from "./companyIntegrationsModel";
 import {
@@ -39,6 +40,7 @@ import {
 } from "@mantine/core";
 import {
   IconChartBar,
+  IconReportMoney,
   IconLayoutDashboard,
   IconReceipt,
   IconArrowsExchange,
@@ -89,6 +91,7 @@ import { RestaurantPicker } from "./RestaurantPicker";
 const Indicators = lazy(() =>
   import("./Indicators").then((module) => ({ default: module.Indicators })),
 );
+const ProfitLoss = lazy(() => import("./ProfitLoss"));
 const DepositsPage = lazy(() =>
   import("./DepositsPage").then((module) => ({ default: module.DepositsPage })),
 );
@@ -121,6 +124,7 @@ export const sections = [
   { path: "/", title: "Обзор", icon: IconLayoutDashboard },
   { path: "/indicators", title: "Показатели", icon: IconActivity },
   { path: "/sales", title: "Продажи", icon: IconChartBar },
+  { path: "/profit-loss", title: "Прибыли и убытки", icon: IconReportMoney },
   { path: "/deposits", title: "Депозиты", icon: IconReceipt },
   { path: "/cash-shifts", title: "Кассовые смены", icon: IconReceipt },
   { path: "/invoices", title: "Приходные накладные", icon: IconReceipt },
@@ -583,6 +587,9 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
     tenant && !tenant.preserveHistoryReads
       ? (meta.feature_readiness ?? tenant.featureReadiness)
       : undefined;
+  const financeAccess = meta.profit_loss_access;
+  const showFinance = hasProfitLossAccess(financeAccess, Boolean(tenant))
+    && !meta.warehouse_capabilities?.unsupported_sections.includes("profit-loss");
   const assigned =
     meta.sections ??
     (meta.user.role === "deposits"
@@ -592,9 +599,11 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
     tenant ? tenantSections(assigned, tenant.fullDashboard === true) : assigned
   ).filter(
     (section) =>
+      (section !== "profit-loss" || showFinance) &&
       !meta.warehouse_capabilities?.unsupported_sections.includes(section) &&
       tenantSectionReady(featureReadiness, section),
   );
+  if (showFinance && !allowed.includes("profit-loss")) allowed.push("profit-loss");
   const canManageIntegrations = companyIntegrationsAllowed(
     Boolean(tenant),
     meta.can_manage_integrations,
@@ -635,7 +644,7 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
     !tenant?.preserveHistoryReads &&
     tenantFeatureAllowed(featureReadiness, "assistant.chat", "read") &&
     tenantFeatureAllowed(featureReadiness, "assistant.chat", "write") &&
-    !["deposits", "management", "profile"].includes(currentSection);
+    !["deposits", "management", "profile", "profit-loss"].includes(currentSection);
   const ContentLayout = canAssistant ? AssistantLayout : Fragment;
   const title =
     currentSection === "profile"
@@ -861,7 +870,7 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
                     new URLSearchParams(location.search).get("view") !==
                       "analytics")
                 ) &&
-                !["deposits", "management", "profile"].includes(
+                !["deposits", "management", "profile", "profit-loss"].includes(
                   currentSection,
                 ) && (
                   <div className="filterbar">
@@ -1105,6 +1114,12 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
                           }
                         />
                         <Route
+                          path="/profit-loss"
+                          element={showFinance && currentAllowed
+                            ? <ProfitLoss key={meta.user.id + financeAccess} access={financeAccess} />
+                            : <Navigate to="/" replace />}
+                        />
+                        <Route
                           path="/indicators"
                           element={
                             <Indicators
@@ -1154,6 +1169,7 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
                                 "/",
                                 "/sales",
                                 "/deposits",
+                                "/profit-loss",
                                 "/management",
                                 "/indicators",
                                 "/status",
