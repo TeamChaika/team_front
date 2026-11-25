@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import {
   ActionIcon,
   Alert,
@@ -34,7 +34,17 @@ import "./profitLoss.css";
 function currency(value: string | null) {
   return value == null ? "—" : money(value) + " ₽";
 }
-function Summary({ query, version }: { query: string; version: string }) {
+function Summary({
+  query,
+  version,
+  syncedCount,
+  selectSynced,
+}: {
+  query: string;
+  version: string;
+  syncedCount: number;
+  selectSynced: () => void;
+}) {
   const { data, loading, error, reload } = useData<ProfitReport>(
     "/profit-loss/report?" + query,
     true,
@@ -72,9 +82,16 @@ function Summary({ query, version }: { query: string; version: string }) {
         ))}
       </div>
       {!data.complete ? (
-        <p className="muted">
-          Данные iiko за период неполные. Сумма внесённых расходов доступна.
-        </p>
+        <div>
+          <p className="muted">
+            Данные iiko за период неполные. Сумма внесённых расходов доступна.
+          </p>
+          {syncedCount > 0 && (
+            <Button variant="light" size="xs" mt="xs" onClick={selectSynced}>
+              Выбрать заведения с синхронизацией iiko ({syncedCount})
+            </Button>
+          )}
+        </div>
       ) : (
         data.provisional && (
           <p className="muted">В период входят предварительные данные iiko.</p>
@@ -292,10 +309,19 @@ export default function ProfitLoss({ access }: { access: FinanceAccess }) {
       : writable.length === 1
         ? writable[0].id
         : "";
-  const query = expenseQuery(
-    range,
-    drilldownDepartments(scope.venues, scope.selected),
-  );
+  const reportDepartments = drilldownDepartments(scope.venues, scope.selected);
+  const synced = scope.venues
+    .filter((v) => v.sync_enabled === true && reportDepartments.includes(v.id))
+    .map((v) => v.id);
+  const query = expenseQuery(range, reportDepartments);
+  function selectMonth(value: string) {
+    setMonth(value);
+    if (value) setRange(periodForMonth(value, today));
+  }
+  function selectDate(field: "start" | "end", value: string) {
+    setMonth("");
+    setRange((current) => ({ ...current, [field]: value }));
+  }
   const close = () => setDialog(null);
   const reload = () => setVersion((v) => v + 1);
   function saved() {
@@ -334,30 +360,23 @@ export default function ProfitLoss({ access }: { access: FinanceAccess }) {
           type="month"
           label="Месяц"
           value={month}
-          onChange={(e) => {
-            const value = e.currentTarget.value;
-            setMonth(value);
-            if (value) setRange(periodForMonth(value, today));
-          }}
+          onChange={(e) => selectMonth(e.currentTarget.value)}
+          onInput={(e) => selectMonth(e.currentTarget.value)}
         />
         <TextInput
           type="date"
           label="С"
           value={range.start}
-          onChange={(e) => {
-            setMonth("");
-            setRange({ ...range, start: e.currentTarget.value });
-          }}
+          onChange={(e) => selectDate("start", e.currentTarget.value)}
+          onInput={(e) => selectDate("start", e.currentTarget.value)}
         />
         <TextInput
           type="date"
           label="По"
           value={range.end}
           min={range.start}
-          onChange={(e) => {
-            setMonth("");
-            setRange({ ...range, end: e.currentTarget.value });
-          }}
+          onChange={(e) => selectDate("end", e.currentTarget.value)}
+          onInput={(e) => selectDate("end", e.currentTarget.value)}
         />
         {venues.some((v) => v.archived) && (
           <Checkbox
@@ -378,23 +397,29 @@ export default function ProfitLoss({ access }: { access: FinanceAccess }) {
         </p>
       )}
       {query ? (
-        <>
+        <Fragment key={query}>
           {access === "owner" &&
             (range.end <= today ? (
-              <Summary key={query} query={query} version={String(version)} />
+              <Summary
+                query={query}
+                version={String(version)}
+                syncedCount={
+                  synced.length < reportDepartments.length ? synced.length : 0
+                }
+                selectSynced={() => setDepartments(synced)}
+              />
             ) : (
               <p className="muted">
                 Для расчёта прибыли выберите период по сегодняшнюю дату.
               </p>
             ))}
           <Journal
-            key={query}
             query={query}
             version={String(version)}
             access={access}
             setDialog={open}
           />
-        </>
+        </Fragment>
       ) : (
         <p className="muted">
           {scope.empty
