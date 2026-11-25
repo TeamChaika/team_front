@@ -26,16 +26,18 @@ import { DocumentListItem } from "./DocumentListItem";
 import { useWorkspace } from "./App";
 import { DocumentEditor } from "./DocumentEditor";
 import { WriteoffCostSummary } from "./WriteoffCosts";
+import { WriteoffReconciliation } from "./WriteoffReconciliation";
 import { writeoffMoney } from "./writeoffCostModel";
 import {
   actionSnapshot,
   documentStatuses,
+  documentWorkflowLabel,
   documentEditorCatalogs,
   receiptDifference,
   receiptPayload,
   receiptSnapshot,
-  receiptStatuses,
   submissionLabel,
+  writeoffReconciliationLabel,
   type DocumentKind,
   type DocumentOptions,
   type DocumentRecord,
@@ -119,12 +121,19 @@ function DocumentCard({
     !!doc && !!receiptBasis && doc.version !== receiptBasis.version;
   const confirmationStale =
     !!doc && !!confirmation && doc.version !== confirmation.version;
-  const pending = doc && ["queued", "sending"].includes(doc.submission_state);
+  const pollDelay =
+    doc && ["queued", "sending"].includes(doc.submission_state)
+      ? 5000
+      : doc && writeoffReconciliationLabel(doc)
+        ? 60_000
+        : null;
   useEffect(() => {
-    if (!pending || state.refreshing) return;
-    const timer = window.setTimeout(state.reload, 5000);
+    if (!pollDelay || state.refreshing) return;
+    const timer = window.setTimeout(() => {
+      if (document.visibilityState === "visible") state.reload();
+    }, pollDelay);
     return () => window.clearTimeout(timer);
-  }, [pending, state.refreshing, state.reload]);
+  }, [pollDelay, state.refreshing, state.reload]);
   async function act(selected: NonNullable<typeof confirmation>) {
     setBusy(true);
     setError("");
@@ -223,15 +232,7 @@ function DocumentCard({
           {doc && (
             <>
               <Group>
-                <Badge>
-                  {doc.receipt_state === "pending_sender"
-                    ? receiptStatuses.pending_sender
-                    : doc.submission_state === "queued"
-                      ? "Согласован · в очереди"
-                      : doc.submission_state === "sending"
-                        ? "Отправляется"
-                        : documentStatuses[doc.status] || doc.status}
-                </Badge>
+                <Badge>{documentWorkflowLabel(doc)}</Badge>
                 <Text size="sm">Версия {doc.version}</Text>
               </Group>
               {kind === "waybill" && doc.receipt_state === "pending_sender" && (
@@ -248,15 +249,17 @@ function DocumentCard({
                   количество.
                 </Alert>
               )}
-              {doc.submission_state !== "idle" && (
-                <Alert
-                  color={doc.submission_state === "sent" ? "teal" : "yellow"}
-                >
-                  {submissionLabel(doc.submission_state)}
-                  {doc.submission_state === "sent" &&
-                    ". Проведение документа проверяется в iiko."}
-                </Alert>
-              )}
+              {doc.submission_state !== "idle" &&
+                !writeoffReconciliationLabel(doc) && (
+                  <Alert
+                    color={doc.submission_state === "sent" ? "teal" : "yellow"}
+                  >
+                    {submissionLabel(doc.submission_state)}
+                    {doc.submission_state === "sent" &&
+                      ". Проведение документа проверяется в iiko."}
+                  </Alert>
+                )}
+              {kind === "writeoff" && <WriteoffReconciliation doc={doc} />}
               <SimpleGrid cols={{ base: 1, sm: 2 }}>
                 <Text>
                   <b>Склад:</b> {doc.store}
@@ -608,15 +611,22 @@ export function DocumentsPage({ kind }: { kind: DocumentKind }) {
     tab === "requests" ? listPath : null,
     30_000,
   );
-  const pending = state.data?.rows.some((doc) =>
+  const rows = state.data?.rows;
+  const pollDelay = rows?.some((doc) =>
     ["queued", "sending"].includes(doc.submission_state),
-  );
+  )
+    ? 5000
+    : rows?.some(writeoffReconciliationLabel)
+      ? 60_000
+      : null;
   useEffect(() => {
-    if (!pending || tab !== "requests" || documentId || state.refreshing)
+    if (!pollDelay || tab !== "requests" || documentId || state.refreshing)
       return;
-    const timer = window.setTimeout(state.reload, 5000);
+    const timer = window.setTimeout(() => {
+      if (document.visibilityState === "visible") state.reload();
+    }, pollDelay);
     return () => window.clearTimeout(timer);
-  }, [pending, tab, documentId, state.refreshing, state.reload]);
+  }, [pollDelay, tab, documentId, state.refreshing, state.reload]);
   function changed() {
     cache.invalidate(`/documents/${kind}`);
   }
@@ -754,7 +764,7 @@ export function DocumentsPage({ kind }: { kind: DocumentKind }) {
               )}
               <div className="document-filters">
                 <Select
-                  label="Статус"
+                  label="Статус заявки"
                   value={filters.status}
                   onChange={(v) => filter("status", v || "")}
                   data={[

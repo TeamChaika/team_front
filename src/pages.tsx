@@ -2,6 +2,7 @@ import { useCallback, useState, type ReactNode } from "react";
 import { ScheduledSync } from "./ScheduledSync";
 import { cashShiftPage } from "./statusSchedule";
 import { CommercialPdfButton } from "./CommercialPdfButton";
+import { iikoDocumentStatuses } from "./documentModel";
 import type { ScheduledSyncTask } from "./scheduledSyncModel";
 import { PartialDayNotice } from "./PartialDayNotice";
 import { Link, useLocation, useParams, useSearchParams } from "react-router-dom";
@@ -137,9 +138,7 @@ const numberKeys = new Set([
   "days",
 ]);
 const statusLabels: Record<string, string> = {
-  PROCESSED: "Проведён",
-  NEW: "Новый",
-  DELETED: "Удалён",
+  ...iikoDocumentStatuses,
   succeeded: "Завершено",
   failed: "Ошибка",
   running: "В работе",

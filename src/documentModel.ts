@@ -22,6 +22,21 @@ export type DocumentItem = {
   received_amount?: number | null;
 };
 export type ReceiptItem = { product_id: string; amount: number | string };
+export type WriteoffReconciliation = {
+  state: "matched" | "not_found" | "ambiguous";
+  iiko_status: "NEW" | "PROCESSED" | "DELETED" | null;
+  checked_at: string;
+  expected_date: string | null;
+  actual_date: string | null;
+  date_differs: boolean;
+  quantity_difference_count: number;
+  quantity_differences?: {
+    product_id: string;
+    name: string | null;
+    expected_amount: string | number | null;
+    actual_amount: string | number | null;
+  }[];
+};
 export type DocumentDraft = {
   store_id: string;
   counteragent_id?: string;
@@ -45,6 +60,7 @@ export type DocumentRecord = DocumentDraft & {
   processed_by?: string;
   processed_at?: string;
   actions?: string[];
+  iiko_reconciliation?: WriteoffReconciliation | null;
   cost_estimate?: WriteoffCostEstimate | null;
   history?: {
     action: string;
@@ -73,6 +89,51 @@ export const receiptStatuses: Record<string, string> = {
   accepted: "Расхождение подтверждено",
   rejected: "Расхождение отклонено",
 };
+export function documentWorkflowLabel(doc: DocumentRecord) {
+  if (doc.receipt_state === "pending_sender")
+    return receiptStatuses.pending_sender;
+  if (doc.submission_state === "queued") return "Согласован · в очереди";
+  if (doc.submission_state === "sending") return "Отправляется";
+  if (doc.receipt_state === "rejected") return receiptStatuses.rejected;
+  if (
+    doc.kind === "writeoff" &&
+    doc.status === "Created" &&
+    doc.submission_state === "unknown"
+  )
+    return "Согласован";
+  return documentStatuses[doc.status] || doc.status;
+}
+
+export function writeoffReconciliationLabel(
+  doc: DocumentRecord,
+): string | null {
+  const result = doc.iiko_reconciliation;
+  if (doc.kind !== "writeoff" || result === undefined) return null;
+  if (result === null)
+    return ["unknown", "sent"].includes(doc.submission_state) ||
+      doc.status === "Sent"
+      ? "Ещё не проверен"
+      : null;
+  if (result.state === "not_found") return "Акт не найден при сверке";
+  if (result.state === "ambiguous") return "Найдено несколько актов";
+  return result.iiko_status
+    ? iikoDocumentStatuses[result.iiko_status] || "Статус неизвестен"
+    : "Статус неизвестен";
+}
+
+export const iikoDocumentStatuses = {
+  NEW: "Новый",
+  PROCESSED: "Проведён",
+  DELETED: "Удалён",
+};
+
+const quantityFormat = new Intl.NumberFormat("ru-RU", {
+  maximumFractionDigits: 20,
+});
+export function reconciledQuantity(amount: string | number | null) {
+  if (amount === null) return "Нет позиции";
+  return quantityFormat.format(Number(amount));
+}
 export function receiptSnapshot(
   doc: Pick<DocumentRecord, "id" | "version" | "items">,
 ) {
