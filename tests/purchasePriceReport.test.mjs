@@ -396,6 +396,10 @@ test("ready report displays saved weekly amount without update notice", () => {
   });
   assert.equal(globalThis.purchaseTestCalls.length, 1);
   assert.match(html, /\+140/);
+  assert.match(html, /<button>ИИ-помощник<\/button>/);
+  assert.match(html, /<button>Динамика<\/button>/);
+  assert.match(html, /<button>Блюда и влияние<\/button>/);
+  assert.doesNotMatch(html, /Спросить ИИ/);
   assert.doesNotMatch(html, /Расчёт обновляется/);
   delete row.impact;
 });

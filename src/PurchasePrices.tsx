@@ -210,23 +210,14 @@ function PriceWorkspace({
   );
   const [selected, setSelected] = useState<PriceChange | null>(null);
   const [impact, setImpact] = useState<PriceChange | null>(null);
-  function openAssistant(row: PriceChange | null = null) {
-    assistant.open(
-      {
-        product: row
-          ? {
-              product_id: row.product_id,
-              unit_id: row.unit_id,
-              linked: row.linked,
-            }
-          : null,
-        kind,
-        exclude_household: excludeHousehold,
-        recent_only: recentOnly,
-        recent_period: "month",
-      },
-      row?.product ?? null,
-    );
+  function openAssistant() {
+    assistant.open({
+      product: null,
+      kind,
+      exclude_household: excludeHousehold,
+      recent_only: recentOnly,
+      recent_period: "month",
+    });
   }
   const all = report?.rows ?? emptyRows;
   const historySize = report?.history_size ?? 6;
@@ -388,7 +379,7 @@ function PriceWorkspace({
         subtitle="Цена товара по всей сети: последняя закупка и средняя 6 предыдущих поступлений."
       />
       <div className="price-assistant-launch">
-        <Button variant="light" onClick={() => openAssistant()}>
+        <Button variant="light" onClick={openAssistant}>
           ИИ-помощник
         </Button>
       </div>
@@ -823,14 +814,6 @@ function PriceWorkspace({
                                 Блюда и влияние
                               </Button>
                             )}
-                            <Button
-                              size="xs"
-                              variant="subtle"
-                              onClick={() => openAssistant(r)}
-                              aria-label={"Спросить ИИ: " + r.product}
-                            >
-                              Спросить ИИ
-                            </Button>
                           </div>
                         </td>
                       </tr>
