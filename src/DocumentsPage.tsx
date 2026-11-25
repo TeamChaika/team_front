@@ -30,6 +30,8 @@ import { WriteoffReconciliation } from "./WriteoffReconciliation";
 import { writeoffMoney } from "./writeoffCostModel";
 import {
   actionSnapshot,
+  autoReceiptLabel,
+  documentPollDelay,
   documentStatuses,
   documentWorkflowLabel,
   documentEditorCatalogs,
@@ -121,12 +123,8 @@ function DocumentCard({
     !!doc && !!receiptBasis && doc.version !== receiptBasis.version;
   const confirmationStale =
     !!doc && !!confirmation && doc.version !== confirmation.version;
-  const pollDelay =
-    doc && ["queued", "sending"].includes(doc.submission_state)
-      ? 5000
-      : doc && writeoffReconciliationLabel(doc)
-        ? 60_000
-        : null;
+  const deadline = doc && autoReceiptLabel(doc);
+  const pollDelay = doc && documentPollDelay([doc]);
   useEffect(() => {
     if (!pollDelay || state.refreshing) return;
     const timer = window.setTimeout(() => {
@@ -235,6 +233,7 @@ function DocumentCard({
                 <Badge>{documentWorkflowLabel(doc)}</Badge>
                 <Text size="sm">Версия {doc.version}</Text>
               </Group>
+              {deadline && <Text size="sm">{deadline}</Text>}
               {kind === "waybill" && doc.receipt_state === "pending_sender" && (
                 <Alert color="yellow">
                   Получатель указал фактическое количество. Отправитель должен
@@ -612,13 +611,7 @@ export function DocumentsPage({ kind }: { kind: DocumentKind }) {
     30_000,
   );
   const rows = state.data?.rows;
-  const pollDelay = rows?.some((doc) =>
-    ["queued", "sending"].includes(doc.submission_state),
-  )
-    ? 5000
-    : rows?.some(writeoffReconciliationLabel)
-      ? 60_000
-      : null;
+  const pollDelay = rows && documentPollDelay(rows);
   useEffect(() => {
     if (!pollDelay || tab !== "requests" || documentId || state.refreshing)
       return;

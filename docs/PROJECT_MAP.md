@@ -18,6 +18,7 @@
 | Продажи, ресурсы, детали, статус данных | [pages.tsx](../src/pages.tsx), [interface.md](CODEMAPS/interface.md). Для периода с сегодняшним днём [salesScope.ts](../src/salesScope.ts) определяет выбор по умолчанию из `GET /me` и признака `departments[].sync_enabled`. Запрос продаж передаёт выбранные `department_id`, а при автоматическом выборе более 100 заведений — `sync_only=true`. |
 | Приходные накладные, реализация и счёт PDF | [CommercialInvoices.tsx](../src/CommercialInvoices.tsx), [commercialInvoiceModel.ts](../src/commercialInvoiceModel.ts); `/invoices`, `/outgoing`, [контракт](CODEMAPS/documents.md#приходные-накладные-и-реализация) |
 | Перемещения/списания: заявки, согласование | [DocumentsPage.tsx](../src/DocumentsPage.tsx), [documents.md](CODEMAPS/documents.md) |
+| Срок автоприёмки перемещения | [documentModel.ts](../src/documentModel.ts) форматирует `auto_receipt_due_at` для списка и карточки по московскому времени |
 | Статус списания в iiko, расхождения даты и количества | [WriteoffReconciliation.tsx](../src/WriteoffReconciliation.tsx), поле `iiko_reconciliation` в списке и карточке |
 | Форма документа и проверки данных | [DocumentEditor.tsx](../src/DocumentEditor.tsx), [documentModel.ts](../src/documentModel.ts); мобильный подбор — [MobileDocumentItems.tsx](../src/MobileDocumentItems.tsx) |
 | Оценка стоимости списания | [WriteoffCosts.tsx](../src/WriteoffCosts.tsx), [writeoffCostModel.ts](../src/writeoffCostModel.ts); сумма после создания заявки |

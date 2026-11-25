@@ -9,6 +9,7 @@ import {
   writeoffListEstimate,
 } from "./writeoffCostModel";
 import {
+  autoReceiptLabel,
   documentWorkflowLabel,
   submissionLabel,
   type DocumentKind,
@@ -32,6 +33,7 @@ export function DocumentListItem({
   );
   const prefetch = useCallback(() => cache.prefetch(path), [cache, path]);
   const checkedAt = doc.iiko_reconciliation?.checked_at;
+  const deadline = autoReceiptLabel(doc);
   useEffect(() => {
     const previous = cache.get<DocumentRecord>(path).data;
     if (
@@ -39,6 +41,8 @@ export function DocumentListItem({
       (previous.version !== doc.version ||
         previous.status !== doc.status ||
         previous.submission_state !== doc.submission_state ||
+        (doc.auto_receipt_due_at !== undefined &&
+          previous.auto_receipt_due_at !== doc.auto_receipt_due_at) ||
         (checkedAt &&
           (!previous.iiko_reconciliation?.checked_at ||
             Date.parse(checkedAt) >
@@ -64,6 +68,7 @@ export function DocumentListItem({
     doc.version,
     doc.status,
     doc.submission_state,
+    doc.auto_receipt_due_at,
     checkedAt,
   ]);
   return (
@@ -89,6 +94,7 @@ export function DocumentListItem({
             {dateText(doc.created_at)} · {doc.created_by}
           </Text>
           {doc.reason && <Text size="sm">{doc.reason}</Text>}
+          {deadline && <Text size="sm">{deadline}</Text>}
           {kind === "writeoff" && (
             <Text size="sm" fw={600}>
               {writeoffListCostText(writeoffListEstimate(doc, detail))}
