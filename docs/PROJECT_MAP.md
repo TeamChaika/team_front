@@ -31,6 +31,7 @@
 | Депозиты и создание | [DepositsPage.tsx](../src/DepositsPage.tsx), [CreateDeposit.tsx](../src/CreateDeposit.tsx) |
 | Общие настройки синхронизации и складов новых документов | [OperationSettings.tsx](../src/OperationSettings.tsx), [operationSettingsModel.ts](../src/operationSettingsModel.ts); GET/POST `/management/operation-settings`, revision и явные `all` / `selected` (пустой список отключает всё). Вкладка обычного управления, отдельно от прав сотрудников. |
 | Аккаунты dashboard, заведения, терминалы | [ManagementPage.tsx](../src/ManagementPage.tsx), [integrations.md](CODEMAPS/integrations.md) |
+| Рассылка закупок в Telegram | [PurchaseDigestSettings.tsx](../src/PurchaseDigestSettings.tsx) в основном Dashboard, «Управление → Рассылка закупок» (`/management?tab=purchase-digest`). Администратору с `/me.purchase_digest_enabled` доступны каналы заведений и статус отправки Excel. Чтение через GET `/management/purchase-digest`, изменение канала и подписки через PUT `/management/purchase-digest/{department_id}` с revision. |
 | Мобильный UI и стили | [styles.css](../src/styles.css), [interface.md](CODEMAPS/interface.md) |
 | Сборка и проверки | [package.json](../package.json), [integrations.md](CODEMAPS/integrations.md) |
 | Сжатие JS/CSS, кеш браузера и SPA fallback | [static-delivery.md](static-delivery.md), [Nginx в Coolify](../ops/coolify-nginx.conf), [прежняя конфигурация Timeweb](../ops/timeweb-reverse-proxy.json) |

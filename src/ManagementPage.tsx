@@ -1,5 +1,6 @@
 import { VenueArchive } from "./VenueArchive";
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Alert,
   Badge,
@@ -21,6 +22,7 @@ import {
 import { IconBuildingStore, IconPlus, IconUsers } from "@tabler/icons-react";
 import { api } from "./api";
 import { OperationSettings } from "./OperationSettings";
+import { PurchaseDigestSettings } from "./PurchaseDigestSettings";
 import { DocumentAccess } from "./DocumentAccess";
 import { CompanyIntegrations } from "./CompanyIntegrations";
 import { CommercialInvoiceAccess } from "./CommercialInvoiceAccess";
@@ -622,16 +624,21 @@ function TerminalEditor({
 export function ManagementPage({
   onChange,
   documentsEnabled,
+  purchaseDigestEnabled = false,
   setupOnly = false,
   integrationsEnabled = false,
   integrationsOnly = false,
 }: {
   onChange: () => void;
   documentsEnabled?: boolean;
+  purchaseDigestEnabled?: boolean;
   setupOnly?: boolean;
   integrationsEnabled?: boolean;
   integrationsOnly?: boolean;
 }) {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState<string | null>(null);
+  const digestTab = purchaseDigestEnabled && !setupOnly && searchParams.get("tab") === "purchase-digest";
   const [directory, setDirectory] = useState<Directory | null>(null),
     [configuration, setConfiguration] = useState<Configuration | null>(null),
     [error, setError] = useState(""),
@@ -728,13 +735,23 @@ export function ManagementPage({
       ) : (
         <Tabs
           key={setupOnly ? "setup" : "full"}
-          defaultValue={
-            integrationsEnabled
-              ? "integrations"
-              : setupOnly
-                ? "venues"
-                : "accounts"
+          value={
+            digestTab ? "purchase-digest" :
+            (setupOnly && activeTab !== "venues" && activeTab !== "integrations" ? null : activeTab) ??
+            (integrationsEnabled ? "integrations" : setupOnly ? "venues" : "accounts")
           }
+          onChange={(tab) => {
+            if (!tab) return;
+            setActiveTab(tab === "purchase-digest" ? null : tab);
+            if ((tab === "purchase-digest") !== digestTab) {
+              setSearchParams((current) => {
+                const next = new URLSearchParams(current);
+                if (tab === "purchase-digest") next.set("tab", tab);
+                else next.delete("tab");
+                return next;
+              }, { replace: true });
+            }
+          }}
           keepMounted={false}
           keepMountedMode="display-none"
         >
@@ -763,7 +780,15 @@ export function ManagementPage({
             {!setupOnly && (
               <Tabs.Tab value="operations">Синхронизация и склады</Tabs.Tab>
             )}
+            {purchaseDigestEnabled && !setupOnly && (
+              <Tabs.Tab value="purchase-digest">Рассылка закупок</Tabs.Tab>
+            )}
           </Tabs.List>
+          {purchaseDigestEnabled && !setupOnly && (
+            <Tabs.Panel value="purchase-digest" pt="lg">
+              <PurchaseDigestSettings />
+            </Tabs.Panel>
+          )}
           {!setupOnly && (
             <Tabs.Panel value="archive" pt="lg">
               <VenueArchive onChange={onChange} />
