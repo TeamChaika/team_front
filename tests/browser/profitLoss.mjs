@@ -12,6 +12,7 @@ const browser = await chromium.launch({
 const origin = "https://dashboard.chaika.team";
 const dist = path.resolve(process.env.DASHBOARD_DIST || "dist");
 const venue = "9f593daa-1ff4-4c93-a5ed-d45474b82376";
+const connectedVenue = "96074d28-5b9b-4b59-9da5-66984c5dd87a";
 const expenseId = "ff536c5f-0620-4533-87f9-62c9305760ea";
 const errors = [];
 const unexpected = [];
@@ -87,6 +88,17 @@ try {
               present_in_latest: true,
               sync_enabled: false,
             },
+            ...(role === "owner"
+              ? [
+                  {
+                    id: connectedVenue,
+                    name: "Заведение с iiko",
+                    type: "DEPARTMENT",
+                    present_in_latest: true,
+                    sync_enabled: true,
+                  },
+                ]
+              : []),
             {
               id: "not-a-restaurant",
               name: "База",
@@ -103,7 +115,12 @@ try {
         });
       if (url.pathname === "/api/profit-loss/report") {
         reportReads++;
-        assert.deepEqual(url.searchParams.getAll("department_id"), [venue]);
+        const ids = url.searchParams.getAll("department_id");
+        assert.ok(
+          ids.length && ids.every((id) => [venue, connectedVenue].includes(id)),
+        );
+        const complete = !ids.includes(venue);
+        const custom = url.searchParams.get("start") === "2026-10-15";
         return respond({
           revenue: "1000",
           cost: "300",
@@ -111,9 +128,9 @@ try {
           expenses: "0",
           cash: "0",
           bank: "0",
-          operating_profit: "700",
+          operating_profit: complete ? (custom ? "650" : "700") : null,
           by_category: [],
-          complete: true,
+          complete,
           provisional: true,
         });
       }
@@ -122,7 +139,13 @@ try {
         req.method() === "GET"
       ) {
         journalReads++;
-        assert.deepEqual(url.searchParams.getAll("department_id"), [venue]);
+        const ids = url.searchParams.getAll("department_id");
+        if (role === "owner")
+          assert.ok(
+            ids.length &&
+              ids.every((id) => [venue, connectedVenue].includes(id)),
+          );
+        else assert.deepEqual(ids, [venue]);
         return respond({ rows: row ? [row] : [], total: row ? 1 : 0 });
       }
       if (
@@ -252,6 +275,118 @@ try {
       await page.getByText("Аннулирован", { exact: true }).waitFor();
       assert.deepEqual(writes, [{ revision: 2 }]);
       assert.equal(reportReads, 0);
+    }
+    if (role === "owner") {
+      const summary = page.getByRole("region", {
+        name: "Финансовый результат",
+      });
+      const journal = page.getByRole("heading", { name: "Журнал расходов" });
+      const picker = page.getByRole("button", { name: /Выбор ресторанов/ });
+      async function changeFilter(action, ids, start, end) {
+        await Promise.all([
+          ...["report", "expenses"].map((endpoint) =>
+            page.waitForResponse((res) => {
+              const u = new URL(res.url());
+              return (
+                u.pathname === "/api/profit-loss/" + endpoint &&
+                u.searchParams.getAll("department_id").join() === ids.join() &&
+                u.searchParams.get("start") === start &&
+                u.searchParams.get("end") === end
+              );
+            }),
+          ),
+          action(),
+        ]);
+        await page
+          .getByText("Операционная прибыль", { exact: true })
+          .first()
+          .waitFor();
+        await page
+          .getByText("За выбранный период расходов нет.")
+          .first()
+          .waitFor();
+        assert.equal(
+          await summary.count(),
+          1,
+          "single summary after filter change",
+        );
+        assert.equal(
+          await journal.count(),
+          1,
+          "single journal after filter change",
+        );
+      }
+      await picker.click();
+      await page
+        .getByRole("checkbox", { name: "Заведение с iiko", exact: true })
+        .check();
+      await changeFilter(
+        () => page.getByRole("button", { name: "Применить" }).click(),
+        [connectedVenue],
+        "2026-11-01",
+        "2026-11-25",
+      );
+      await picker.click();
+      await page
+        .getByRole("checkbox", { name: "Все рестораны (2)", exact: true })
+        .check();
+      await changeFilter(
+        () => page.getByRole("button", { name: "Применить" }).click(),
+        [venue, connectedVenue],
+        "2026-11-01",
+        "2026-11-25",
+      );
+      const syncedButton = page.getByRole("button", {
+        name: "Выбрать заведения с синхронизацией iiko (1)",
+      });
+      await changeFilter(
+        () => syncedButton.click(),
+        [connectedVenue],
+        "2026-11-01",
+        "2026-11-25",
+      );
+      assert.match(await picker.innerText(), /Заведение с iiko/);
+      assert.equal(await syncedButton.count(), 0);
+      await changeFilter(
+        () => page.getByLabel("Месяц", { exact: true }).fill("2026-10"),
+        [connectedVenue],
+        "2026-10-01",
+        "2026-10-31",
+      );
+      assert.equal(
+        await page.getByLabel("По", { exact: true }).inputValue(),
+        "2026-10-31",
+      );
+      await changeFilter(
+        () => page.getByLabel("С", { exact: true }).fill("2026-10-15"),
+        [connectedVenue],
+        "2026-10-15",
+        "2026-10-31",
+      );
+      assert.equal(
+        await page.getByLabel("Месяц", { exact: true }).inputValue(),
+        "",
+      );
+      await summary.getByText(/650,00/).waitFor();
+      await changeFilter(
+        () => page.getByLabel("По", { exact: true }).fill("2026-10-20"),
+        [connectedVenue],
+        "2026-10-15",
+        "2026-10-20",
+      );
+      assert.equal(
+        await page.getByLabel("С", { exact: true }).inputValue(),
+        "2026-10-15",
+      );
+      assert.equal(
+        await page.getByLabel("По", { exact: true }).inputValue(),
+        "2026-10-20",
+      );
+      await page.getByRole("button", { name: "Добавить расход" }).click();
+      await page.getByRole("combobox", { name: "Заведение", exact: true }).click();
+      await page
+        .getByRole("option", { name: "Ресторан", exact: true })
+        .waitFor();
     }
     await page.close();
   }
