@@ -64,3 +64,18 @@ test("missing products, zero and small decimal quantities remain distinguishable
   assert.equal(model.reconciledQuantity("0.000125"), "0,000125");
   assert.equal(model.reconciledQuantity("0.250000"), "0,25");
 });
+
+test("different decimal quantities retain their individual digits from iiko", () => {
+  assert.equal(
+    model.reconciledQuantity("1.234567891234567891"),
+    "1,234567891234567891",
+  );
+  assert.equal(
+    model.reconciledQuantity("1.234567891234567892"),
+    "1,234567891234567892",
+  );
+  assert.equal(
+    model.reconciledQuantity("-1234.00000000000000000000100"),
+    "-1\u00a0234,000000000000000000001",
+  );
+});

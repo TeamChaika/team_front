@@ -128,11 +128,16 @@ export const iikoDocumentStatuses = {
 };
 
 const quantityFormat = new Intl.NumberFormat("ru-RU", {
-  maximumFractionDigits: 20,
+  maximumSignificantDigits: 17,
 });
 export function reconciledQuantity(amount: string | number | null) {
   if (amount === null) return "Нет позиции";
-  return quantityFormat.format(Number(amount));
+  if (typeof amount === "number") return quantityFormat.format(amount);
+  // iiko quantities arrive as fixed-point decimal strings with arbitrary scale.
+  const [integer, fraction = ""] = amount.split(".");
+  const grouped = integer.replace(/\B(?=(\d{3})+(?!\d))/g, "\u00a0");
+  const digits = fraction.replace(/0+$/, "");
+  return digits ? `${grouped},${digits}` : grouped;
 }
 export function receiptSnapshot(
   doc: Pick<DocumentRecord, "id" | "version" | "items">,
