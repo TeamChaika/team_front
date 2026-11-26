@@ -24,7 +24,7 @@ type Snapshot = Pick<
 >;
 type History = {
   revision: number;
-  action: "create" | "update" | "cancel";
+  action: "create" | "update" | "cancel" | "convert";
   actor: string;
   changed_at: string;
   before: Snapshot | null;
@@ -43,6 +43,7 @@ const historyActions = {
   create: "Расход создан",
   update: "Расход изменён",
   cancel: "Расход аннулирован",
+  convert: "Расход передан в распределение",
 };
 function format(field: keyof Snapshot, snapshot: Snapshot) {
   switch (field) {
@@ -110,7 +111,9 @@ export function ExpenseHistory({
                           →{" "}
                         </>
                       )}
-                      {format(field, item.after)}
+                      {field === "cancelled" && item.action === "convert"
+                        ? "Передан в распределение"
+                        : format(field, item.after)}
                     </dd>
                   </div>
                 ))}

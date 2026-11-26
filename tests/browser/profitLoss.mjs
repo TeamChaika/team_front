@@ -659,10 +659,266 @@ try {
     }
     await page.close();
   }
+  // A paid manager entry can become a shared expense without losing its source data.
+  for (const role of ["manager", "accountant", "owner"]) {
+    const page = await browser.newPage({
+      viewport: { width: 1280, height: 900 },
+    });
+    page.setDefaultTimeout(7000);
+    page.on("pageerror", (e) => errors.push(e.message));
+    const source = {
+      id: expenseId,
+      department_id: venue,
+      department: "Ресторан",
+      author: "Менеджер",
+      expense_date: "2026-11-20",
+      paid_date: "2026-11-21",
+      category: "services",
+      amount: "450.50",
+      payment_method: "bank",
+      revision: 7,
+      comment: "Оплачено менеджером",
+      can_edit: role !== "manager",
+      can_allocate: role !== "manager",
+      cancelled: false,
+    };
+    const conversionWrites = [];
+    const directWrites = [];
+    let converted = false;
+    await page.route("**/*", async (route) => {
+      const req = route.request();
+      const url = new URL(req.url());
+      if (url.origin === origin && !url.pathname.startsWith("/api/")) {
+        const asset = url.pathname.startsWith("/assets/")
+          ? url.pathname.slice(1)
+          : "index.html";
+        return route.fulfill({
+          body: await readFile(path.join(dist, asset)),
+          contentType: asset.endsWith(".js")
+            ? "text/javascript"
+            : asset.endsWith(".css")
+              ? "text/css"
+              : "text/html",
+        });
+      }
+      const respond = (data) => route.fulfill({ json: data, headers });
+      if (req.method() === "OPTIONS")
+        return route.fulfill({ status: 204, headers });
+      if (url.pathname === "/api/me")
+        return respond({
+          user: {
+            id: role,
+            role: role === "owner" ? "owner" : "manager",
+            display_name: role,
+          },
+          profit_loss_access: role,
+          sections: ["profit-loss"],
+          today: "2026-11-25",
+          sales_dates: [],
+          balance_dates: [],
+          departments: [
+            {
+              id: venue,
+              name: "Ресторан",
+              type: "DEPARTMENT",
+              present_in_latest: true,
+            },
+            {
+              id: connectedVenue,
+              name: "Заведение с iiko",
+              type: "DEPARTMENT",
+              present_in_latest: true,
+            },
+          ],
+        });
+      if (url.pathname === "/api/profit-loss/report")
+        return respond({
+          revenue: "1000",
+          cost: "300",
+          gross_profit: "700",
+          expenses: "450.50",
+          cash: "0",
+          bank: "450.50",
+          operating_profit: "249.50",
+          by_category: [],
+          complete: true,
+          provisional: false,
+        });
+      if (
+        url.pathname === "/api/profit-loss/expenses" &&
+        req.method() === "GET"
+      )
+        return respond({
+          rows: [
+            {
+              ...source,
+              ...(converted
+                ? {
+                    status: "converted",
+                    cancelled: true,
+                    can_edit: false,
+                    converted_allocation_id: allocationId,
+                    can_allocate: false,
+                    can_view_allocation: true,
+                  }
+                : {}),
+            },
+          ],
+          total: 1,
+        });
+      if (url.pathname === "/api/profit-loss/allocations/pending")
+        return respond({ rows: [], total: 0 });
+      if (url.pathname === "/api/profit-loss/allocations/preview") {
+        const proposal = req.postDataJSON();
+        assert.equal(proposal.amount, source.amount);
+        assert.equal(proposal.method, "equal");
+        assert.deepEqual(
+          proposal.parts.map((part) => part.department_id).sort(),
+          [venue, connectedVenue].sort(),
+        );
+        return respond({
+          method: "equal",
+          parts: proposal.parts.map((part) => ({
+            department_id: part.department_id,
+            amount: "225.25",
+            weight: "1",
+          })),
+        });
+      }
+      if (
+        url.pathname ===
+          "/api/profit-loss/expenses/" + expenseId + "/allocate" &&
+        req.method() === "POST"
+      ) {
+        const payload = req.postDataJSON();
+        conversionWrites.push(payload);
+        if (conversionWrites.length === 1)
+          return route.abort("connectionreset");
+        converted = true;
+        return respond({
+          id: allocationId,
+          ...payload,
+          revision: 1,
+          can_edit: true,
+          cancelled: false,
+        });
+      }
+      if (
+        url.pathname === "/api/profit-loss/expenses/" + expenseId &&
+        req.method() === "PATCH"
+      ) {
+        directWrites.push(req.postDataJSON());
+        return respond(source);
+      }
+      if (url.pathname === "/api/support/context") return respond({});
+      if (url.pathname === "/api/documents/notifications")
+        return respond({ items: [] });
+      unexpected.push(req.method() + " " + url.pathname);
+      return route.fulfill({ status: 404, json: {}, headers });
+    });
+    await page.goto(origin + "/profit-loss");
+    await page.getByText("Оплачено менеджером", { exact: true }).waitFor();
+    await page.getByRole("button", { name: /Действия с расходом/ }).click();
+    const convert = page.getByRole("menuitem", {
+      name: "Распределить по заведениям",
+    });
+    if (role === "manager") {
+      assert.equal(await convert.count(), 0);
+    } else {
+      await convert.click();
+      const editor = page.getByRole("dialog");
+      await editor
+        .getByRole("heading", { name: "Распределить расход" })
+        .waitFor();
+      assert.equal(await editor.getByLabel("Сумма, ₽").inputValue(), "450,50");
+      assert.equal(
+        await editor.getByLabel("Дата расхода").inputValue(),
+        source.expense_date,
+      );
+      assert.equal(
+        await editor.getByLabel("Дата оплаты").inputValue(),
+        source.paid_date,
+      );
+      assert.equal(
+        await editor.getByLabel("Комментарий").inputValue(),
+        source.comment,
+      );
+      assert.equal(
+        await editor
+          .getByRole("radio", { name: "Безналичные", exact: true })
+          .isChecked(),
+        true,
+      );
+      assert.equal(
+        await editor
+          .getByRole("button", { name: "Распределить расход", exact: true })
+          .isDisabled(),
+        true,
+        "conversion requires another venue and must not fall through to direct PATCH",
+      );
+      assert.deepEqual(directWrites, []);
+      await editor.getByLabel("Заведения", { exact: false }).click();
+      await page
+        .getByRole("option", { name: "Заведение с iiko", exact: true })
+        .click();
+      await editor.getByLabel("Заведения", { exact: false }).press("Tab");
+      await editor
+        .getByRole("region", { name: "Предпросмотр распределения" })
+        .getByText(/225,25/)
+        .first()
+        .waitFor();
+      await editor
+        .getByRole("button", { name: "Распределить расход", exact: true })
+        .click();
+      await editor.getByRole("alert").waitFor();
+      await editor
+        .getByRole("button", { name: "Распределить расход", exact: true })
+        .click();
+      await editor.waitFor({ state: "hidden" });
+      assert.deepEqual(conversionWrites[0], conversionWrites[1]);
+      assert.equal(conversionWrites[0].revision, source.revision);
+      assert.ok(conversionWrites[0].request_id);
+      for (const key of [
+        "expense_date",
+        "paid_date",
+        "category",
+        "amount",
+        "payment_method",
+        "comment",
+      ])
+        assert.equal(conversionWrites[0][key], source[key], key);
+      assert.equal(conversionWrites[0].method, "equal");
+      assert.deepEqual(
+        conversionWrites[0].parts
+          .map((part) => [part.department_id, part.amount])
+          .sort(),
+        [
+          [venue, "225.25"],
+          [connectedVenue, "225.25"],
+        ].sort(),
+      );
+      assert.deepEqual(
+        directWrites,
+        [],
+        "conversion must not PATCH the direct expense",
+      );
+      await page.getByText("Оплачено менеджером", { exact: true }).waitFor();
+      await page
+        .getByText("Передан в распределение", { exact: true })
+        .waitFor();
+      await page.getByRole("button", { name: /Действия с расходом/ }).click();
+      assert.equal(
+        await convert.count(),
+        0,
+        "converted source cannot convert again",
+      );
+    }
+    await page.close();
+  }
   assert.deepEqual(errors, []);
   assert.deepEqual(unexpected, []);
   console.log(
-    "Validated P&L roles, mobile entry, unified direct and shared expense creation, automatic preview, deferred allocation, retry, edit and history.",
+    "Validated P&L roles, mobile entry, direct and shared expense creation, paid direct expense conversion, automatic preview, retry, edit and history.",
   );
 } finally {
   await browser.close();

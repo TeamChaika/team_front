@@ -35,8 +35,11 @@ export type Expense = {
   revision: number;
   cancelled: boolean;
   can_edit: boolean;
+  can_allocate?: boolean;
   allocation_id?: string | null;
   can_view_allocation?: boolean;
+  converted_allocation_id?: string | null;
+  status?: "active" | "cancelled" | "converted";
 };
 export type AllocationMethod = "pending" | "equal" | "weights" | "revenue";
 export type AllocationPart = { department_id: string; weight?: string };

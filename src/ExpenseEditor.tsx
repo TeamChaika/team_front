@@ -31,6 +31,7 @@ import type { Venue } from "./venueArchiveModel";
 
 type Props = {
   allocationId?: string;
+  distribute?: boolean;
   row?: Expense;
   access: FinanceAccess;
   venues: Venue[];
@@ -56,6 +57,7 @@ function initialDraft(
 
 export default function ExpenseEditor({
   allocationId,
+  distribute = false,
   row,
   access,
   venues,
@@ -72,7 +74,13 @@ export default function ExpenseEditor({
   );
   const [method, setMethod] = useState<AllocationMethod>("equal");
   const [parts, setParts] = useState<AllocationPart[]>(() =>
-    selectedVenue && !allocationId ? [{ department_id: selectedVenue }] : [],
+    !allocationId &&
+    row &&
+    venues.some((venue) => venue.id === row.department_id)
+      ? [{ department_id: row.department_id }]
+      : !allocationId && !row && selectedVenue
+        ? [{ department_id: selectedVenue }]
+        : [],
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -90,17 +98,26 @@ export default function ExpenseEditor({
 
   const canAllocate = access === "accountant" || access === "owner";
   const directRow = allocationId ? undefined : row;
+  const directEditable = !!directRow && canChangeExpense(access, directRow);
+  const directAllocatable =
+    !!directRow && canAllocate && directRow.can_allocate === true;
   const shared =
-    !!allocationId || (canAllocate && !directRow && parts.length > 1);
+    !!allocationId || distribute || (canAllocate && parts.length > 1);
   const canWrite = allocationId
     ? !!group && canManageAllocation(access, group)
-    : !directRow || canChangeExpense(access, directRow);
+    : !directRow || directEditable || directAllocatable;
   const locked = !canWrite || busy || uncertain || conflict;
   const input =
-    shared && canWrite
+    shared &&
+    canWrite &&
+    (!directRow || directAllocatable) &&
+    (!directRow ||
+      parts.every((part) =>
+        venues.some((venue) => venue.id === part.department_id),
+      ))
       ? allocationInput(draft.amount, draft.expense_date, method, parts)
       : null;
-  const estimate = useAllocationPreview(input, !allocationId && !directRow);
+  const estimate = useAllocationPreview(input, !allocationId);
   useEffect(() => {
     if (!allocationId) return;
     let active = true;
@@ -175,6 +192,10 @@ export default function ExpenseEditor({
       let path: string;
       let body: string;
       if (shared) {
+        if (directRow && !directAllocatable) {
+          setError("Распределение этого расхода недоступно.");
+          return;
+        }
         if (!input || (method !== "pending" && !estimate.preview)) {
           setError("Проверьте состав заведений и дождитесь расчёта долей.");
           return;
@@ -188,24 +209,39 @@ export default function ExpenseEditor({
                   (item) => item.department_id === part.department_id,
                 )!.amount,
               }));
-        path =
-          "/profit-loss/allocations" + (allocationId ? "/" + allocationId : "");
+        path = directRow
+          ? `/profit-loss/expenses/${directRow.id}/allocate`
+          : "/profit-loss/allocations" +
+            (allocationId ? "/" + allocationId : "");
         body = JSON.stringify({
           ...values,
           ...input,
           parts: confirmedParts,
           ...(allocationId
             ? { revision: group!.revision }
-            : { request_id: requestId }),
+            : directRow
+              ? { revision: directRow.revision, request_id: requestId }
+              : { request_id: requestId }),
         });
       } else {
-        const departmentId =
-          directRow?.department_id ?? parts[0]?.department_id;
+        if (directRow && !directEditable) {
+          setError(
+            "Для распределения выберите хотя бы два действующих заведения.",
+          );
+          return;
+        }
+        const departmentId = parts[0]?.department_id;
         if (
+          parts.length !== 1 ||
           !departmentId ||
+          (directRow && departmentId !== directRow.department_id) ||
           (!directRow && !venues.some((v) => v.id === departmentId))
         ) {
-          setError("Выберите заведение для расхода.");
+          setError(
+            directRow
+              ? "Для изменения прямого расхода оставьте исходное заведение или выберите хотя бы два для распределения."
+              : "Выберите заведение для расхода.",
+          );
           return;
         }
         path = "/profit-loss/expenses" + (directRow ? "/" + directRow.id : "");
@@ -219,7 +255,7 @@ export default function ExpenseEditor({
       submission = {
         path,
         body,
-        method: directRow || allocationId ? "PATCH" : "POST",
+        method: allocationId || (directRow && !shared) ? "PATCH" : "POST",
       };
     }
     sending.current = true;
@@ -290,6 +326,8 @@ export default function ExpenseEditor({
     }
   }
   const names = new Map(venues.map((venue) => [venue.id, venue.name]));
+  if (directRow && venues.some((venue) => venue.id === directRow.department_id))
+    names.set(directRow.department_id, directRow.department);
   for (const part of group?.parts ?? [])
     if (part.department) names.set(part.department_id, part.department);
   const venueOptions = Array.from(names, ([value, label]) => ({
@@ -299,12 +337,16 @@ export default function ExpenseEditor({
       !venues.some((venue) => venue.id === value) &&
       !parts.some((part) => part.department_id === value),
   }));
+  const canChooseVenues = canAllocate && (!directRow || directAllocatable);
   const saveDisabled =
     conflict ||
     (!uncertain &&
       (shared
         ? !input || (method !== "pending" && !estimate.preview)
-        : !directRow && parts.length !== 1));
+        : (!!directRow && !directEditable) ||
+          parts.length !== 1 ||
+          (!!directRow &&
+            parts[0]?.department_id !== directRow.department_id)));
   const allocationControls = shared && (
     <Stack gap="xs">
       <NativeSelect
@@ -390,9 +432,11 @@ export default function ExpenseEditor({
       title={
         allocationId
           ? "Распределённый расход"
-          : directRow
-            ? "Изменить расход"
-            : "Добавить расход"
+          : distribute
+            ? "Распределить расход"
+            : directRow
+              ? "Изменить расход"
+              : "Добавить расход"
       }
       onClose={onClose}
       withCloseButton={!busy}
@@ -415,13 +459,27 @@ export default function ExpenseEditor({
                 применятся ко всему расходу.
               </Text>
             )}
-            {directRow ? (
+            {distribute && (
+              <Text size="sm" c="dimmed">
+                Выберите хотя бы два действующих заведения. После сохранения
+                исходный расход останется в истории.
+              </Text>
+            )}
+            {directRow &&
+              !venues.some((venue) => venue.id === directRow.department_id) && (
+                <Text size="sm" c="dimmed">
+                  Исходное заведение: {directRow.department}. Оно архивное и не
+                  может войти в новое распределение. Выберите действующие
+                  заведения.
+                </Text>
+              )}
+            {directRow && !canChooseVenues ? (
               <TextInput
                 label="Заведение"
                 value={directRow.department}
                 readOnly
               />
-            ) : canAllocate ? (
+            ) : canChooseVenues ? (
               <MultiSelect
                 label="Заведения"
                 withAsterisk
@@ -435,9 +493,15 @@ export default function ExpenseEditor({
                 value={parts.map((part) => part.department_id)}
                 onChange={selectVenues}
                 error={
-                  allocationId && canWrite && parts.length < 2
-                    ? "Для общего расхода выберите хотя бы два заведения."
-                    : undefined
+                  distribute && parts.length < 2
+                    ? "Для распределения выберите хотя бы два заведения."
+                    : directRow &&
+                        parts.length === 1 &&
+                        parts[0]?.department_id !== directRow.department_id
+                      ? "Выберите исходное заведение или хотя бы два заведения для распределения."
+                      : allocationId && canWrite && parts.length < 2
+                        ? "Для общего расхода выберите хотя бы два заведения."
+                        : undefined
                 }
                 disabled={locked}
               />
@@ -457,7 +521,7 @@ export default function ExpenseEditor({
               draft={draft}
               today={today}
               change={change}
-              disabled={locked}
+              disabled={locked || (!!directRow && !directEditable)}
               afterAmount={allocationControls}
             />
             {group && (
@@ -537,7 +601,11 @@ export default function ExpenseEditor({
               )}
               {canWrite && (
                 <Button type="submit" loading={busy} disabled={saveDisabled}>
-                  {allocationId ? "Сохранить распределение" : "Сохранить"}
+                  {allocationId
+                    ? "Сохранить распределение"
+                    : distribute
+                      ? "Распределить расход"
+                      : "Сохранить"}
                 </Button>
               )}
             </Group>
