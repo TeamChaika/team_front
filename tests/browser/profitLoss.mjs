@@ -14,6 +14,7 @@ const dist = path.resolve(process.env.DASHBOARD_DIST || "dist");
 const venue = "9f593daa-1ff4-4c93-a5ed-d45474b82376";
 const connectedVenue = "96074d28-5b9b-4b59-9da5-66984c5dd87a";
 const expenseId = "ff536c5f-0620-4533-87f9-62c9305760ea";
+const allocationId = "31631209-c47f-465f-94c6-1b2ce5f1b537";
 const errors = [];
 const unexpected = [];
 const headers = {
@@ -34,6 +35,9 @@ try {
     page.setDefaultTimeout(7000);
     page.on("pageerror", (e) => errors.push(e.message));
     const writes = [];
+    const allocationWrites = [];
+    let allocationHistoryReads = 0;
+    let allocation = null;
     let reportReads = 0,
       journalReads = 0;
     let row =
@@ -89,7 +93,7 @@ try {
               present_in_latest: true,
               sync_enabled: false,
             },
-            ...(role === "owner"
+            ...(role === "owner" || role === "accountant"
               ? [
                   {
                     id: connectedVenue,
@@ -146,8 +150,75 @@ try {
             ids.length &&
               ids.every((id) => [venue, connectedVenue].includes(id)),
           );
-        else assert.deepEqual(ids, [venue]);
+        else
+          assert.deepEqual(
+            ids,
+            role === "accountant" ? [venue, connectedVenue] : [venue],
+          );
         return respond({ rows: row ? [row] : [], total: row ? 1 : 0 });
+      }
+      const allocations = "/api/profit-loss/allocations";
+      if (url.pathname.startsWith(allocations)) {
+        assert.ok(["owner", "accountant"].includes(role));
+        if (url.pathname === allocations + "/pending") {
+          assert.equal(req.method(), "GET");
+          assert.ok(
+            url.searchParams.has("start") && url.searchParams.has("end"),
+          );
+          const rows =
+            allocation?.method === "pending" && !allocation.cancelled
+              ? [allocation]
+              : [];
+          return respond({ rows, total: rows.length });
+        }
+        if (url.pathname === allocations + "/preview") {
+          const proposal = req.postDataJSON();
+          assert.equal(proposal.method, "equal");
+          assert.equal(proposal.amount, "100.01");
+          return respond({
+            method: proposal.method,
+            parts: proposal.parts.map((part, index) => ({
+              department_id: part.department_id,
+              amount: index ? "50.00" : "50.01",
+              weight: "1",
+            })),
+          });
+        }
+        if (url.pathname === allocations && req.method() === "POST") {
+          const payload = req.postDataJSON();
+          allocationWrites.push(payload);
+          allocation = {
+            ...payload,
+            id: allocationId,
+            can_edit: true,
+            cancelled: false,
+            revision: 1,
+          };
+          return respond(allocation);
+        }
+        if (url.pathname === allocations + "/" + allocationId + "/history") {
+          allocationHistoryReads++;
+          return respond({
+            rows: [
+              {
+                revision: 1,
+                action: "create",
+                actor: "Бухгалтер",
+                changed_at: "2026-11-10T10:00:00+03:00",
+                before: null,
+                after: allocation,
+              },
+            ],
+          });
+        }
+        if (url.pathname === allocations + "/" + allocationId) {
+          if (req.method() === "GET") return respond(allocation);
+          assert.equal(req.method(), "PATCH");
+          const payload = req.postDataJSON();
+          allocationWrites.push(payload);
+          allocation = { ...allocation, ...payload, revision: 2 };
+          return respond(allocation);
+        }
       }
       if (
         url.pathname === "/api/profit-loss/expenses" &&
@@ -228,6 +299,12 @@ try {
       assert.equal(reportReads > 0, role === "owner");
     }
     if (role === "manager") {
+      assert.equal(
+        await page
+          .getByRole("button", { name: "Распределить расход", exact: true })
+          .count(),
+        0,
+      );
       await page.getByRole("button", { name: "Добавить расход" }).click();
       const dialog = page.getByRole("dialog");
       await dialog.getByLabel("Статья расхода").click();
@@ -297,6 +374,59 @@ try {
         .click();
       await page.getByText("Аннулирован", { exact: true }).waitFor();
       assert.deepEqual(writes, [{ revision: 2 }]);
+      assert.equal(reportReads, 0);
+      await page
+        .getByRole("button", { name: "Распределить расход", exact: true })
+        .click();
+      const editor = page.getByRole("dialog");
+      await editor.getByLabel("Статья расхода").click();
+      await page.getByRole("option", { name: "Аренда", exact: true }).click();
+      await editor.getByLabel("Сумма, ₽").fill("100,01");
+      await editor
+        .getByLabel("Дата расхода", { exact: false })
+        .fill("2026-11-10");
+      await editor
+        .getByLabel("Дата оплаты", { exact: false })
+        .fill("2026-11-24");
+      await editor
+        .getByRole("radio", { name: "Безналичные", exact: true })
+        .check();
+      await editor.getByLabel("Способ распределения").selectOption("pending");
+      await editor.getByRole("button", { name: /Сохранить/ }).click();
+      const waiting = page.getByRole("region", {
+        name: "Ожидают распределения",
+      });
+      await waiting
+        .getByRole("button", { name: "Открыть распределение" })
+        .click();
+      assert.equal(allocationWrites.length, 1);
+      assert.equal(allocationWrites[0].method, "pending");
+      assert.equal(allocationHistoryReads, 0);
+      await editor.getByText("История", { exact: true }).click();
+      await editor.getByRole("heading", { name: "Счёт создан" }).waitFor();
+      assert.equal(allocationHistoryReads, 1);
+      assert.deepEqual(
+        allocationWrites[0].parts.map((part) => part.department_id).sort(),
+        [venue, connectedVenue].sort(),
+      );
+      await editor.getByLabel("Способ распределения").selectOption("equal");
+      const save = editor.getByRole("button", { name: /Сохранить/ });
+      assert.equal(await save.isDisabled(), true);
+      await editor.getByRole("button", { name: "Рассчитать доли" }).click();
+      await editor
+        .getByRole("region", { name: "Предпросмотр распределения" })
+        .waitFor();
+      await save.click();
+      await editor.waitFor({ state: "hidden" });
+      assert.equal(allocationWrites.length, 2);
+      assert.equal(allocationWrites[1].revision, 1);
+      assert.equal(allocationWrites[1].expense_date, "2026-11-10");
+      assert.equal(allocationWrites[1].paid_date, "2026-11-24");
+      assert.deepEqual(
+        allocationWrites[1].parts.map((part) => part.amount).sort(),
+        ["50.00", "50.01"],
+      );
+      await waiting.getByText("Нет отложенных расходов за период.").waitFor();
       assert.equal(reportReads, 0);
     }
     if (role === "owner") {
@@ -406,7 +536,9 @@ try {
         "2026-10-20",
       );
       await page.getByRole("button", { name: "Добавить расход" }).click();
-      await page.getByRole("combobox", { name: "Заведение", exact: true }).click();
+      await page
+        .getByRole("combobox", { name: "Заведение", exact: true })
+        .click();
       await page
         .getByRole("option", { name: "Ресторан", exact: true })
         .waitFor();

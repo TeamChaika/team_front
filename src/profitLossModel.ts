@@ -35,12 +35,44 @@ export type Expense = {
   revision: number;
   cancelled: boolean;
   can_edit: boolean;
+  allocation_id?: string | null;
+  can_view_allocation?: boolean;
+};
+export type AllocationMethod = "pending" | "equal" | "weights" | "revenue";
+export type AllocationPart = { department_id: string; weight?: string };
+export type AllocationInput = {
+  amount: string;
+  expense_date: string;
+  method: AllocationMethod;
+  parts: AllocationPart[];
+};
+export type AllocationPreview = {
+  method: Exclude<AllocationMethod, "pending">;
+  parts: { department_id: string; weight: string | null; amount: string }[];
+};
+export type AllocationGroup = {
+  id: string;
+  revision: number;
+  cancelled: boolean;
+  can_edit: boolean;
+  amount: string;
+  expense_date: string;
+  paid_date: string | null;
+  category: keyof typeof categories;
+  payment_method: keyof typeof paymentMethods;
+  comment: string | null;
+  method: AllocationMethod;
+  parts: (AllocationPart & { amount?: string | null; department?: string })[];
 };
 export type ProfitReport = {
   revenue: string | null;
   cost: string | null;
   gross_profit: string | null;
   expenses: string | null;
+  direct_expenses?: string | null;
+  allocated_expenses?: string | null;
+  pending_expenses?: string | null;
+  operating_profit_before_allocation?: string | null;
   cash: string | null;
   bank: string | null;
   operating_profit: string | null;
@@ -48,6 +80,82 @@ export type ProfitReport = {
   complete: boolean;
   provisional: boolean;
 };
+
+export function canManageAllocation(
+  access: FinanceAccess,
+  row: Pick<Expense, "can_edit" | "cancelled">,
+) {
+  return access !== "manager" && row.can_edit && !row.cancelled;
+}
+
+export function allocationInput(
+  amountText: string,
+  expenseDate: string,
+  method: AllocationMethod,
+  parts: AllocationPart[],
+): AllocationInput | null {
+  const amount = amountForApi(amountText);
+  if (!amount || !/^\d{4}-\d{2}-\d{2}$/.test(expenseDate) || parts.length < 2)
+    return null;
+  const ids = parts.map((part) => part.department_id);
+  if (ids.some((id) => !id) || new Set(ids).size !== ids.length) return null;
+  if (
+    method === "weights" &&
+    parts.some(
+      (part) =>
+        !part.weight ||
+        !/^\d+(?:[.,]\d+)?$/.test(part.weight.trim()) ||
+        Number(part.weight.replace(",", ".")) <= 0,
+    )
+  )
+    return null;
+  return {
+    amount,
+    expense_date: expenseDate,
+    method,
+    parts: parts.map((part) => ({
+      department_id: part.department_id,
+      ...(method === "weights"
+        ? { weight: part.weight!.trim().replace(",", ".") }
+        : {}),
+    })),
+  };
+}
+
+export function previewMatches(
+  input: AllocationInput,
+  preview: AllocationPreview,
+) {
+  if (input.method === "pending") return false;
+  if (
+    preview.method !== input.method ||
+    preview.parts.length !== input.parts.length
+  )
+    return false;
+  const expected = new Map(
+    input.parts.map((part) => [part.department_id, part]),
+  );
+  const seen = new Set<string>();
+  let cents = 0;
+  for (const part of preview.parts) {
+    const selected = expected.get(part.department_id);
+    if (
+      !selected ||
+      seen.has(part.department_id) ||
+      !/^\d+\.\d{2}$/.test(part.amount) ||
+      (input.method !== "revenue" && Number(part.amount) === 0)
+    )
+      return false;
+    if (
+      input.method === "weights" &&
+      Number(part.weight) !== Number(selected.weight)
+    )
+      return false;
+    seen.add(part.department_id);
+    cents += Number(part.amount.replace(".", ""));
+  }
+  return cents === Number(input.amount.replace(".", ""));
+}
 
 export function canChangeExpense(
   access: FinanceAccess,

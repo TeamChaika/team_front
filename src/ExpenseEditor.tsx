@@ -6,16 +6,11 @@ import {
   Modal,
   Select,
   Stack,
-  Textarea,
   TextInput,
 } from "@mantine/core";
 import { api, ApiError } from "./api";
-import {
-  amountForApi,
-  categories,
-  paymentMethods,
-  type Expense,
-} from "./profitLossModel";
+import { amountForApi, type Expense } from "./profitLossModel";
+import ExpenseFields, { type ExpenseDraft } from "./ExpenseFields";
 import type { Venue } from "./venueArchiveModel";
 
 type Props = {
@@ -51,8 +46,10 @@ export default function ExpenseEditor({
   const [error, setError] = useState("");
   const [conflict, setConflict] = useState(false);
   const sending = useRef(false);
-  const change = (name: keyof typeof draft, value: string | null) =>
-    setDraft((current) => ({ ...current, [name]: value ?? "" }));
+  const change = (
+    name: keyof ExpenseDraft | "department_id",
+    value: string | null,
+  ) => setDraft((current) => ({ ...current, [name]: value ?? "" }));
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (sending.current || conflict) return;
@@ -144,74 +141,7 @@ export default function ExpenseEditor({
               onChange={(v) => change("department_id", v)}
             />
           )}
-          <div className="pl-fields">
-            <Select
-              label="Статья расхода"
-              required
-              placeholder="Выберите статью"
-              data={Object.entries(categories).map(([value, label]) => ({
-                value,
-                label,
-              }))}
-              value={draft.category || null}
-              onChange={(v) => change("category", v)}
-            />
-            <TextInput
-              label="Сумма, ₽"
-              inputMode="decimal"
-              required
-              autoComplete="off"
-              placeholder="0,00"
-              value={draft.amount}
-              onChange={(e) => change("amount", e.currentTarget.value)}
-            />
-            <TextInput
-              type="date"
-              label="Дата расхода"
-              required
-              description="Определяет период отчёта"
-              value={draft.expense_date}
-              onChange={(e) => change("expense_date", e.currentTarget.value)}
-            />
-            <TextInput
-              type="date"
-              label="Дата оплаты"
-              max={today}
-              description="Заполните, когда расход оплачен"
-              value={draft.paid_date}
-              onChange={(e) => change("paid_date", e.currentTarget.value)}
-            />
-          </div>
-          <fieldset className="pl-payment-methods">
-            <legend>
-              Способ оплаты <span aria-hidden="true">*</span>
-            </legend>
-            <div>
-              {Object.entries(paymentMethods).map(([value, label]) => (
-                <label key={value}>
-                  <input
-                    type="radio"
-                    name="payment_method"
-                    value={value}
-                    checked={draft.payment_method === value}
-                    onChange={() => change("payment_method", value)}
-                    required
-                  />
-                  {label}
-                </label>
-              ))}
-            </div>
-          </fieldset>
-          <Textarea
-            label="Комментарий"
-            autosize
-            minRows={2}
-            maxRows={5}
-            maxLength={500}
-            placeholder="За что или кому заплатили"
-            value={draft.comment}
-            onChange={(e) => change("comment", e.currentTarget.value)}
-          />
+          <ExpenseFields draft={draft} today={today} change={change} />
           <Group justify="flex-end">
             <Button variant="default" onClick={onClose} disabled={busy}>
               Закрыть

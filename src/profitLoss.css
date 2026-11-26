@@ -110,6 +110,89 @@
   margin: 0;
   accent-color: var(--accent);
 }
+.pl-allocation-venues {
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.pl-allocation-venues legend {
+  padding: 0 4px;
+  font-weight: 600;
+}
+.pl-allocation-venues > div {
+  display: grid;
+  gap: 12px;
+}
+.pl-allocation-venue {
+  display: grid;
+  gap: 7px;
+}
+.pl-allocation-preview {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.pl-allocation-preview dl {
+  margin: 8px 0 0;
+}
+.pl-allocation-preview dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 0;
+}
+.pl-allocation-preview dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.pl-pending {
+  display: grid;
+  gap: 12px;
+  padding: 16px 20px;
+}
+.pl-pending > p {
+  margin: 0;
+}
+.pl-pending-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.pl-pending-row small {
+  display: block;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.pl-allocation-history-toggle summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.pl-allocation-history {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+.pl-allocation-history p {
+  margin: 8px 0;
+}
+.pl-allocation-history dl {
+  margin: 0;
+}
+.pl-allocation-history dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.pl-allocation-history dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
 .pl-breakdown-grid h3,
 .pl-change h3 {
   font-size: 14px;
