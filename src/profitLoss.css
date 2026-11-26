@@ -76,6 +76,40 @@
   margin-top: 16px;
   gap: 12px 42px;
 }
+.pl-payment-methods {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.pl-payment-methods legend {
+  padding: 0;
+  font-size: 14px;
+  font-weight: 500;
+}
+.pl-payment-methods legend span {
+  color: var(--mantine-color-error);
+}
+.pl-payment-methods > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+.pl-payment-methods label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--mantine-radius-md);
+  cursor: pointer;
+}
+.pl-payment-methods input {
+  margin: 0;
+  accent-color: var(--accent);
+}
 .pl-breakdown-grid h3,
 .pl-change h3 {
   font-size: 14px;

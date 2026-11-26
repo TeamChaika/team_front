@@ -27,8 +27,9 @@ try {
     const page = await browser.newPage({
       viewport:
         role === "manager"
-          ? { width: 390, height: 844 }
+          ? { width: 360, height: 740 }
           : { width: 1280, height: 900 },
+      ...(role === "manager" ? { isMobile: true, hasTouch: true } : {}),
     });
     page.setDefaultTimeout(7000);
     page.on("pageerror", (e) => errors.push(e.message));
@@ -232,8 +233,23 @@ try {
       await dialog.getByLabel("Статья расхода").click();
       await page.getByRole("option", { name: "Аренда", exact: true }).click();
       await dialog.getByLabel("Сумма, ₽").fill("200,25");
-      await dialog.getByLabel("Способ оплаты").click();
-      await page.getByRole("option", { name: "Наличные", exact: true }).click();
+      const cash = dialog.getByRole("radio", { name: "Наличные", exact: true });
+      const bank = dialog.getByRole("radio", {
+        name: "Безналичные",
+        exact: true,
+      });
+      assert.equal(await cash.isVisible(), true);
+      assert.equal(await bank.isVisible(), true);
+      assert.equal(
+        await cash.evaluate((input) => input.validity.valueMissing),
+        true,
+      );
+      await dialog.getByText("Безналичные", { exact: true }).tap();
+      assert.equal(await bank.isChecked(), true);
+      assert.equal(await cash.isChecked(), false);
+      await cash.tap();
+      assert.equal(await cash.isChecked(), true);
+      assert.equal(await bank.isChecked(), false);
       await dialog.getByRole("button", { name: "Сохранить" }).click();
       await dialog.getByRole("alert").waitFor();
       await dialog.getByRole("button", { name: "Сохранить" }).click();
@@ -245,12 +261,19 @@ try {
       assert.ok(writes[0].request_id);
       assert.equal(writes[1].amount, "200.25");
       assert.equal(writes[1].department_id, venue);
+      assert.equal(writes[1].payment_method, "cash");
       await page.getByRole("button", { name: /Действия с расходом/ }).click();
       await page.getByRole("menuitem", { name: "Изменить" }).click();
+      await dialog.getByLabel("Сумма, ₽").tap();
+      assert.equal(await cash.isChecked(), true);
+      await bank.tap();
+      assert.equal(await bank.isChecked(), true);
+      assert.equal(await cash.isChecked(), false);
       await dialog.getByLabel("Дата оплаты").fill("2026-11-24");
       await dialog.getByRole("button", { name: "Сохранить" }).click();
       await page.getByText("Оплачен · 24.11.2026").waitFor();
       assert.equal(writes[2].revision, 1);
+      assert.equal(writes[2].payment_method, "bank");
       assert.equal(
         await page.evaluate(
           () => document.documentElement.scrollWidth <= window.innerWidth,

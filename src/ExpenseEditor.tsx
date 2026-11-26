@@ -182,17 +182,26 @@ export default function ExpenseEditor({
               onChange={(e) => change("paid_date", e.currentTarget.value)}
             />
           </div>
-          <Select
-            label="Способ оплаты"
-            required
-            placeholder="Выберите способ"
-            data={Object.entries(paymentMethods).map(([value, label]) => ({
-              value,
-              label,
-            }))}
-            value={draft.payment_method || null}
-            onChange={(v) => change("payment_method", v)}
-          />
+          <fieldset className="pl-payment-methods">
+            <legend>
+              Способ оплаты <span aria-hidden="true">*</span>
+            </legend>
+            <div>
+              {Object.entries(paymentMethods).map(([value, label]) => (
+                <label key={value}>
+                  <input
+                    type="radio"
+                    name="payment_method"
+                    value={value}
+                    checked={draft.payment_method === value}
+                    onChange={() => change("payment_method", value)}
+                    required
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </fieldset>
           <Textarea
             label="Комментарий"
             autosize
