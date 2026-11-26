@@ -3,12 +3,14 @@ import { dateText, money } from "./api";
 import { useData } from "./useData";
 import type { AllocationGroup } from "./profitLossModel";
 
-export const methodOptions = [
-  { value: "pending", label: "Распределить позже" },
-  { value: "equal", label: "Поровну" },
-  { value: "weights", label: "По весам или долям" },
-  { value: "revenue", label: "По выручке за полный месяц" },
-];
+export const methodLabels = {
+  equal: "Поровну",
+  percent: "В процентах",
+  amount: "Произвольными суммами",
+  pending: "Распределить позже",
+  weights: "По весам или долям",
+  revenue: "По выручке за полный месяц",
+} satisfies Record<AllocationGroup["method"], string>;
 type HistorySnapshot = Pick<AllocationGroup, "amount" | "method" | "parts">;
 type HistoryItem = {
   revision: number;
@@ -55,11 +57,9 @@ export function AllocationHistory({
           </Text>
           <p>
             {item.before && item.before.method !== item.after.method
-              ? `${methodOptions.find((option) => option.value === item.before!.method)?.label ?? item.before.method} → `
+              ? `${methodLabels[item.before.method]} → `
               : ""}
-            {methodOptions.find((option) => option.value === item.after.method)
-              ?.label ?? item.after.method}{" "}
-            · {money(item.after.amount)} ₽
+            {methodLabels[item.after.method]} · {money(item.after.amount)} ₽
           </p>
           <dl>
             {item.after.parts.map((part) => (

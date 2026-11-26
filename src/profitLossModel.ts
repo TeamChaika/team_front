@@ -41,8 +41,18 @@ export type Expense = {
   converted_allocation_id?: string | null;
   status?: "active" | "cancelled" | "converted";
 };
-export type AllocationMethod = "pending" | "equal" | "weights" | "revenue";
-export type AllocationPart = { department_id: string; weight?: string };
+export type AllocationMethod =
+  | "pending"
+  | "equal"
+  | "percent"
+  | "amount"
+  | "weights"
+  | "revenue";
+export type AllocationPart = {
+  department_id: string;
+  weight?: string;
+  amount?: string;
+};
 export type AllocationInput = {
   amount: string;
   expense_date: string;
@@ -65,7 +75,12 @@ export type AllocationGroup = {
   payment_method: keyof typeof paymentMethods;
   comment: string | null;
   method: AllocationMethod;
-  parts: (AllocationPart & { amount?: string | null; department?: string })[];
+  parts: {
+    department_id: string;
+    department?: string;
+    weight?: string | null;
+    amount?: string | null;
+  }[];
 };
 export type ProfitReport = {
   revenue: string | null;
@@ -91,6 +106,72 @@ export function canManageAllocation(
   return access !== "manager" && row.can_edit && !row.cancelled;
 }
 
+type ManualMethod = "percent" | "amount";
+
+export function manualPartValue(method: ManualMethod, text: string) {
+  if (method === "amount") return amountForApi(text);
+  const value = text.trim().replace(",", ".");
+  if (!/^\d{1,3}(?:\.\d{1,12})?$/.test(value)) return null;
+  const [integer, fractional = ""] = value.split(".");
+  const fraction = fractional.replace(/0+$/, "");
+  if (
+    Number(integer) > 100 ||
+    (Number(integer) === 100 && fraction) ||
+    (!Number(integer) && !fraction)
+  )
+    return null;
+  return Number(integer).toString() + (fraction ? "." + fraction : "");
+}
+
+function decimalUnits(value: string, scale: number) {
+  const [integer, fraction = ""] = value.split(".");
+  return BigInt(integer + fraction.padEnd(scale, "0"));
+}
+
+function displayUnits(units: bigint, method: ManualMethod) {
+  const scale = method === "percent" ? 12 : 2;
+  const digits = units.toString().padStart(scale + 1, "0");
+  const integer = BigInt(digits.slice(0, -scale)).toLocaleString("ru-RU");
+  const fraction = digits.slice(-scale);
+  if (method === "amount") return integer + "," + fraction + " ₽";
+  const significant = fraction.replace(/0+$/, "");
+  return integer + (significant ? "," + significant : "") + " %";
+}
+
+export function allocationBalance(
+  method: ManualMethod,
+  parts: AllocationPart[],
+  expenseAmount: string,
+) {
+  const expected = method === "percent" ? "100" : amountForApi(expenseAmount);
+  if (!expected) return null;
+  const scale = method === "percent" ? 12 : 2;
+  let total = BigInt(0);
+  let allEntered = true;
+  let invalid = false;
+  for (const part of parts) {
+    const text = (method === "percent" ? part.weight : part.amount) ?? "";
+    const value = manualPartValue(method, text);
+    if (value) total += decimalUnits(value, scale);
+    else {
+      allEntered = false;
+      if (text.trim()) invalid = true;
+    }
+  }
+  const remaining = decimalUnits(expected, scale) - total;
+  return {
+    complete: allEntered && remaining === BigInt(0),
+    total: displayUnits(total, method),
+    invalid,
+    balanced: remaining === BigInt(0),
+    excess: remaining < BigInt(0),
+    remainder: displayUnits(
+      remaining < BigInt(0) ? -remaining : remaining,
+      method,
+    ),
+  };
+}
+
 export function allocationInput(
   amountText: string,
   expenseDate: string,
@@ -102,6 +183,11 @@ export function allocationInput(
     return null;
   const ids = parts.map((part) => part.department_id);
   if (ids.some((id) => !id) || new Set(ids).size !== ids.length) return null;
+  if (
+    (method === "percent" || method === "amount") &&
+    !allocationBalance(method, parts, amount)?.complete
+  )
+    return null;
   if (
     method === "weights" &&
     parts.some(
@@ -118,9 +204,13 @@ export function allocationInput(
     method,
     parts: parts.map((part) => ({
       department_id: part.department_id,
-      ...(method === "weights"
-        ? { weight: part.weight!.trim().replace(",", ".") }
-        : {}),
+      ...(method === "percent"
+        ? { weight: manualPartValue("percent", part.weight!)! }
+        : method === "amount"
+          ? { amount: amountForApi(part.amount!)! }
+          : method === "weights"
+            ? { weight: part.weight!.trim().replace(",", ".") }
+            : {}),
     })),
   };
 }
@@ -150,9 +240,11 @@ export function previewMatches(
     )
       return false;
     if (
-      input.method === "weights" &&
+      (input.method === "weights" || input.method === "percent") &&
       Number(part.weight) !== Number(selected.weight)
     )
+      return false;
+    if (input.method === "amount" && part.amount !== selected.amount)
       return false;
     seen.add(part.department_id);
     cents += Number(part.amount.replace(".", ""));
