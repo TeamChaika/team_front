@@ -144,7 +144,7 @@ function Summary({
 type Dialog =
   | { action: "create" }
   | { action: "allocation"; id: string; row?: Expense }
-  | { action: "edit" | "history" | "cancel"; row: Expense };
+  | { action: "edit" | "distribute" | "history" | "cancel"; row: Expense };
 const PAGE_SIZE = 25;
 function PendingAllocations({
   range,
@@ -287,7 +287,11 @@ function Journal({
             {data.rows.map((row) => (
               <tr
                 key={row.id}
-                className={row.cancelled ? "pl-cancelled" : undefined}
+                className={
+                  row.cancelled || row.status === "converted"
+                    ? "pl-cancelled"
+                    : undefined
+                }
               >
                 <td className="pl-date">{dateText(row.expense_date)}</td>
                 <td className="pl-subject">
@@ -301,11 +305,13 @@ function Journal({
                 <td className="pl-payment">
                   {paymentMethods[row.payment_method]}
                   <small>
-                    {row.cancelled
-                      ? "Аннулирован"
-                      : row.paid_date
-                        ? "Оплачен · " + dateText(row.paid_date)
-                        : "Ожидает оплаты"}
+                    {row.status === "converted"
+                      ? "Передан в распределение"
+                      : row.cancelled
+                        ? "Аннулирован"
+                        : row.paid_date
+                          ? "Оплачен · " + dateText(row.paid_date)
+                          : "Ожидает оплаты"}
                   </small>
                 </td>
                 <td className="pl-author">{row.author}</td>
@@ -344,6 +350,33 @@ function Journal({
                             >
                               История
                             </Menu.Item>
+                            {row.status === "converted" &&
+                              access !== "manager" &&
+                              row.can_view_allocation &&
+                              row.converted_allocation_id && (
+                                <Menu.Item
+                                  onClick={() =>
+                                    setDialog({
+                                      action: "allocation",
+                                      id: row.converted_allocation_id!,
+                                    })
+                                  }
+                                >
+                                  Открыть распределение
+                                </Menu.Item>
+                              )}
+                            {row.status !== "converted" &&
+                              !row.cancelled &&
+                              access !== "manager" &&
+                              row.can_allocate === true && (
+                                <Menu.Item
+                                  onClick={() =>
+                                    setDialog({ action: "distribute", row })
+                                  }
+                                >
+                                  Распределить по заведениям
+                                </Menu.Item>
+                              )}
                             {canChangeExpense(access, row) && (
                               <>
                                 <Menu.Item
@@ -547,9 +580,11 @@ export default function ProfitLoss({ access }: { access: FinanceAccess }) {
       )}
       {(dialog?.action === "create" ||
         dialog?.action === "edit" ||
+        dialog?.action === "distribute" ||
         dialog?.action === "allocation") && (
         <ExpenseEditor
           access={access}
+          distribute={dialog.action === "distribute"}
           allocationId={dialog.action === "allocation" ? dialog.id : undefined}
           row={dialog.action === "create" ? undefined : dialog.row}
           today={today}
