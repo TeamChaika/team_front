@@ -110,24 +110,9 @@
   margin: 0;
   accent-color: var(--accent);
 }
-.pl-allocation-venues {
+.pl-inline-allocation {
+  grid-column: 1 / -1;
   min-width: 0;
-  margin: 0;
-  padding: 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-}
-.pl-allocation-venues legend {
-  padding: 0 4px;
-  font-weight: 600;
-}
-.pl-allocation-venues > div {
-  display: grid;
-  gap: 12px;
-}
-.pl-allocation-venue {
-  display: grid;
-  gap: 7px;
 }
 .pl-allocation-preview {
   padding: 12px;

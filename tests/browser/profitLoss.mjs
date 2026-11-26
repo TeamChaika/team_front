@@ -25,12 +25,12 @@ const headers = {
 };
 try {
   for (const role of ["manager", "accountant", "owner", null]) {
+    const mobile = role === "manager" || role === "accountant";
     const page = await browser.newPage({
-      viewport:
-        role === "manager"
-          ? { width: 360, height: 740 }
-          : { width: 1280, height: 900 },
-      ...(role === "manager" ? { isMobile: true, hasTouch: true } : {}),
+      viewport: mobile
+        ? { width: 360, height: 740 }
+        : { width: 1280, height: 900 },
+      ...(mobile ? { isMobile: true, hasTouch: true } : {}),
     });
     page.setDefaultTimeout(7000);
     page.on("pageerror", (e) => errors.push(e.message));
@@ -173,14 +173,25 @@ try {
         }
         if (url.pathname === allocations + "/preview") {
           const proposal = req.postDataJSON();
-          assert.equal(proposal.method, "equal");
           assert.equal(proposal.amount, "100.01");
+          if (proposal.method === "revenue")
+            return route.fulfill({
+              status: 422,
+              json: { detail: "Выручка за месяц загружена не полностью." },
+              headers,
+            });
+          assert.ok(["weights", "equal"].includes(proposal.method));
           return respond({
             method: proposal.method,
             parts: proposal.parts.map((part, index) => ({
               department_id: part.department_id,
-              amount: index ? "50.00" : "50.01",
-              weight: "1",
+              amount:
+                proposal.method === "equal"
+                  ? ["50.01", "50.00"][index]
+                  : part.weight === "3"
+                    ? "75.01"
+                    : "25.00",
+              weight: part.weight ?? "1",
             })),
           });
         }
@@ -298,15 +309,31 @@ try {
         await page.getByText("Операционная прибыль", { exact: true }).waitFor();
       assert.equal(reportReads > 0, role === "owner");
     }
-    if (role === "manager") {
+    if (role) {
       assert.equal(
         await page
           .getByRole("button", { name: "Распределить расход", exact: true })
           .count(),
         0,
       );
+    }
+    async function chooseVenue(editor, name) {
+      await editor.getByLabel("Заведения", { exact: false }).click();
+      await page.getByRole("option", { name, exact: true }).click();
+      await editor.getByLabel("Заведения", { exact: false }).press("Tab");
+    }
+    if (role === "manager") {
       await page.getByRole("button", { name: "Добавить расход" }).click();
       const dialog = page.getByRole("dialog");
+      assert.equal(
+        await dialog.getByLabel("Заведение", { exact: false }).count(),
+        1,
+      );
+      assert.equal(
+        await dialog.getByLabel("Заведения", { exact: false }).count(),
+        0,
+      );
+      assert.equal(await dialog.getByLabel("Способ распределения").count(), 0);
       await dialog.getByLabel("Статья расхода").click();
       await page.getByRole("option", { name: "Аренда", exact: true }).click();
       await dialog.getByLabel("Сумма, ₽").fill("200,25");
@@ -375,10 +402,11 @@ try {
       await page.getByText("Аннулирован", { exact: true }).waitFor();
       assert.deepEqual(writes, [{ revision: 2 }]);
       assert.equal(reportReads, 0);
-      await page
-        .getByRole("button", { name: "Распределить расход", exact: true })
-        .click();
+      await page.getByRole("button", { name: "Добавить расход" }).click();
       const editor = page.getByRole("dialog");
+      await chooseVenue(editor, "Ресторан");
+      const method = editor.getByLabel("Способ распределения");
+      assert.equal(await method.count(), 0);
       await editor.getByLabel("Статья расхода").click();
       await page.getByRole("option", { name: "Аренда", exact: true }).click();
       await editor.getByLabel("Сумма, ₽").fill("100,01");
@@ -391,8 +419,38 @@ try {
       await editor
         .getByRole("radio", { name: "Безналичные", exact: true })
         .check();
-      await editor.getByLabel("Способ распределения").selectOption("pending");
-      await editor.getByRole("button", { name: /Сохранить/ }).click();
+      await editor.getByLabel("Комментарий").fill("Общая аренда за ноябрь");
+      await chooseVenue(editor, "Заведение с iiko");
+      assert.equal(await method.inputValue(), "equal");
+      const preview = editor.getByRole("region", {
+        name: "Предпросмотр распределения",
+      });
+      await preview.getByText(/50,01/).waitFor();
+      await editor.getByLabel("Заведения", { exact: false }).press("Backspace");
+      await method.waitFor({ state: "hidden" });
+      assert.equal(await preview.count(), 0);
+      assert.equal(await editor.getByLabel("Сумма, ₽").inputValue(), "100,01");
+      await chooseVenue(editor, "Заведение с iiko");
+      await method.selectOption("weights");
+      await editor.getByLabel("Вес: Ресторан", { exact: true }).fill("3");
+      await editor
+        .getByLabel("Вес: Заведение с iiko", { exact: true })
+        .fill("1");
+      await preview.getByText(/75,01/).waitFor();
+      await method.selectOption("revenue");
+      await editor
+        .getByText("Выручка за месяц загружена не полностью.", { exact: false })
+        .waitFor();
+      assert.equal(
+        await editor
+          .getByRole("button", { name: "Сохранить", exact: true })
+          .isDisabled(),
+        true,
+      );
+      await method.selectOption("pending");
+      await editor
+        .getByRole("button", { name: "Сохранить", exact: true })
+        .click();
       const waiting = page.getByRole("region", {
         name: "Ожидают распределения",
       });
@@ -401,6 +459,18 @@ try {
         .click();
       assert.equal(allocationWrites.length, 1);
       assert.equal(allocationWrites[0].method, "pending");
+      assert.equal(allocationWrites[0].amount, "100.01");
+      assert.equal(allocationWrites[0].category, "rent");
+      assert.equal(allocationWrites[0].payment_method, "bank");
+      assert.equal(allocationWrites[0].expense_date, "2026-11-10");
+      assert.equal(allocationWrites[0].paid_date, "2026-11-24");
+      assert.equal(allocationWrites[0].comment, "Общая аренда за ноябрь");
+      assert.ok(allocationWrites[0].request_id);
+      assert.equal(
+        writes.length,
+        1,
+        "shared creation should not write a direct expense",
+      );
       assert.equal(allocationHistoryReads, 0);
       await editor.getByText("История", { exact: true }).click();
       await editor.getByRole("heading", { name: "Счёт создан" }).waitFor();
@@ -411,11 +481,9 @@ try {
       );
       await editor.getByLabel("Способ распределения").selectOption("equal");
       const save = editor.getByRole("button", { name: /Сохранить/ });
-      assert.equal(await save.isDisabled(), true);
-      await editor.getByRole("button", { name: "Рассчитать доли" }).click();
-      await editor
-        .getByRole("region", { name: "Предпросмотр распределения" })
-        .waitFor();
+      const calculate = editor.getByRole("button", { name: "Рассчитать доли" });
+      if (await calculate.isVisible()) await calculate.click();
+      await preview.waitFor();
       await save.click();
       await editor.waitFor({ state: "hidden" });
       assert.equal(allocationWrites.length, 2);
@@ -427,6 +495,26 @@ try {
         ["50.00", "50.01"],
       );
       await waiting.getByText("Нет отложенных расходов за период.").waitFor();
+      await page.getByRole("button", { name: "Добавить расход" }).click();
+      await chooseVenue(editor, "Ресторан");
+      await editor.getByLabel("Статья расхода").click();
+      await page.getByRole("option", { name: "Аренда", exact: true }).click();
+      await editor.getByLabel("Сумма, ₽").fill("250");
+      await editor
+        .getByRole("radio", { name: "Наличные", exact: true })
+        .check();
+      await editor
+        .getByRole("button", { name: "Сохранить", exact: true })
+        .click();
+      await editor.waitFor({ state: "hidden" });
+      assert.equal(writes.length, 2);
+      assert.equal(writes[1].department_id, venue);
+      assert.equal(writes[1].amount, "250.00");
+      assert.equal(
+        allocationWrites.length,
+        2,
+        "one venue uses the direct journal",
+      );
       assert.equal(reportReads, 0);
     }
     if (role === "owner") {
@@ -536,19 +624,45 @@ try {
         "2026-10-20",
       );
       await page.getByRole("button", { name: "Добавить расход" }).click();
-      await page
-        .getByRole("combobox", { name: "Заведение", exact: true })
-        .click();
-      await page
-        .getByRole("option", { name: "Ресторан", exact: true })
+      const editor = page.getByRole("dialog");
+      assert.equal(await editor.getByLabel("Способ распределения").count(), 0);
+      await chooseVenue(editor, "Ресторан");
+      assert.equal(
+        await editor.getByLabel("Способ распределения").inputValue(),
+        "equal",
+      );
+      await editor.getByLabel("Статья расхода").click();
+      await page.getByRole("option", { name: "Аренда", exact: true }).click();
+      await editor.getByLabel("Сумма, ₽").fill("100,01");
+      await editor
+        .getByRole("radio", { name: "Наличные", exact: true })
+        .check();
+      await editor
+        .getByRole("region", { name: "Предпросмотр распределения" })
+        .getByText(/50,01/)
         .waitFor();
+      await editor
+        .getByRole("button", { name: "Сохранить", exact: true })
+        .click();
+      await editor.waitFor({ state: "hidden" });
+      assert.equal(allocationWrites.length, 1);
+      assert.equal(writes.length, 0);
+      assert.equal(allocationWrites[0].method, "equal");
+      assert.deepEqual(
+        allocationWrites[0].parts.map((part) => part.department_id).sort(),
+        [venue, connectedVenue].sort(),
+      );
+      assert.deepEqual(
+        allocationWrites[0].parts.map((part) => part.amount).sort(),
+        ["50.00", "50.01"],
+      );
     }
     await page.close();
   }
   assert.deepEqual(errors, []);
   assert.deepEqual(unexpected, []);
   console.log(
-    "Validated P&L access for all three roles, explicit denial, mobile entry, retry, edit and history.",
+    "Validated P&L roles, mobile entry, unified direct and shared expense creation, automatic preview, deferred allocation, retry, edit and history.",
   );
 } finally {
   await browser.close();
