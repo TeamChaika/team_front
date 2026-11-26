@@ -174,24 +174,13 @@ try {
         if (url.pathname === allocations + "/preview") {
           const proposal = req.postDataJSON();
           assert.equal(proposal.amount, "100.01");
-          if (proposal.method === "revenue")
-            return route.fulfill({
-              status: 422,
-              json: { detail: "Выручка за месяц загружена не полностью." },
-              headers,
-            });
-          assert.ok(["weights", "equal"].includes(proposal.method));
+          assert.equal(proposal.method, "equal");
           return respond({
             method: proposal.method,
             parts: proposal.parts.map((part, index) => ({
               department_id: part.department_id,
-              amount:
-                proposal.method === "equal"
-                  ? ["50.01", "50.00"][index]
-                  : part.weight === "3"
-                    ? "75.01"
-                    : "25.00",
-              weight: part.weight ?? "1",
+              amount: ["50.01", "50.00"][index],
+              weight: "1",
             })),
           });
         }
@@ -431,23 +420,15 @@ try {
       assert.equal(await preview.count(), 0);
       assert.equal(await editor.getByLabel("Сумма, ₽").inputValue(), "100,01");
       await chooseVenue(editor, "Заведение с iiko");
-      await method.selectOption("weights");
-      await editor.getByLabel("Вес: Ресторан", { exact: true }).fill("3");
-      await editor
-        .getByLabel("Вес: Заведение с iiko", { exact: true })
-        .fill("1");
-      await preview.getByText(/75,01/).waitFor();
-      await method.selectOption("revenue");
-      await editor
-        .getByText("Выручка за месяц загружена не полностью.", { exact: false })
-        .waitFor();
-      assert.equal(
-        await editor
-          .getByRole("button", { name: "Сохранить", exact: true })
-          .isDisabled(),
-        true,
-      );
-      await method.selectOption("pending");
+      assert.deepEqual(await method.locator("option").allTextContents(), [
+        "Поровну",
+        "В процентах",
+        "Произвольными суммами",
+      ]);
+      const deferred = editor.getByRole("checkbox", {
+        name: "Распределить позже",
+      });
+      await deferred.check();
       await editor
         .getByRole("button", { name: "Сохранить", exact: true })
         .click();
@@ -479,7 +460,9 @@ try {
         allocationWrites[0].parts.map((part) => part.department_id).sort(),
         [venue, connectedVenue].sort(),
       );
-      await editor.getByLabel("Способ распределения").selectOption("equal");
+      assert.equal(await deferred.isChecked(), true);
+      await deferred.uncheck();
+      await method.selectOption("equal");
       const save = editor.getByRole("button", { name: /Сохранить/ });
       const calculate = editor.getByRole("button", { name: "Рассчитать доли" });
       if (await calculate.isVisible()) await calculate.click();
@@ -684,6 +667,33 @@ try {
     };
     const conversionWrites = [];
     const directWrites = [];
+    const byPercent = role === "accountant";
+    const splitMethod = byPercent ? "percent" : "amount";
+    const expectedAmounts = byPercent
+      ? ["182.45", "268.05"]
+      : ["349.99", "100.51"];
+    const shares = byPercent ? ["40.5", "59.5"] : expectedAmounts;
+    let historicalMethod;
+    function storedGroup() {
+      const payload = conversionWrites.at(-1);
+      return {
+        id: allocationId,
+        ...payload,
+        method: historicalMethod ?? payload.method,
+        revision: 1,
+        can_edit: true,
+        cancelled: false,
+        parts: payload.parts.map((part) => ({
+          ...part,
+          ...(historicalMethod
+            ? {
+                amount: "225.25",
+                weight: historicalMethod === "weights" ? "1" : "0.5",
+              }
+            : { weight: byPercent ? part.weight : part.amount }),
+        })),
+      };
+    }
     let converted = false;
     await page.route("**/*", async (route) => {
       const req = route.request();
@@ -768,21 +778,38 @@ try {
         });
       if (url.pathname === "/api/profit-loss/allocations/pending")
         return respond({ rows: [], total: 0 });
+      if (
+        url.pathname === "/api/profit-loss/allocations/" + allocationId &&
+        req.method() === "GET"
+      )
+        return respond(storedGroup());
       if (url.pathname === "/api/profit-loss/allocations/preview") {
         const proposal = req.postDataJSON();
         assert.equal(proposal.amount, source.amount);
-        assert.equal(proposal.method, "equal");
+        if (
+          historicalMethod === "revenue" &&
+          proposal.method === historicalMethod
+        )
+          return route.fulfill({
+            status: 422,
+            json: { detail: "Выручка за месяц загружена не полностью." },
+            headers,
+          });
+        assert.ok(["equal", splitMethod].includes(proposal.method));
         assert.deepEqual(
           proposal.parts.map((part) => part.department_id).sort(),
           [venue, connectedVenue].sort(),
         );
         return respond({
-          method: "equal",
-          parts: proposal.parts.map((part) => ({
-            department_id: part.department_id,
-            amount: "225.25",
-            weight: "1",
-          })),
+          method: proposal.method,
+          parts: proposal.parts.map((part) => {
+            const index = part.department_id === venue ? 0 : 1;
+            if (proposal.method === "equal")
+              return { ...part, amount: "225.25", weight: "1" };
+            const share = byPercent ? part.weight : part.amount;
+            assert.equal(Number(share), Number(shares[index]));
+            return { ...part, amount: expectedAmounts[index], weight: share };
+          }),
         });
       }
       if (
@@ -795,13 +822,7 @@ try {
         if (conversionWrites.length === 1)
           return route.abort("connectionreset");
         converted = true;
-        return respond({
-          id: allocationId,
-          ...payload,
-          revision: 1,
-          can_edit: true,
-          cancelled: false,
-        });
+        return respond(storedGroup());
       }
       if (
         url.pathname === "/api/profit-loss/expenses/" + expenseId &&
@@ -862,18 +883,48 @@ try {
         .getByRole("option", { name: "Заведение с iiko", exact: true })
         .click();
       await editor.getByLabel("Заведения", { exact: false }).press("Tab");
-      await editor
-        .getByRole("region", { name: "Предпросмотр распределения" })
+      const preview = editor.getByRole("region", {
+        name: "Предпросмотр распределения",
+      });
+      await preview
         .getByText(/225,25/)
         .first()
         .waitFor();
-      await editor
-        .getByRole("button", { name: "Распределить расход", exact: true })
-        .click();
+      const method = editor.getByLabel("Способ распределения");
+      await method.selectOption(splitMethod);
+      const label = byPercent ? "Доля, %" : "Сумма, ₽";
+      const first = editor.getByLabel(label + " — Ресторан", { exact: true });
+      const second = editor.getByLabel(label + " — Заведение с iiko", {
+        exact: true,
+      });
+      const confirm = editor.getByRole("button", {
+        name: "Распределить расход",
+        exact: true,
+      });
+      await first.fill(shares[0].replace(".", ","));
+      for (const invalid of byPercent
+        ? ["59,49", "59,51"]
+        : ["100,50", "100,52"]) {
+        await second.fill(invalid);
+        assert.equal(
+          await confirm.isDisabled(),
+          true,
+          "reject totals above and below the expense",
+        );
+        assert.equal(
+          await preview.count(),
+          0,
+          "old preview must not survive invalid input",
+        );
+      }
+      await second.fill(shares[1].replace(".", ","));
+      for (const amount of expectedAmounts)
+        await preview
+          .getByText(amount.replace(".", ","), { exact: false })
+          .waitFor();
+      await confirm.click();
       await editor.getByRole("alert").waitFor();
-      await editor
-        .getByRole("button", { name: "Распределить расход", exact: true })
-        .click();
+      await confirm.click();
       await editor.waitFor({ state: "hidden" });
       assert.deepEqual(conversionWrites[0], conversionWrites[1]);
       assert.equal(conversionWrites[0].revision, source.revision);
@@ -887,14 +938,14 @@ try {
         "comment",
       ])
         assert.equal(conversionWrites[0][key], source[key], key);
-      assert.equal(conversionWrites[0].method, "equal");
+      assert.equal(conversionWrites[0].method, splitMethod);
       assert.deepEqual(
         conversionWrites[0].parts
           .map((part) => [part.department_id, part.amount])
           .sort(),
         [
-          [venue, "225.25"],
-          [connectedVenue, "225.25"],
+          [venue, expectedAmounts[0]],
+          [connectedVenue, expectedAmounts[1]],
         ].sort(),
       );
       assert.deepEqual(
@@ -912,13 +963,48 @@ try {
         0,
         "converted source cannot convert again",
       );
+      await page
+        .getByRole("menuitem", { name: "Открыть распределение" })
+        .click();
+      await first.waitFor();
+      assert.equal(await method.inputValue(), splitMethod);
+      assert.equal(
+        Number((await first.inputValue()).replace(",", ".")),
+        Number(shares[0]),
+      );
+      assert.equal(
+        Number((await second.inputValue()).replace(",", ".")),
+        Number(shares[1]),
+      );
+      await editor
+        .getByRole("button", { name: "Закрыть", exact: true })
+        .click();
+      historicalMethod = byPercent ? "weights" : "revenue";
+      await page.getByRole("button", { name: /Действия с расходом/ }).click();
+      await page
+        .getByRole("menuitem", { name: "Открыть распределение" })
+        .click();
+      await method.waitFor();
+      assert.equal(await method.inputValue(), historicalMethod);
+      if (historicalMethod === "weights") {
+        assert.equal(
+          await editor.getByLabel("Вес: Ресторан").inputValue(),
+          "1",
+        );
+      } else {
+        await editor.getByRole("button", { name: "Рассчитать доли" }).click();
+        await editor
+          .getByRole("alert")
+          .filter({ hasText: "Выручка за месяц загружена не полностью" })
+          .waitFor();
+      }
     }
     await page.close();
   }
   assert.deepEqual(errors, []);
   assert.deepEqual(unexpected, []);
   console.log(
-    "Validated P&L roles, mobile entry, direct and shared expense creation, paid direct expense conversion, automatic preview, retry, edit and history.",
+    "Validated P&L roles, mobile entry, equal, percentage and exact amount splits, deferral, paid expense conversion, retry, editing, legacy methods and history.",
   );
 } finally {
   await browser.close();

@@ -10,6 +10,7 @@ import {
   financeDepartments,
   canManageAllocation,
   allocationInput,
+  allocationBalance,
   previewMatches,
 } from "../src/profitLossModel.ts";
 
@@ -21,6 +22,79 @@ test("only finance roles can manage a complete allocation group", () => {
     canManageAllocation("owner", { ...row, can_edit: false }),
     false,
   );
+});
+
+test("percentage allocations must total exactly 100 before preview", () => {
+  const parts = [
+    { department_id: "a", weight: "33,333333333333" },
+    { department_id: "b", weight: "33,333333333333" },
+    { department_id: "c", weight: "33,333333333334" },
+  ];
+  const input = allocationInput("10,01", "2026-11-27", "percent", parts);
+  assert.deepEqual(
+    input.parts.map((part) => part.weight),
+    ["33.333333333333", "33.333333333333", "33.333333333334"],
+  );
+  const missing = parts.map((part, i) =>
+    i === 2 ? { ...part, weight: parts[0].weight } : part,
+  );
+  assert.equal(
+    allocationInput("10,01", "2026-11-27", "percent", missing),
+    null,
+  );
+  assert.equal(
+    allocationBalance("percent", missing, "10,01").remainder,
+    "0,000000000001 %",
+  );
+  for (const value of ["0", "-50", "", "1e2", "33.3333333333334"]) {
+    assert.equal(
+      allocationInput("10", "2026-11-27", "percent", [
+        { department_id: "a", weight: value },
+        { department_id: "b", weight: "50" },
+      ]),
+      null,
+    );
+  }
+});
+
+test("manual amounts match both the total and each venue down to a kopeck", () => {
+  const parts = [
+    { department_id: "a", amount: "0,10", weight: "40" },
+    { department_id: "b", amount: "0,20", weight: "60" },
+  ];
+  const input = allocationInput("0,30", "2026-11-27", "amount", parts);
+  assert.deepEqual(input.parts, [
+    { department_id: "a", amount: "0.10" },
+    { department_id: "b", amount: "0.20" },
+  ]);
+  assert.equal(allocationInput("0,29", "2026-11-27", "amount", parts), null);
+  assert.equal(allocationBalance("amount", parts, "0,29").excess, true);
+  assert.equal(
+    allocationInput("0,30", "2026-11-27", "amount", [
+      { department_id: "a", amount: "0,101" },
+      parts[1],
+    ]),
+    null,
+  );
+  const swapped = {
+    method: "amount",
+    parts: [
+      { department_id: "a", amount: "0.20", weight: "0.2" },
+      { department_id: "b", amount: "0.10", weight: "0.1" },
+    ],
+  };
+  assert.equal(previewMatches(input, swapped), false);
+  assert.equal(
+    previewMatches(input, {
+      method: "amount",
+      parts: [...input.parts].reverse(),
+    }),
+    true,
+  );
+  assert.deepEqual(allocationInput("1", "2026-11-27", "equal", parts).parts, [
+    { department_id: "a" },
+    { department_id: "b" },
+  ]);
 });
 
 test("allocation preview must match current input and the full amount", () => {

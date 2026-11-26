@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   Alert,
   Button,
+  Checkbox,
   Group,
   Loader,
   Modal,
@@ -14,12 +15,14 @@ import {
 } from "@mantine/core";
 import { api, ApiError, money } from "./api";
 import ExpenseFields, { type ExpenseDraft } from "./ExpenseFields";
-import { AllocationHistory, methodOptions } from "./AllocationHistory";
+import { AllocationHistory, methodLabels } from "./AllocationHistory";
 import {
+  allocationBalance,
   allocationInput,
   amountForApi,
   canChangeExpense,
   canManageAllocation,
+  manualPartValue,
   type AllocationGroup,
   type AllocationMethod,
   type AllocationPart,
@@ -72,7 +75,10 @@ export default function ExpenseEditor({
   const [draft, setDraft] = useState<ExpenseDraft>(() =>
     initialDraft(allocationId ? undefined : row, today),
   );
-  const [method, setMethod] = useState<AllocationMethod>("equal");
+  const [selectedMethod, setSelectedMethod] =
+    useState<Exclude<AllocationMethod, "pending">>("equal");
+  const [deferred, setDeferred] = useState(false);
+  const method = deferred ? "pending" : selectedMethod;
   const [parts, setParts] = useState<AllocationPart[]>(() =>
     !allocationId &&
     row &&
@@ -126,11 +132,26 @@ export default function ExpenseEditor({
         if (!active) return;
         setGroup(result);
         setDraft(initialDraft(result, today));
-        setMethod(result.method);
+        setDeferred(result.method === "pending");
+        setSelectedMethod(
+          result.method === "pending" ? "equal" : result.method,
+        );
         setParts(
-          result.parts.map(({ department_id, weight }) => ({
+          result.parts.map(({ department_id, weight, amount }) => ({
             department_id,
-            weight: weight ?? undefined,
+            weight:
+              result.method === "percent" && weight
+                ? (manualPartValue("percent", weight) ?? weight).replace(
+                    ".",
+                    ",",
+                  )
+                : result.method === "weights"
+                  ? (weight ?? undefined)
+                  : undefined,
+            amount:
+              result.method === "amount"
+                ? amount?.replace(".", ",")
+                : undefined,
           })),
         );
       })
@@ -162,10 +183,10 @@ export default function ExpenseEditor({
       ),
     );
   }
-  const weight = (id: string, value: string) =>
+  const updatePart = (id: string, field: "weight" | "amount", value: string) =>
     setParts((current) =>
       current.map((part) =>
-        part.department_id === id ? { ...part, weight: value } : part,
+        part.department_id === id ? { ...part, [field]: value } : part,
       ),
     );
   async function submit(event: FormEvent) {
@@ -347,32 +368,86 @@ export default function ExpenseEditor({
           parts.length !== 1 ||
           (!!directRow &&
             parts[0]?.department_id !== directRow.department_id)));
+  const methodOptions: Exclude<AllocationMethod, "pending">[] = [
+    "equal",
+    "percent",
+    "amount",
+  ];
+  if (group?.method === "weights" || group?.method === "revenue")
+    methodOptions.push(group.method);
+  const manual = method === "percent" || method === "amount";
+  const balance = manual
+    ? allocationBalance(method, parts, draft.amount)
+    : null;
   const allocationControls = shared && (
     <Stack gap="xs">
-      <NativeSelect
-        label="Способ распределения"
-        data={methodOptions}
-        value={method}
+      {!deferred && (
+        <NativeSelect
+          label="Способ распределения"
+          data={methodOptions.map((value) => ({
+            value,
+            label: methodLabels[value],
+          }))}
+          value={selectedMethod}
+          onChange={(event) => {
+            setSelectedMethod(
+              event.currentTarget.value as typeof selectedMethod,
+            );
+            setError("");
+          }}
+          disabled={locked}
+        />
+      )}
+      {(manual || method === "weights") &&
+        parts.map((part) => {
+          const name = names.get(part.department_id) ?? part.department_id;
+          const label =
+            method === "percent"
+              ? `Доля, % — ${name}`
+              : method === "amount"
+                ? `Сумма, ₽ — ${name}`
+                : `Вес: ${name}`;
+          const field = method === "amount" ? "amount" : "weight";
+          const value = part[field] ?? "";
+          return (
+            <TextInput
+              key={part.department_id}
+              label={label}
+              inputMode="decimal"
+              value={value}
+              error={
+                manual && value && !manualPartValue(method, value)
+                  ? method === "amount"
+                    ? "Введите положительную сумму с точностью до копейки."
+                    : "Введите долю больше 0 и до 100 % с точностью до 12 знаков."
+                  : undefined
+              }
+              onChange={(event) =>
+                updatePart(part.department_id, field, event.currentTarget.value)
+              }
+              disabled={locked}
+            />
+          );
+        })}
+      {balance && !balance.invalid && (
+        <Text role="status" size="sm" c={balance.excess ? "red" : "dimmed"}>
+          Распределено: {balance.total}
+          {!balance.balanced &&
+            ` · ${balance.excess ? "Превышение" : "Осталось распределить"}: ${balance.remainder}`}
+          {balance.balanced &&
+            !balance.complete &&
+            " · Заполните долю каждого заведения"}
+        </Text>
+      )}
+      <Checkbox
+        label="Распределить позже"
+        checked={deferred}
         onChange={(event) => {
-          setMethod(event.currentTarget.value as AllocationMethod);
+          setDeferred(event.currentTarget.checked);
           setError("");
         }}
         disabled={locked}
       />
-      {method === "weights" &&
-        parts.map((part) => (
-          <TextInput
-            key={part.department_id}
-            label={`Вес: ${names.get(part.department_id) ?? part.department_id}`}
-            inputMode="decimal"
-            value={part.weight ?? ""}
-            placeholder="Например, 60 и 40"
-            onChange={(event) =>
-              weight(part.department_id, event.currentTarget.value)
-            }
-            disabled={locked}
-          />
-        ))}
       {method === "pending" && (
         <Text size="sm" c="dimmed">
           Счёт войдёт в расходы сети по дате расхода. Доли заведений можно
