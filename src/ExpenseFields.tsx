@@ -1,4 +1,5 @@
 import { Select, Textarea, TextInput } from "@mantine/core";
+import type { ReactNode } from "react";
 import { categories, paymentMethods } from "./profitLossModel";
 
 export type ExpenseDraft = {
@@ -15,11 +16,13 @@ export default function ExpenseFields({
   today,
   change,
   disabled = false,
+  afterAmount,
 }: {
   draft: ExpenseDraft;
   today: string;
   change: (name: keyof ExpenseDraft, value: string | null) => void;
   disabled?: boolean;
+  afterAmount?: ReactNode;
 }) {
   return (
     <>
@@ -46,6 +49,9 @@ export default function ExpenseFields({
           disabled={disabled}
           onChange={(e) => change("amount", e.currentTarget.value)}
         />
+        {afterAmount && (
+          <div className="pl-inline-allocation">{afterAmount}</div>
+        )}
         <TextInput
           type="date"
           label="Дата расхода"

@@ -4,7 +4,6 @@ import {
   Alert,
   Button,
   Checkbox,
-  Group,
   Loader,
   Menu,
   Pagination,
@@ -30,7 +29,6 @@ import {
   type ProfitReport,
 } from "./profitLossModel";
 import ExpenseEditor from "./ExpenseEditor";
-import AllocationEditor from "./AllocationEditor";
 import { CancelExpense, ExpenseHistory } from "./ExpenseDetails";
 import "./profitLoss.css";
 
@@ -145,7 +143,6 @@ function Summary({
 
 type Dialog =
   | { action: "create" }
-  | { action: "allocate" }
   | { action: "allocation"; id: string; row?: Expense }
   | { action: "edit" | "history" | "cancel"; row: Expense };
 const PAGE_SIZE = 25;
@@ -452,24 +449,13 @@ export default function ProfitLoss({ access }: { access: FinanceAccess }) {
     <div className="profit-loss">
       <div className="pl-heading">
         <h1>Прибыли и убытки</h1>
-        <Group gap="xs">
-          <Button
-            leftSection={<IconPlus size={16} />}
-            onClick={() => open({ action: "create" })}
-            disabled={!writable.length}
-          >
-            Добавить расход
-          </Button>
-          {access !== "manager" && (
-            <Button
-              variant="light"
-              onClick={() => open({ action: "allocate" })}
-              disabled={writable.length < 2}
-            >
-              Распределить расход
-            </Button>
-          )}
-        </Group>
+        <Button
+          leftSection={<IconPlus size={16} />}
+          onClick={() => open({ action: "create" })}
+          disabled={!writable.length}
+        >
+          Добавить расход
+        </Button>
       </div>
       <div className="panel pl-filters">
         <div className="pl-venues">
@@ -559,24 +545,16 @@ export default function ProfitLoss({ access }: { access: FinanceAccess }) {
           open={open}
         />
       )}
-      {(dialog?.action === "create" || dialog?.action === "edit") && (
+      {(dialog?.action === "create" ||
+        dialog?.action === "edit" ||
+        dialog?.action === "allocation") && (
         <ExpenseEditor
-          row={dialog.action === "edit" ? dialog.row : null}
+          access={access}
+          allocationId={dialog.action === "allocation" ? dialog.id : undefined}
+          row={dialog.action === "create" ? undefined : dialog.row}
           today={today}
           venues={writable}
           selectedVenue={selectedVenue}
-          onClose={close}
-          onSaved={saved}
-          onConflict={reload}
-        />
-      )}
-      {(dialog?.action === "allocate" || dialog?.action === "allocation") && (
-        <AllocationEditor
-          allocationId={dialog.action === "allocation" ? dialog.id : undefined}
-          row={dialog.action === "allocation" ? dialog.row : undefined}
-          access={access}
-          today={today}
-          venues={writable}
           onClose={close}
           onSaved={saved}
           onConflict={reload}
