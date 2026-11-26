@@ -8,7 +8,81 @@ import {
   moscowToday,
   expenseQuery,
   financeDepartments,
+  canManageAllocation,
+  allocationInput,
+  previewMatches,
 } from "../src/profitLossModel.ts";
+
+test("only finance roles can manage a complete allocation group", () => {
+  const row = { can_edit: true, cancelled: false };
+  assert.equal(canManageAllocation("manager", row), false);
+  assert.equal(canManageAllocation("accountant", row), true);
+  assert.equal(
+    canManageAllocation("owner", { ...row, can_edit: false }),
+    false,
+  );
+});
+
+test("allocation preview must match current input and the full amount", () => {
+  const input = allocationInput("100,01", "2026-11-27", "weights", [
+    { department_id: "a", weight: "1" },
+    { department_id: "b", weight: "2" },
+  ]);
+  assert.ok(input);
+  const preview = {
+    method: "weights",
+    parts: [
+      { department_id: "a", weight: "1", amount: "33.34" },
+      { department_id: "b", weight: "2", amount: "66.67" },
+    ],
+  };
+  assert.equal(previewMatches(input, preview), true);
+  assert.equal(previewMatches({ ...input, amount: "100.02" }, preview), false);
+  assert.equal(
+    previewMatches(input, { ...preview, parts: preview.parts.slice(0, 1) }),
+    false,
+  );
+});
+
+test("pending allocation keeps the venue circle and has no preview", () => {
+  const input = allocationInput("100", "2026-11-27", "pending", [
+    { department_id: "a" },
+    { department_id: "b" },
+  ]);
+  assert.equal(input?.parts.length, 2);
+  assert.equal(
+    previewMatches(input, {
+      method: "equal",
+      parts: [
+        { department_id: "a", weight: "1", amount: "50.00" },
+        { department_id: "b", weight: "1", amount: "50.00" },
+      ],
+    }),
+    false,
+  );
+});
+
+test("confirmed zero revenue may have a zero allocation part", () => {
+  const revenue = allocationInput("10", "2026-11-27", "revenue", [
+    { department_id: "a" },
+    { department_id: "b" },
+  ]);
+  const preview = {
+    method: "revenue",
+    parts: [
+      { department_id: "a", weight: "0", amount: "0.00" },
+      { department_id: "b", weight: "100", amount: "10.00" },
+    ],
+  };
+  assert.equal(previewMatches(revenue, preview), true);
+  assert.equal(
+    previewMatches(
+      { ...revenue, method: "equal" },
+      { ...preview, method: "equal" },
+    ),
+    false,
+  );
+});
 
 test("access comes from a primary dashboard finance grant", () => {
   for (const role of ["manager", "accountant", "owner"]) {

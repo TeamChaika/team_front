@@ -4,6 +4,7 @@ import {
   Alert,
   Button,
   Checkbox,
+  Group,
   Loader,
   Menu,
   Pagination,
@@ -23,11 +24,13 @@ import {
   moscowToday,
   paymentMethods,
   periodForMonth,
+  type AllocationGroup,
   type Expense,
   type FinanceAccess,
   type ProfitReport,
 } from "./profitLossModel";
 import ExpenseEditor from "./ExpenseEditor";
+import AllocationEditor from "./AllocationEditor";
 import { CancelExpense, ExpenseHistory } from "./ExpenseDetails";
 import "./profitLoss.css";
 
@@ -66,6 +69,13 @@ function Summary({
     ["Себестоимость продаж", data.cost],
     ["Валовая прибыль", data.gross_profit],
     ["Операционные расходы", data.expenses],
+    ["Прямые расходы", data.direct_expenses ?? null],
+    ["Распределённые расходы", data.allocated_expenses ?? null],
+    ["Ожидают распределения (сеть)", data.pending_expenses ?? null],
+    [
+      "Прибыль до распределения",
+      data.operating_profit_before_allocation ?? null,
+    ],
     ["Операционная прибыль", data.operating_profit],
   ];
   return (
@@ -135,8 +145,84 @@ function Summary({
 
 type Dialog =
   | { action: "create" }
+  | { action: "allocate" }
+  | { action: "allocation"; id: string; row?: Expense }
   | { action: "edit" | "history" | "cancel"; row: Expense };
 const PAGE_SIZE = 25;
+function PendingAllocations({
+  range,
+  version,
+  open,
+}: {
+  range: { start: string; end: string };
+  version: string;
+  open: (dialog: Dialog) => void;
+}) {
+  const [page, setPage] = useState(1);
+  const path =
+    "/profit-loss/allocations/pending?" +
+    new URLSearchParams({
+      ...range,
+      limit: String(PAGE_SIZE),
+      offset: String((page - 1) * PAGE_SIZE),
+    });
+  const { data, loading, error, reload } = useData<{
+    rows: AllocationGroup[];
+    total: number;
+  }>(path, false, version);
+  return (
+    <section className="panel pl-pending" aria-label="Ожидают распределения">
+      <div className="panel-heading">
+        <h2>Ожидают распределения</h2>
+      </div>
+      <p className="muted">
+        Общие счета сети за выбранный период, ещё без долей заведений.
+      </p>
+      {loading && (
+        <Loader size="sm" aria-label="Загрузка отложенных расходов" />
+      )}
+      {error && (
+        <Alert color="red" role="alert">
+          {error}{" "}
+          <Button variant="subtle" size="xs" onClick={reload}>
+            Повторить
+          </Button>
+        </Alert>
+      )}
+      {data && !data.rows.length && (
+        <p className="muted">Нет отложенных расходов за период.</p>
+      )}
+      {data?.rows.map((group) => (
+        <div className="pl-pending-row" key={group.id}>
+          <div>
+            <strong>
+              {categories[group.category] ?? group.category} ·{" "}
+              {money(group.amount)} ₽
+            </strong>
+            <small>
+              {dateText(group.expense_date)} · {group.parts.length} заведений
+            </small>
+          </div>
+          <Button
+            variant="light"
+            size="xs"
+            onClick={() => open({ action: "allocation", id: group.id })}
+          >
+            Открыть распределение
+          </Button>
+        </div>
+      ))}
+      {data && data.total > PAGE_SIZE && (
+        <Pagination
+          aria-label="Страницы отложенных расходов"
+          value={page}
+          onChange={setPage}
+          total={Math.ceil(data.total / PAGE_SIZE)}
+        />
+      )}
+    </section>
+  );
+}
 function Journal({
   query,
   access,
@@ -210,6 +296,7 @@ function Journal({
                 <td className="pl-subject">
                   <strong>{categories[row.category] ?? row.category}</strong>
                   <small>{row.department}</small>
+                  {row.allocation_id && <small>Доля общего расхода</small>}
                   {row.comment && (
                     <span className="pl-note">{row.comment}</span>
                   )}
@@ -227,38 +314,63 @@ function Journal({
                 <td className="pl-author">{row.author}</td>
                 <td className="numeric pl-amount">{money(row.amount)}</td>
                 <td className="pl-actions">
-                  <Menu position="bottom-end">
-                    <Menu.Target>
-                      <ActionIcon
-                        variant="subtle"
-                        aria-label={`Действия с расходом ${categories[row.category]} за ${dateText(row.expense_date)}`}
-                      >
-                        <IconDots size={17} />
-                      </ActionIcon>
-                    </Menu.Target>
-                    <Menu.Dropdown>
-                      <Menu.Item
-                        onClick={() => setDialog({ action: "history", row })}
-                      >
-                        История
-                      </Menu.Item>
-                      {canChangeExpense(access, row) && (
-                        <>
+                  {(!row.allocation_id ||
+                    (access !== "manager" && row.can_view_allocation)) && (
+                    <Menu position="bottom-end">
+                      <Menu.Target>
+                        <ActionIcon
+                          variant="subtle"
+                          aria-label={`Действия с расходом ${categories[row.category]} за ${dateText(row.expense_date)}`}
+                        >
+                          <IconDots size={17} />
+                        </ActionIcon>
+                      </Menu.Target>
+                      <Menu.Dropdown>
+                        {row.allocation_id ? (
                           <Menu.Item
-                            onClick={() => setDialog({ action: "edit", row })}
+                            onClick={() =>
+                              setDialog({
+                                action: "allocation",
+                                id: row.allocation_id!,
+                                row,
+                              })
+                            }
                           >
-                            Изменить
+                            Открыть распределение
                           </Menu.Item>
-                          <Menu.Item
-                            color="red"
-                            onClick={() => setDialog({ action: "cancel", row })}
-                          >
-                            Аннулировать
-                          </Menu.Item>
-                        </>
-                      )}
-                    </Menu.Dropdown>
-                  </Menu>
+                        ) : (
+                          <>
+                            <Menu.Item
+                              onClick={() =>
+                                setDialog({ action: "history", row })
+                              }
+                            >
+                              История
+                            </Menu.Item>
+                            {canChangeExpense(access, row) && (
+                              <>
+                                <Menu.Item
+                                  onClick={() =>
+                                    setDialog({ action: "edit", row })
+                                  }
+                                >
+                                  Изменить
+                                </Menu.Item>
+                                <Menu.Item
+                                  color="red"
+                                  onClick={() =>
+                                    setDialog({ action: "cancel", row })
+                                  }
+                                >
+                                  Аннулировать
+                                </Menu.Item>
+                              </>
+                            )}
+                          </>
+                        )}
+                      </Menu.Dropdown>
+                    </Menu>
+                  )}
                 </td>
               </tr>
             ))}
@@ -314,6 +426,7 @@ export default function ProfitLoss({ access }: { access: FinanceAccess }) {
     .filter((v) => v.sync_enabled === true && reportDepartments.includes(v.id))
     .map((v) => v.id);
   const query = expenseQuery(range, reportDepartments);
+  const pendingPeriodValid = expenseQuery(range, ["network"]) !== null;
   function selectMonth(value: string) {
     setMonth(value);
     if (value) setRange(periodForMonth(value, today));
@@ -339,13 +452,24 @@ export default function ProfitLoss({ access }: { access: FinanceAccess }) {
     <div className="profit-loss">
       <div className="pl-heading">
         <h1>Прибыли и убытки</h1>
-        <Button
-          leftSection={<IconPlus size={16} />}
-          onClick={() => open({ action: "create" })}
-          disabled={!writable.length}
-        >
-          Добавить расход
-        </Button>
+        <Group gap="xs">
+          <Button
+            leftSection={<IconPlus size={16} />}
+            onClick={() => open({ action: "create" })}
+            disabled={!writable.length}
+          >
+            Добавить расход
+          </Button>
+          {access !== "manager" && (
+            <Button
+              variant="light"
+              onClick={() => open({ action: "allocate" })}
+              disabled={writable.length < 2}
+            >
+              Распределить расход
+            </Button>
+          )}
+        </Group>
       </div>
       <div className="panel pl-filters">
         <div className="pl-venues">
@@ -427,12 +551,32 @@ export default function ProfitLoss({ access }: { access: FinanceAccess }) {
             : "Выберите период продолжительностью от 1 до 366 дней."}
         </p>
       )}
+      {access !== "manager" && pendingPeriodValid && (
+        <PendingAllocations
+          key={`${range.start}:${range.end}`}
+          range={range}
+          version={String(version)}
+          open={open}
+        />
+      )}
       {(dialog?.action === "create" || dialog?.action === "edit") && (
         <ExpenseEditor
           row={dialog.action === "edit" ? dialog.row : null}
           today={today}
           venues={writable}
           selectedVenue={selectedVenue}
+          onClose={close}
+          onSaved={saved}
+          onConflict={reload}
+        />
+      )}
+      {(dialog?.action === "allocate" || dialog?.action === "allocation") && (
+        <AllocationEditor
+          allocationId={dialog.action === "allocation" ? dialog.id : undefined}
+          row={dialog.action === "allocation" ? dialog.row : undefined}
+          access={access}
+          today={today}
+          venues={writable}
           onClose={close}
           onSaved={saved}
           onConflict={reload}
