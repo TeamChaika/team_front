@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "./api";
+import { preparedRetryDelay } from "./preparedRetry";
 export function useData<T>(
   path: string | null,
   keepPreviousOnReload = false,
   dataVersion?: string,
+  retryPreparing = false,
 ) {
   const fetchedPath = useRef<string | null>(null);
   const [data, setData] = useState<T | null>(null),
@@ -14,18 +16,22 @@ export function useData<T>(
   useEffect(() => {
     let live = true;
     const controller = new AbortController();
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
     const preserve =
       keepPreviousOnReload && path !== null && fetchedPath.current === path;
     if (!preserve) setData(null);
     setError("");
     setLoading(Boolean(path) && !preserve);
     setRefreshing(Boolean(path));
-    if (path)
-      api<T>(path, { signal: controller.signal })
+    const fetchData = (retries: number) => {
+      if (!path || !live) return;
+      setRefreshing(true);
+      void api<T>(path, { signal: controller.signal })
         .then((x) => {
           if (live) {
             fetchedPath.current = path;
             setData(x);
+            setError("");
           }
         })
         .catch((e) => {
@@ -35,6 +41,9 @@ export function useData<T>(
             setData(null);
           }
           setError(e.message);
+          const delay = retryPreparing ? preparedRetryDelay(e, retries) : null;
+          if (delay !== null)
+            retryTimer = setTimeout(() => fetchData(retries + 1), delay);
         })
         .finally(() => {
           if (live) {
@@ -42,11 +51,14 @@ export function useData<T>(
             setRefreshing(false);
           }
         });
+    };
+    fetchData(0);
     return () => {
       live = false;
       controller.abort();
+      clearTimeout(retryTimer);
     };
-  }, [path, revision, keepPreviousOnReload, dataVersion]);
+  }, [path, revision, keepPreviousOnReload, dataVersion, retryPreparing]);
   const reload = useCallback(() => setRevision((x) => x + 1), []);
   return { data, error, loading, refreshing, reload };
 }

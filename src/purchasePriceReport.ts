@@ -11,7 +11,7 @@ export function canReadPurchaseImpact(warehouseMode?: "all" | "selected") {
 }
 
 const filterDefaults = {
-  kind: "unlinked",
+  kind: "receipts",
   exclude_household: true,
   recent_only: true,
   product: null as string | null,
@@ -34,7 +34,7 @@ export function purchasePriceFilters(
   }
   const page = Number(params.get("page"));
   return {
-    kind: option("kind", ["all", "unlinked", "linked"]),
+    kind: option("kind", ["receipts", "all", "unlinked", "linked"]),
     exclude_household: params.get("exclude_household") !== "false",
     recent_only: params.get("recent_only") !== "false",
     product: params.get("product") || null,

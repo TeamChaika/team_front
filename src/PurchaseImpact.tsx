@@ -88,10 +88,12 @@ function norm(value: string, unit: string | null) {
 export function PurchaseImpact({
   row,
   scope,
+  kind,
   periodVersion,
 }: {
   row: PriceChange;
   scope: string;
+  kind?: string;
   periodVersion?: string;
 }) {
   const [salesVenue, setSalesVenue] = useState<string | null>(null);
@@ -108,10 +110,12 @@ export function PurchaseImpact({
   params.delete("store_id");
   params.set("unit_id", row.unit_id);
   params.set("linked", String(row.linked));
+  if (kind === "receipts") params.set("kind", kind);
   const state = useData<Report>(
     "/purchase-prices/impact?" + params,
     false,
     periodVersion,
+    true,
   );
   const report = state.data;
   return (
@@ -120,9 +124,11 @@ export function PurchaseImpact({
         <p>
           {row.scope_label}
           <small className="price-subtext">
-            {row.linked
-              ? "Поступления, связанные с расходными накладными"
-              : "Поступления без связи с расходной накладной"}
+            {kind === "receipts"
+              ? "Закупки у внешних поставщиков: напрямую и через закупающее юрлицо сети"
+              : row.linked
+                ? "Поступления, связанные с расходными накладными"
+                : "Поступления без связи с расходной накладной"}
           </small>
         </p>
         <p>

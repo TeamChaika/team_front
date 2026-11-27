@@ -68,6 +68,17 @@ test("price filters reset the page while keeping other selections and unrelated 
   );
 });
 
+test("receipt purchases are the default while explicit legacy modes keep their URL meaning", () => {
+  assert.equal(purchasePriceFilters(new URLSearchParams()).kind, "receipts");
+  for (const kind of ["all", "unlinked", "linked"]) {
+    assert.equal(purchasePriceFilters(new URLSearchParams(`kind=${kind}`)).kind, kind);
+  }
+  const changed = updatePurchasePriceFilters(new URLSearchParams("kind=linked&page=3"), { kind: "receipts" });
+  assert.equal(changed.has("kind"), false);
+  assert.equal(changed.has("page"), false);
+  assert.match(purchasePriceReportPath("rms_id=abc", "receipts", true, true, false), /kind=receipts/);
+});
+
 test("pending or missing prepared impact gives one update notice", () => {
   assert.equal(
     purchaseImpactNotice(true, { status: "pending" }),
@@ -102,12 +113,13 @@ const stubs = {
 const bundled = await build({
   stdin: {
     contents: `
-      import { PurchasePrices } from "./src/PurchasePrices";
+      import { PurchasePrices, PriceDetails } from "./src/PurchasePrices";
       import { LiveDataNotice, SalesDataNotice } from "./src/LiveDataNotice";
       import { renderToStaticMarkup } from "react-dom/server";
       import React from "react";
       export { csv as saveCsv } from "./src/api.ts";
       export const render = () => renderToStaticMarkup(React.createElement(PurchasePrices));
+      export const renderDetails = (row, scope, kind) => renderToStaticMarkup(React.createElement(PriceDetails, { row, scope, kind }));
       export const liveNotice = source => renderToStaticMarkup(React.createElement(LiveDataNotice, { source }));
       export const salesNotice = (data, onRefresh) => renderToStaticMarkup(React.createElement(SalesDataNotice, { data, onRefresh }));
     `,
@@ -139,7 +151,7 @@ const bundled = await build({
     },
   ],
 });
-const { render, liveNotice, salesNotice, saveCsv } = await import(
+const { render, renderDetails, liveNotice, salesNotice, saveCsv } = await import(
   `data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString("base64")}`
 );
 test("CSV retains numeric negative decimals while escaping spreadsheet formulas", async () => {
@@ -183,7 +195,7 @@ function renderReport(mode, period, rows = [row]) {
   };
   globalThis.purchaseTestCalls = [];
   globalThis.purchaseTestReport = {
-    kind: "unlinked",
+    kind: "receipts",
     exclude_household: true,
     recent_only: true,
     history_size: 6,
@@ -259,6 +271,46 @@ test("price totals use all matching rows even when only 50 are displayed", () =>
   assert.match(html, /class="price-fall">4<\/strong>/);
   assert.match(html, /Товар номер 49/);
   assert.doesNotMatch(html, /Товар номер 50/);
+});
+
+test("receipt mode requests prepared impact and preserves invoice history scope", () => {
+  const html = renderReport("all", { status: "ready" });
+  assert.match(globalThis.purchaseTestCalls[0], /kind=receipts/);
+  assert.match(globalThis.purchaseTestCalls[0], /include_impact=true/);
+  assert.match(html, /За неделю, ₽/);
+  assert.match(html, /Не нашли поступление\? Проверьте связанные накладные/);
+  globalThis.purchaseTestCalls = [];
+  globalThis.purchaseTestReport = null;
+  renderDetails(row, "rms_id=abc", "receipts");
+  assert.match(globalThis.purchaseTestCalls[0], /kind=receipts/);
+  assert.match(globalThis.purchaseTestCalls[0], /linked=false/);
+  assert.match(globalThis.purchaseTestCalls[0], /rms_id=abc/);
+  assert.match(globalThis.purchaseTestCalls[0], /product_id=p1/);
+});
+
+test("history identifies procurement route and hides invoices without document access", () => {
+  const line = {
+    document_id: "destination-1", document_number: "42", num: 1, num_occurrence: 1,
+    supplier: "Внешний поставщик", store: "Склад кафе", department: "Кафе",
+    amount: "1", sum: "120", price: "120", last_seen_at: "2026-10-07",
+    receipt_route: "via_procurement",
+  };
+  globalThis.purchaseTestWorkspace = { meta: { sections: ["purchase-prices"] }, query: () => "rms_id=abc" };
+  globalThis.purchaseTestCalls = [];
+  globalThis.purchaseTestReport = {
+    ...row,
+    current: { ...row.current, lines: [line] },
+    previous: { ...row.previous, receipts: [{ ...row.current, date: "2026-10-06", lines: [{ ...line, document_id: "destination-0" }] }] },
+  };
+  const html = renderDetails(row, "rms_id=abc", "receipts");
+  assert.match(html, /Через закупающее юрлицо сети/);
+  assert.match(html, /Внешний поставщик/);
+  assert.match(html, /Склад кафе/);
+  assert.doesNotMatch(html, /href="\/invoices\//);
+  globalThis.purchaseTestWorkspace.meta.sections.push("invoices");
+  assert.match(renderDetails(row, "rms_id=abc", "receipts"), /href="\/invoices\/destination-1"/);
+  globalThis.purchaseTestWorkspace.meta.warehouse_capabilities = { unsupported_sections: ["invoices"] };
+  assert.doesNotMatch(renderDetails(row, "rms_id=abc", "receipts"), /href="\/invoices\//);
 });
 
 test("stored data explains paused sync even when the response lacks live timestamps and cache duration", () => {

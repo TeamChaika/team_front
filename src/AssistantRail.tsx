@@ -34,6 +34,7 @@ export function AssistantRail() {
   const compact = useMediaQuery("(max-width: 1299px)");
   const [preview, setPreview] = useState<{
     kind: string;
+    priceKind: string;
     row: PriceChange;
   } | null>(null);
   const [sourceError, setSourceError] = useState("");
@@ -89,15 +90,17 @@ export function AssistantRail() {
     setSourceError("");
     setSourceLoading(true);
     try {
+      const priceKind = source.selection.kind ?? assistant.request.context.kind;
       const params = new URLSearchParams({
         product_id: source.selection.product_id,
         unit_id: source.selection.unit_id,
         linked: String(source.selection.linked),
       });
+      if (priceKind === "receipts") params.set("kind", priceKind);
       const row = await api<PriceChange>("/purchase-prices/history?" + params, {
         signal: abort.signal,
       });
-      setPreview({ kind: source.kind, row });
+      setPreview({ kind: source.kind, priceKind, row });
     } catch (error) {
       if (!abort.signal.aborted)
         setSourceError(
@@ -165,9 +168,9 @@ export function AssistantRail() {
         }
       >
         {preview?.kind === "impact" ? (
-          <PurchaseImpact row={preview.row} scope="" />
+          <PurchaseImpact row={preview.row} scope="" kind={preview.priceKind} />
         ) : (
-          preview && <LazyPriceDetails row={preview.row} scope="" />
+          preview && <LazyPriceDetails row={preview.row} scope="" kind={preview.priceKind} />
         )}
       </PurchaseModal>
     </>
