@@ -1,9 +1,11 @@
 import { Fragment, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   ActionIcon,
   Alert,
   Button,
   Checkbox,
+  Group,
   Loader,
   Menu,
   Pagination,
@@ -17,7 +19,7 @@ import { RestaurantPicker } from "./RestaurantPicker";
 import { drilldownDepartments, venueScope } from "./venueArchiveModel";
 import {
   canChangeExpense,
-  categories,
+  expenseCategoryName,
   expenseQuery,
   financeDepartments,
   moscowToday,
@@ -111,10 +113,10 @@ function Summary({
           <section>
             <h3>Статья</h3>
             <dl>
-              {data.by_category.map(({ category, amount }) => (
-                <div key={category}>
-                  <dt>{categories[category] ?? category}</dt>
-                  <dd>{currency(amount)}</dd>
+              {data.by_category.map((item) => (
+                <div key={item.category}>
+                  <dt>{expenseCategoryName(item)}</dt>
+                  <dd>{currency(item.amount)}</dd>
                 </div>
               ))}
             </dl>
@@ -193,8 +195,7 @@ function PendingAllocations({
         <div className="pl-pending-row" key={group.id}>
           <div>
             <strong>
-              {categories[group.category] ?? group.category} ·{" "}
-              {money(group.amount)} ₽
+              {expenseCategoryName(group)} · {money(group.amount)} ₽
             </strong>
             <small>
               {dateText(group.expense_date)} · {group.parts.length} заведений
@@ -296,7 +297,7 @@ function Journal({
               >
                 <td className="pl-date">{dateText(row.expense_date)}</td>
                 <td className="pl-subject">
-                  <strong>{categories[row.category] ?? row.category}</strong>
+                  <strong>{expenseCategoryName(row)}</strong>
                   <small>{row.department}</small>
                   {row.allocation_id && <small>Доля общего расхода</small>}
                   {row.comment && (
@@ -325,7 +326,7 @@ function Journal({
                       <Menu.Target>
                         <ActionIcon
                           variant="subtle"
-                          aria-label={`Действия с расходом ${categories[row.category]} за ${dateText(row.expense_date)}`}
+                          aria-label={`Действия с расходом ${expenseCategoryName(row)} за ${dateText(row.expense_date)}`}
                         >
                           <IconDots size={17} />
                         </ActionIcon>
@@ -484,13 +485,24 @@ export default function ProfitLoss({ access }: { access: FinanceAccess }) {
     <div className="profit-loss">
       <div className="pl-heading">
         <h1>Прибыли и убытки</h1>
-        <Button
-          leftSection={<IconPlus size={16} />}
-          onClick={() => open({ action: "create" })}
-          disabled={!writable.length}
-        >
-          Добавить расход
-        </Button>
+        <Group gap="xs">
+          {access !== "manager" && (
+            <Button
+              component={Link}
+              to="/management?tab=expense-catalogs"
+              variant="subtle"
+            >
+              Справочники расходов
+            </Button>
+          )}
+          <Button
+            leftSection={<IconPlus size={16} />}
+            onClick={() => open({ action: "create" })}
+            disabled={!writable.length}
+          >
+            Добавить расход
+          </Button>
+        </Group>
       </div>
       <div className="panel pl-filters">
         <div className="pl-venues">

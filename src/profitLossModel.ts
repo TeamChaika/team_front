@@ -11,7 +11,8 @@ export function hasProfitLossAccess(
   );
 }
 
-export const categories = {
+// Older audit snapshots only carry one of the original category codes.
+const originalCategoryNames: Record<string, string> = {
   rent: "Аренда",
   payroll: "Оплата труда",
   utilities: "Коммунальные услуги",
@@ -20,6 +21,27 @@ export const categories = {
   services: "Услуги",
   other: "Прочее",
 };
+export type ExpenseCategory = { code: string; name: string };
+type Categorized = { category: string; category_name?: string | null };
+
+export function expenseCategoryName(row: Categorized) {
+  return (
+    row.category_name || originalCategoryNames[row.category] || row.category
+  );
+}
+
+export function expenseCategoryChoices(
+  active: ExpenseCategory[],
+  saved?: Categorized,
+) {
+  const options = active.map(({ code, name }) => ({
+    value: code,
+    label: saved?.category === code ? expenseCategoryName(saved) : name,
+  }));
+  if (saved && !options.some(({ value }) => value === saved.category))
+    options.push({ value: saved.category, label: expenseCategoryName(saved) });
+  return options;
+}
 export const paymentMethods = { cash: "Наличные", bank: "Безналичные" };
 export type ExpenseApprover = {
   department_id: string;
@@ -34,7 +56,8 @@ export type Expense = {
   author: string;
   approver_id?: string | null;
   approver_name?: string | null;
-  category: keyof typeof categories;
+  category: string;
+  category_name?: string | null;
   payment_method: keyof typeof paymentMethods;
   amount: string;
   expense_date: string;
@@ -80,7 +103,8 @@ export type AllocationGroup = {
   amount: string;
   expense_date: string;
   paid_date: string | null;
-  category: keyof typeof categories;
+  category: string;
+  category_name?: string | null;
   payment_method: keyof typeof paymentMethods;
   comment: string | null;
   method: AllocationMethod;
@@ -105,7 +129,7 @@ export type ProfitReport = {
   cash: string | null;
   bank: string | null;
   operating_profit: string | null;
-  by_category: { category: keyof typeof categories; amount: string }[];
+  by_category: (Categorized & { amount: string })[];
   complete: boolean;
   provisional: boolean;
 };

@@ -23,12 +23,14 @@ import {
   amountForApi,
   canChangeExpense,
   canManageAllocation,
+  expenseCategoryChoices,
   manualPartValue,
   type AllocationGroup,
   type AllocationMethod,
   type AllocationPart,
   type Expense,
   type ExpenseApprover,
+  type ExpenseCategory,
   type FinanceAccess,
 } from "./profitLossModel";
 import { useAllocationPreview } from "./useAllocationPreview";
@@ -116,9 +118,19 @@ export default function ExpenseEditor({
     ? !!group && canManageAllocation(access, group)
     : !directRow || directEditable || directAllocatable;
   const locked = !canWrite || busy || uncertain || conflict;
-  const approvers = useData<{ rows: ExpenseApprover[] }>(
+  const approvers = useData<{ rows: ExpenseApprover[]; required?: boolean }>(
     canWrite ? "/profit-loss/approvers" : null,
   );
+  const categoryList = useData<{ rows: ExpenseCategory[] }>(
+    canWrite ? "/profit-loss/categories" : null,
+  );
+  const categoryOptions = expenseCategoryChoices(
+    categoryList.data?.rows ?? [],
+    group ?? directRow,
+  );
+  const selectedCategoryValid =
+    !!categoryList.data &&
+    categoryOptions.some(({ value }) => value === draft.category);
   const savedApprovers = group?.parts ?? (directRow ? [directRow] : []);
   const names = new Map(venues.map((venue) => [venue.id, venue.name]));
   if (directRow && venues.some((venue) => venue.id === directRow.department_id))
@@ -136,7 +148,17 @@ export default function ExpenseEditor({
   }));
   const approversReady =
     !!approvers.data &&
-    approverFields.every((field) => !field.options.length || !!field.value);
+    approverFields.every((field) =>
+      field.value
+        ? field.saved?.approver_id === field.value ||
+          field.options.some((option) => option.id === field.value)
+        : !approvers.data?.required && !field.options.length,
+    );
+  const missingApprovers = approvers.data?.required
+    ? approverFields.filter(
+        (field) => !field.saved?.approver_id && !field.options.length,
+      )
+    : [];
   function chooseApprover(departments: string[], id: string) {
     setParts((current) =>
       current.map((part) =>
@@ -241,7 +263,7 @@ export default function ExpenseEditor({
       if (
         !amount ||
         !draft.expense_date ||
-        !draft.category ||
+        !selectedCategoryValid ||
         !draft.payment_method
       ) {
         setError("Введите сумму, дату расхода, статью и способ оплаты.");
@@ -360,6 +382,10 @@ export default function ExpenseEditor({
         setError(
           "Суммы долей изменились. Проверьте новый расчёт перед сохранением.",
         );
+      } else if (e instanceof ApiError && e.status === 422) {
+        // Another user may have changed the available choices while this draft was open.
+        categoryList.reload();
+        approvers.reload();
       } else if (e instanceof ApiError && [403, 404, 409].includes(e.status)) {
         setConflict(true);
         onConflict();
@@ -405,7 +431,7 @@ export default function ExpenseEditor({
   const canChooseVenues = canAllocate && (!directRow || directAllocatable);
   const saveDisabled =
     conflict ||
-    (!uncertain && !approversReady) ||
+    (!uncertain && (!approversReady || !selectedCategoryValid)) ||
     (!uncertain &&
       (shared
         ? !input || (method !== "pending" && !estimate.preview)
@@ -660,8 +686,36 @@ export default function ExpenseEditor({
                   onChoose={chooseApprover}
                 />
               ))}
+            {missingApprovers.length > 0 && (
+              <Alert color="yellow">
+                Для{" "}
+                {missingApprovers
+                  .map((field) => "«" + field.department + "»")
+                  .join(", ")}{" "}
+                нужно назначить согласующего в справочнике расходов.
+              </Alert>
+            )}
+            {categoryList.error ? (
+              <Alert color="red" role="alert">
+                Не удалось загрузить статьи расходов.{" "}
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="subtle"
+                  onClick={categoryList.reload}
+                >
+                  Повторить
+                </Button>
+              </Alert>
+            ) : canWrite && categoryList.data && !categoryOptions.length ? (
+              <Alert color="yellow">
+                Для ввода расхода нужна хотя бы одна активная статья в
+                справочнике расходов.
+              </Alert>
+            ) : null}
             <ExpenseFields
               draft={draft}
+              categoryOptions={categoryOptions}
               today={today}
               change={change}
               disabled={locked || (!!directRow && !directEditable)}

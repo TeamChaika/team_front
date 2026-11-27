@@ -9,7 +9,11 @@ import {
   Text,
 } from "@mantine/core";
 import { api, ApiError, dateText, money } from "./api";
-import { categories, paymentMethods, type Expense } from "./profitLossModel";
+import {
+  expenseCategoryName,
+  paymentMethods,
+  type Expense,
+} from "./profitLossModel";
 import { useData } from "./useData";
 
 type Snapshot = Pick<
@@ -22,7 +26,7 @@ type Snapshot = Pick<
   | "approver_name"
   | "payment_method"
   | "cancelled"
->;
+> & { category_name?: string | null };
 type History = {
   revision: number;
   action: "create" | "update" | "cancel" | "convert";
@@ -47,10 +51,10 @@ const historyActions = {
   cancel: "Расход аннулирован",
   convert: "Расход передан в распределение",
 };
-function format(field: keyof Snapshot, snapshot: Snapshot) {
+function format(field: keyof typeof labels, snapshot: Snapshot) {
   switch (field) {
     case "category":
-      return categories[snapshot.category];
+      return expenseCategoryName(snapshot);
     case "amount":
       return money(snapshot.amount) + " ₽";
     case "expense_date":
@@ -81,7 +85,7 @@ export function ExpenseHistory({
     <Modal opened centered onClose={onClose} title="История расхода" size="lg">
       <Stack>
         <Text size="sm" c="dimmed">
-          {row.department} · {categories[row.category]} · {money(row.amount)} ₽
+          {row.department} · {expenseCategoryName(row)} · {money(row.amount)} ₽
         </Text>
         {history.loading && <Loader size="sm" />}
         {history.error && (
@@ -96,7 +100,7 @@ export function ExpenseHistory({
               {dateText(item.changed_at)} · {item.actor}
             </Text>
             <dl>
-              {(Object.keys(labels) as (keyof Snapshot)[])
+              {(Object.keys(labels) as (keyof typeof labels)[])
                 .filter((field) =>
                   item.before
                     ? item.before[field] !== item.after[field]
@@ -181,7 +185,7 @@ export function CancelExpense({
     >
       <Stack>
         <Text>
-          {categories[row.category]} · {money(row.amount)} ₽<br />
+          {expenseCategoryName(row)} · {money(row.amount)} ₽<br />
           {row.department} · {dateText(row.expense_date)}
         </Text>
         <Text size="sm" c="dimmed">

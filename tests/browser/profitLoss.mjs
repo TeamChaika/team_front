@@ -19,6 +19,11 @@ const venueApprover = "14720182-747d-4f96-9b35-d222d0df639a";
 const otherApprover = "f1a40a9d-fb37-4916-99a2-f4f9fff84dfd";
 const sharedApprover = "ba9f627d-0020-4ad8-9abb-e9d082a50ab5";
 const errors = [];
+const serviceCategory = {
+  code: "custom-test-maintenance",
+  name: "Обслуживание кухни",
+};
+const activeCategories = [{ code: "rent", name: "Аренда" }, serviceCategory];
 const unexpected = [];
 const headers = {
   "access-control-allow-origin": origin,
@@ -120,6 +125,13 @@ try {
               present_in_latest: false,
             },
           ],
+        });
+      if (url.pathname === "/api/profit-loss/categories")
+        return respond({
+          rows:
+            role === "manager" && row
+              ? activeCategories.slice(0, 1)
+              : activeCategories,
         });
       if (url.pathname === "/api/profit-loss/approvers") {
         const rows = [
@@ -264,6 +276,9 @@ try {
         writes.push(request);
         row = {
           ...request,
+          category_name: activeCategories.find(
+            (entry) => entry.code === request.category,
+          )?.name,
           id: expenseId,
           author: "Тест",
           approver_name:
@@ -368,7 +383,9 @@ try {
       );
       assert.equal(await dialog.getByLabel("Способ распределения").count(), 0);
       await dialog.getByLabel("Статья расхода").click();
-      await page.getByRole("option", { name: "Аренда", exact: true }).click();
+      await page
+        .getByRole("option", { name: serviceCategory.name, exact: true })
+        .click();
       await dialog.getByLabel("Сумма, ₽").fill("200,25");
       const approverField = dialog.getByLabel("Кто согласовал");
       assert.equal(await approverField.inputValue(), "");
@@ -400,12 +417,18 @@ try {
       assert.deepEqual(writes[0], writes[1]);
       assert.ok(writes[0].request_id);
       assert.equal(writes[1].amount, "200.25");
+      assert.equal(writes[1].category, serviceCategory.code);
+      await page.getByText(serviceCategory.name, { exact: true }).waitFor();
       assert.equal(writes[1].department_id, venue);
       assert.equal(writes[1].payment_method, "cash");
       assert.equal(writes[1].approver_id, venueApprover);
       await page.getByRole("cell", { name: "Управляющий А" }).waitFor();
       await page.getByRole("button", { name: /Действия с расходом/ }).click();
       await page.getByRole("menuitem", { name: "Изменить" }).click();
+      assert.equal(
+        await dialog.getByLabel("Статья расхода").inputValue(),
+        serviceCategory.name,
+      );
       await dialog.getByLabel("Сумма, ₽").tap();
       assert.equal(await cash.isChecked(), true);
       await bank.tap();
@@ -840,6 +863,8 @@ try {
             },
           ],
         });
+      if (url.pathname === "/api/profit-loss/categories")
+        return respond({ rows: activeCategories });
       if (url.pathname === "/api/profit-loss/approvers")
         return respond({
           rows: [venue, connectedVenue].map((department_id) => ({
