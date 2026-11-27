@@ -15,6 +15,9 @@ const venue = "9f593daa-1ff4-4c93-a5ed-d45474b82376";
 const connectedVenue = "96074d28-5b9b-4b59-9da5-66984c5dd87a";
 const expenseId = "ff536c5f-0620-4533-87f9-62c9305760ea";
 const allocationId = "31631209-c47f-465f-94c6-1b2ce5f1b537";
+const venueApprover = "14720182-747d-4f96-9b35-d222d0df639a";
+const otherApprover = "f1a40a9d-fb37-4916-99a2-f4f9fff84dfd";
+const sharedApprover = "ba9f627d-0020-4ad8-9abb-e9d082a50ab5";
 const errors = [];
 const unexpected = [];
 const headers = {
@@ -118,6 +121,31 @@ try {
             },
           ],
         });
+      if (url.pathname === "/api/profit-loss/approvers") {
+        const rows = [
+          { department_id: venue, id: venueApprover, name: "Управляющий А" },
+          { department_id: venue, id: sharedApprover, name: "Учредитель" },
+        ];
+        if (role !== "manager")
+          rows.push(
+            {
+              department_id: connectedVenue,
+              id: otherApprover,
+              name: "Управляющий Б",
+            },
+            {
+              department_id: connectedVenue,
+              id: sharedApprover,
+              name: "Учредитель",
+            },
+          );
+        return respond({
+          rows: rows.map((person) => ({
+            ...person,
+            available_to_all: person.id === sharedApprover,
+          })),
+        });
+      }
       if (url.pathname === "/api/profit-loss/report") {
         reportReads++;
         const ids = url.searchParams.getAll("department_id");
@@ -173,6 +201,7 @@ try {
         }
         if (url.pathname === allocations + "/preview") {
           const proposal = req.postDataJSON();
+          assert.ok(proposal.parts.every((part) => !("approver_id" in part)));
           assert.equal(proposal.amount, "100.01");
           assert.equal(proposal.method, "equal");
           return respond({
@@ -189,6 +218,13 @@ try {
           allocationWrites.push(payload);
           allocation = {
             ...payload,
+            parts: payload.parts.map((part) => ({
+              ...part,
+              approver_name:
+                part.approver_id === sharedApprover
+                  ? "Учредитель"
+                  : "Управляющий Б",
+            })),
             id: allocationId,
             can_edit: true,
             cancelled: false,
@@ -230,6 +266,10 @@ try {
           ...request,
           id: expenseId,
           author: "Тест",
+          approver_name:
+            request.approver_id === venueApprover
+              ? "Управляющий А"
+              : "Учредитель",
           department: "Ресторан",
           revision: 1,
           cancelled: false,
@@ -244,7 +284,7 @@ try {
       ) {
         const request = req.postDataJSON();
         writes.push(request);
-        row = { ...row, ...request, revision: 2 };
+        row = { ...row, ...request, approver_name: "Учредитель", revision: 2 };
         return respond(row);
       }
       if (
@@ -258,7 +298,11 @@ try {
               action: "update",
               actor: "Тест",
               changed_at: "2026-11-25T10:00:00+03:00",
-              before: { ...row, paid_date: null },
+              before: {
+                ...row,
+                paid_date: null,
+                approver_name: "Управляющий А",
+              },
               after: row,
             },
           ],
@@ -326,6 +370,9 @@ try {
       await dialog.getByLabel("Статья расхода").click();
       await page.getByRole("option", { name: "Аренда", exact: true }).click();
       await dialog.getByLabel("Сумма, ₽").fill("200,25");
+      const approverField = dialog.getByLabel("Кто согласовал");
+      assert.equal(await approverField.inputValue(), "");
+      await approverField.selectOption(venueApprover);
       const cash = dialog.getByRole("radio", { name: "Наличные", exact: true });
       const bank = dialog.getByRole("radio", {
         name: "Безналичные",
@@ -355,6 +402,8 @@ try {
       assert.equal(writes[1].amount, "200.25");
       assert.equal(writes[1].department_id, venue);
       assert.equal(writes[1].payment_method, "cash");
+      assert.equal(writes[1].approver_id, venueApprover);
+      await page.getByRole("cell", { name: "Управляющий А" }).waitFor();
       await page.getByRole("button", { name: /Действия с расходом/ }).click();
       await page.getByRole("menuitem", { name: "Изменить" }).click();
       await dialog.getByLabel("Сумма, ₽").tap();
@@ -363,10 +412,13 @@ try {
       assert.equal(await bank.isChecked(), true);
       assert.equal(await cash.isChecked(), false);
       await dialog.getByLabel("Дата оплаты").fill("2026-11-24");
+      assert.equal(await approverField.inputValue(), venueApprover);
+      await approverField.selectOption(sharedApprover);
       await dialog.getByRole("button", { name: "Сохранить" }).click();
       await page.getByText("Оплачен · 24.11.2026").waitFor();
       assert.equal(writes[2].revision, 1);
       assert.equal(writes[2].payment_method, "bank");
+      assert.equal(writes[2].approver_id, sharedApprover);
       assert.equal(
         await page.evaluate(
           () => document.documentElement.scrollWidth <= window.innerWidth,
@@ -380,6 +432,7 @@ try {
       );
       await page.getByRole("menuitem", { name: "История" }).click();
       await page.getByRole("heading", { name: "Расход изменён" }).waitFor();
+      await dialog.getByText("Кто согласовал", { exact: true }).waitFor();
     }
     if (role === "accountant") {
       await page.getByRole("button", { name: /Действия с расходом/ }).click();
@@ -429,6 +482,36 @@ try {
         name: "Распределить позже",
       });
       await deferred.check();
+      const firstApprover = editor.getByLabel("Кто согласовал — Ресторан");
+      const secondApprover = editor.getByLabel(
+        "Кто согласовал — Заведение с iiko",
+      );
+      assert.equal(await firstApprover.inputValue(), "");
+      assert.equal(await secondApprover.inputValue(), "");
+      assert.equal(
+        await firstApprover
+          .locator("option", { hasText: "Управляющий Б" })
+          .count(),
+        0,
+      );
+      assert.equal(
+        await secondApprover
+          .locator("option", { hasText: "Управляющий А" })
+          .count(),
+        0,
+      );
+      assert.equal(
+        await editor
+          .getByRole("button", { name: "Сохранить", exact: true })
+          .isEnabled(),
+        false,
+      );
+      await editor
+        .getByRole("button", { name: "Для всех — Учредитель" })
+        .click();
+      assert.equal(await firstApprover.inputValue(), sharedApprover);
+      assert.equal(await secondApprover.inputValue(), sharedApprover);
+      await secondApprover.selectOption(otherApprover);
       await editor
         .getByRole("button", { name: "Сохранить", exact: true })
         .click();
@@ -440,6 +523,10 @@ try {
         .click();
       assert.equal(allocationWrites.length, 1);
       assert.equal(allocationWrites[0].method, "pending");
+      assert.deepEqual(
+        allocationWrites[0].parts.map((p) => p.approver_id),
+        [sharedApprover, otherApprover],
+      );
       assert.equal(allocationWrites[0].amount, "100.01");
       assert.equal(allocationWrites[0].category, "rent");
       assert.equal(allocationWrites[0].payment_method, "bank");
@@ -455,12 +542,18 @@ try {
       assert.equal(allocationHistoryReads, 0);
       await editor.getByText("История", { exact: true }).click();
       await editor.getByRole("heading", { name: "Счёт создан" }).waitFor();
+      await editor
+        .locator(".pl-allocation-history")
+        .getByText("Кто согласовал · Управляющий Б")
+        .waitFor();
       assert.equal(allocationHistoryReads, 1);
       assert.deepEqual(
         allocationWrites[0].parts.map((part) => part.department_id).sort(),
         [venue, connectedVenue].sort(),
       );
       assert.equal(await deferred.isChecked(), true);
+      assert.equal(await firstApprover.inputValue(), sharedApprover);
+      assert.equal(await secondApprover.inputValue(), otherApprover);
       await deferred.uncheck();
       await method.selectOption("equal");
       const save = editor.getByRole("button", { name: /Сохранить/ });
@@ -483,6 +576,7 @@ try {
       await editor.getByLabel("Статья расхода").click();
       await page.getByRole("option", { name: "Аренда", exact: true }).click();
       await editor.getByLabel("Сумма, ₽").fill("250");
+      await editor.getByLabel("Кто согласовал").selectOption(venueApprover);
       await editor
         .getByRole("radio", { name: "Наличные", exact: true })
         .check();
@@ -625,6 +719,9 @@ try {
         .getByText(/50,01/)
         .waitFor();
       await editor
+        .getByRole("button", { name: "Для всех — Учредитель" })
+        .click();
+      await editor
         .getByRole("button", { name: "Сохранить", exact: true })
         .click();
       await editor.waitFor({ state: "hidden" });
@@ -654,6 +751,8 @@ try {
       department_id: venue,
       department: "Ресторан",
       author: "Менеджер",
+      approver_id: sharedApprover,
+      approver_name: "Учредитель при создании",
       expense_date: "2026-11-20",
       paid_date: "2026-11-21",
       category: "services",
@@ -740,6 +839,15 @@ try {
               present_in_latest: true,
             },
           ],
+        });
+      if (url.pathname === "/api/profit-loss/approvers")
+        return respond({
+          rows: [venue, connectedVenue].map((department_id) => ({
+            department_id,
+            id: sharedApprover,
+            name: "Учредитель",
+            available_to_all: true,
+          })),
         });
       if (url.pathname === "/api/profit-loss/report")
         return respond({
@@ -883,6 +991,23 @@ try {
         .getByRole("option", { name: "Заведение с iiko", exact: true })
         .click();
       await editor.getByLabel("Заведения", { exact: false }).press("Tab");
+      const sourceApprover = editor.getByLabel("Кто согласовал — Ресторан");
+      const addedApprover = editor.getByLabel(
+        "Кто согласовал — Заведение с iiko",
+      );
+      assert.equal(
+        await sourceApprover.locator("option:checked").innerText(),
+        source.approver_name,
+      );
+      assert.equal(
+        await addedApprover.inputValue(),
+        "",
+        "one available option still requires a choice",
+      );
+      await editor
+        .getByRole("button", { name: "Для всех — Учредитель" })
+        .click();
+      assert.equal(await addedApprover.inputValue(), sharedApprover);
       const preview = editor.getByRole("region", {
         name: "Предпросмотр распределения",
       });

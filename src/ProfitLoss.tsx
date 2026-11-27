@@ -277,6 +277,7 @@ function Journal({
               <th scope="col">Статья и заведение</th>
               <th scope="col">Оплата</th>
               <th scope="col">Автор</th>
+              <th scope="col">Кто согласовал</th>
               <th scope="col" className="numeric">
                 Сумма, ₽
               </th>
@@ -315,6 +316,7 @@ function Journal({
                   </small>
                 </td>
                 <td className="pl-author">{row.author}</td>
+                <td className="pl-approver">{row.approver_name || "—"}</td>
                 <td className="numeric pl-amount">{money(row.amount)}</td>
                 <td className="pl-actions">
                   {(!row.allocation_id ||

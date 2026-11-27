@@ -169,6 +169,11 @@
 .pl-allocation-history dl {
   margin: 0;
 }
+.pl-allocation-preview dt small,
+.pl-allocation-history dt small {
+  display: block;
+  color: var(--muted);
+}
 .pl-allocation-history dl > div {
   display: flex;
   justify-content: space-between;
@@ -336,6 +341,14 @@
   }
   .pl-author {
     grid-area: 4/1/5/4;
+  }
+  .pl-approver {
+    grid-area: 5/1/6/4;
+    font-size: 12px;
+  }
+  .pl-approver::before {
+    content: "Кто согласовал · ";
+    color: var(--muted);
   }
   .pl-author,
   .pl-date {

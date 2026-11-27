@@ -19,6 +19,7 @@ type Snapshot = Pick<
   | "expense_date"
   | "paid_date"
   | "comment"
+  | "approver_name"
   | "payment_method"
   | "cancelled"
 >;
@@ -36,6 +37,7 @@ const labels = {
   expense_date: "Дата расхода",
   paid_date: "Дата оплаты",
   comment: "Комментарий",
+  approver_name: "Кто согласовал",
   payment_method: "Способ оплаты",
   cancelled: "Статус",
 };
@@ -61,6 +63,8 @@ function format(field: keyof Snapshot, snapshot: Snapshot) {
       return snapshot.cancelled ? "Аннулирован" : "Учтён";
     case "comment":
       return snapshot.comment || "—";
+    case "approver_name":
+      return snapshot.approver_name || "Не указан";
   }
 }
 export function ExpenseHistory({
@@ -97,7 +101,7 @@ export function ExpenseHistory({
                   item.before
                     ? item.before[field] !== item.after[field]
                     : !["cancelled"].includes(field) &&
-                      item.after[field] !== null,
+                      item.after[field] != null,
                 )
                 .map((field) => (
                   <div key={field}>
