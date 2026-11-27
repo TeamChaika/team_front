@@ -68,6 +68,9 @@ export function AllocationHistory({
                   {names.get(part.department_id) ??
                     part.department ??
                     part.department_id}
+                  {part.approver_name && (
+                    <small>Кто согласовал · {part.approver_name}</small>
+                  )}
                 </dt>
                 <dd>
                   {part.amount == null

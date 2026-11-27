@@ -15,6 +15,7 @@ import {
 } from "@mantine/core";
 import { api, ApiError, money } from "./api";
 import ExpenseFields, { type ExpenseDraft } from "./ExpenseFields";
+import { ExpenseApprovers } from "./ExpenseApprovers";
 import { AllocationHistory, methodLabels } from "./AllocationHistory";
 import {
   allocationBalance,
@@ -27,9 +28,11 @@ import {
   type AllocationMethod,
   type AllocationPart,
   type Expense,
+  type ExpenseApprover,
   type FinanceAccess,
 } from "./profitLossModel";
 import { useAllocationPreview } from "./useAllocationPreview";
+import { useData } from "./useData";
 import type { Venue } from "./venueArchiveModel";
 
 type Props = {
@@ -83,7 +86,7 @@ export default function ExpenseEditor({
     !allocationId &&
     row &&
     venues.some((venue) => venue.id === row.department_id)
-      ? [{ department_id: row.department_id }]
+      ? [{ department_id: row.department_id, approver_id: row.approver_id }]
       : !allocationId && !row && selectedVenue
         ? [{ department_id: selectedVenue }]
         : [],
@@ -113,6 +116,36 @@ export default function ExpenseEditor({
     ? !!group && canManageAllocation(access, group)
     : !directRow || directEditable || directAllocatable;
   const locked = !canWrite || busy || uncertain || conflict;
+  const approvers = useData<{ rows: ExpenseApprover[] }>(
+    canWrite ? "/profit-loss/approvers" : null,
+  );
+  const savedApprovers = group?.parts ?? (directRow ? [directRow] : []);
+  const names = new Map(venues.map((venue) => [venue.id, venue.name]));
+  if (directRow && venues.some((venue) => venue.id === directRow.department_id))
+    names.set(directRow.department_id, directRow.department);
+  for (const part of group?.parts ?? [])
+    if (part.department) names.set(part.department_id, part.department);
+  const approverFields = parts.map((part) => ({
+    departmentId: part.department_id,
+    department: names.get(part.department_id) ?? part.department_id,
+    value: part.approver_id ?? "",
+    options: (approvers.data?.rows ?? []).filter(
+      (o) => o.department_id === part.department_id,
+    ),
+    saved: savedApprovers.find((p) => p.department_id === part.department_id),
+  }));
+  const approversReady =
+    !!approvers.data &&
+    approverFields.every((field) => !field.options.length || !!field.value);
+  function chooseApprover(departments: string[], id: string) {
+    setParts((current) =>
+      current.map((part) =>
+        departments.includes(part.department_id)
+          ? { ...part, approver_id: id }
+          : part,
+      ),
+    );
+  }
   const input =
     shared &&
     canWrite &&
@@ -137,22 +170,25 @@ export default function ExpenseEditor({
           result.method === "pending" ? "equal" : result.method,
         );
         setParts(
-          result.parts.map(({ department_id, weight, amount }) => ({
-            department_id,
-            weight:
-              result.method === "percent" && weight
-                ? (manualPartValue("percent", weight) ?? weight).replace(
-                    ".",
-                    ",",
-                  )
-                : result.method === "weights"
-                  ? (weight ?? undefined)
+          result.parts.map(
+            ({ department_id, weight, amount, approver_id }) => ({
+              department_id,
+              approver_id,
+              weight:
+                result.method === "percent" && weight
+                  ? (manualPartValue("percent", weight) ?? weight).replace(
+                      ".",
+                      ",",
+                    )
+                  : result.method === "weights"
+                    ? (weight ?? undefined)
+                    : undefined,
+              amount:
+                result.method === "amount"
+                  ? amount?.replace(".", ",")
                   : undefined,
-            amount:
-              result.method === "amount"
-                ? amount?.replace(".", ",")
-                : undefined,
-          })),
+            }),
+          ),
         );
       })
       .catch((e) => {
@@ -179,6 +215,9 @@ export default function ExpenseEditor({
         (id) =>
           current.find((part) => part.department_id === id) ?? {
             department_id: id,
+            approver_id: savedApprovers.find(
+              (part) => part.department_id === id,
+            )?.approver_id,
           },
       ),
     );
@@ -194,6 +233,10 @@ export default function ExpenseEditor({
     if (sending.current || busy || conflict || !canWrite) return;
     let submission = retry.current;
     if (!submission) {
+      if (!approversReady) {
+        setError("Проверьте выбор согласующего для каждого заведения.");
+        return;
+      }
       const amount = amountForApi(draft.amount);
       if (
         !amount ||
@@ -237,7 +280,12 @@ export default function ExpenseEditor({
         body = JSON.stringify({
           ...values,
           ...input,
-          parts: confirmedParts,
+          parts: confirmedParts.map((part) => ({
+            ...part,
+            approver_id:
+              parts.find((item) => item.department_id === part.department_id)
+                ?.approver_id ?? null,
+          })),
           ...(allocationId
             ? { revision: group!.revision }
             : directRow
@@ -268,6 +316,7 @@ export default function ExpenseEditor({
         path = "/profit-loss/expenses" + (directRow ? "/" + directRow.id : "");
         body = JSON.stringify({
           ...values,
+          approver_id: parts[0].approver_id ?? null,
           ...(directRow
             ? { revision: directRow.revision }
             : { department_id: departmentId, request_id: requestId }),
@@ -346,11 +395,6 @@ export default function ExpenseEditor({
       setBusy(false);
     }
   }
-  const names = new Map(venues.map((venue) => [venue.id, venue.name]));
-  if (directRow && venues.some((venue) => venue.id === directRow.department_id))
-    names.set(directRow.department_id, directRow.department);
-  for (const part of group?.parts ?? [])
-    if (part.department) names.set(part.department_id, part.department);
   const venueOptions = Array.from(names, ([value, label]) => ({
     value,
     label,
@@ -361,6 +405,7 @@ export default function ExpenseEditor({
   const canChooseVenues = canAllocate && (!directRow || directAllocatable);
   const saveDisabled =
     conflict ||
+    (!uncertain && !approversReady) ||
     (!uncertain &&
       (shared
         ? !input || (method !== "pending" && !estimate.preview)
@@ -592,6 +637,29 @@ export default function ExpenseEditor({
                 disabled={locked}
               />
             )}
+            {canWrite &&
+              parts.length > 0 &&
+              (approvers.error ? (
+                <Alert color="red" role="alert">
+                  Не удалось загрузить список согласующих.{" "}
+                  <Button
+                    type="button"
+                    variant="subtle"
+                    size="xs"
+                    onClick={approvers.reload}
+                  >
+                    Повторить
+                  </Button>
+                </Alert>
+              ) : approvers.loading ? (
+                <Loader size="xs" aria-label="Загрузка согласующих" />
+              ) : (
+                <ExpenseApprovers
+                  fields={approverFields}
+                  disabled={locked}
+                  onChoose={chooseApprover}
+                />
+              ))}
             <ExpenseFields
               draft={draft}
               today={today}
@@ -610,6 +678,9 @@ export default function ExpenseEditor({
                     <div key={part.department_id}>
                       <dt>
                         {names.get(part.department_id) ?? part.department_id}
+                        {part.approver_name && (
+                          <small>Кто согласовал · {part.approver_name}</small>
+                        )}
                       </dt>
                       <dd>
                         {part.amount == null

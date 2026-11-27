@@ -21,11 +21,19 @@ export const categories = {
   other: "Прочее",
 };
 export const paymentMethods = { cash: "Наличные", bank: "Безналичные" };
+export type ExpenseApprover = {
+  department_id: string;
+  id: string;
+  name: string;
+  available_to_all: boolean;
+};
 export type Expense = {
   id: string;
   department_id: string;
   department: string;
   author: string;
+  approver_id?: string | null;
+  approver_name?: string | null;
   category: keyof typeof categories;
   payment_method: keyof typeof paymentMethods;
   amount: string;
@@ -52,6 +60,7 @@ export type AllocationPart = {
   department_id: string;
   weight?: string;
   amount?: string;
+  approver_id?: string | null;
 };
 export type AllocationInput = {
   amount: string;
@@ -78,6 +87,8 @@ export type AllocationGroup = {
   parts: {
     department_id: string;
     department?: string;
+    approver_id?: string | null;
+    approver_name?: string | null;
     weight?: string | null;
     amount?: string | null;
   }[];
