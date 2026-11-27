@@ -10,6 +10,7 @@ function purchase(date, price, documents) {
       supplier,
       store,
       department,
+      receipt_route: "direct",
       amount: String(amount),
       price: String(price),
       sum: String(amount * price),
@@ -161,7 +162,8 @@ async function verifyInvoiceRows(dialog, desktop) {
       const cells = (await row.getByRole("cell").allInnerTexts()).map(
         normalized,
       );
-      const [date, supplier, warehouse, price, amount, sum] = cells;
+      const [date, supplier, warehouse, route, price, amount, sum] = cells;
+      assert.equal(route, "Прямая закупка у поставщика");
       assert.deepEqual(
         [date, supplier, price, amount, sum],
         [

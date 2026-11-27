@@ -11,7 +11,10 @@ import { PurchaseImpact } from "./PurchaseImpact";
 import { PurchaseModal } from "./PurchaseModal";
 import { price, signed, csvPrice } from "./purchasePriceFormat";
 import { priceTimeline, visibleChartLabels } from "./purchasePriceChart";
-import { purchaseInvoiceRows, type PurchaseInvoiceRow } from "./purchaseInvoiceHistory";
+import {
+  purchaseInvoiceRows,
+  type PurchaseInvoiceRow,
+} from "./purchaseInvoiceHistory";
 import { todayReservation } from "./depositDates";
 import { useAssistant } from "./AssistantContext";
 import {
@@ -37,6 +40,7 @@ type SourceLine = {
   amount: string;
   sum: string;
   price: string | null;
+  receipt_route?: "direct" | "via_procurement";
   last_seen_at: string;
 };
 type Observation = {
@@ -177,7 +181,7 @@ function PriceWorkspace({
     recentOnly,
     impactAllowed,
   );
-  const state = useData<Report>(reportPath, true);
+  const state = useData<Report>(reportPath, true, undefined, true);
   const matchesFilters = (value: Report | null) =>
     value?.kind === kind &&
     value.exclude_household === excludeHousehold &&
@@ -190,7 +194,8 @@ function PriceWorkspace({
     const check = () => {
       if (document.hidden || Date.now() - lastCheck < 120_000) return;
       if (
-        state.error || todayReservation() !== dayLoaded ||
+        state.error ||
+        todayReservation() !== dayLoaded ||
         (impactAllowed && waitingForPurchaseImpact(report.impact_period))
       ) {
         lastCheck = Date.now();
@@ -376,7 +381,7 @@ function PriceWorkspace({
     <>
       <PageTitle
         title="Изменение закупочных цен"
-        subtitle="Цена товара по всей сети: последняя закупка и средняя 6 предыдущих поступлений."
+        subtitle="Цена товара по доступным складам сети: последнее поступление и средняя 6 предыдущих."
       />
       <div className="price-assistant-launch">
         <Button variant="light" onClick={openAssistant}>
@@ -384,12 +389,27 @@ function PriceWorkspace({
         </Button>
       </div>
       <div className="data-notice">
-        Товар объединён по всем доступным складам сети. Кнопка «Динамика»
-        открывает цены и накладные с указанием складов. Разные единицы измерения
-        и виды поступлений сравниваются отдельно.
+        {kind === "receipts"
+          ? "Прямые закупки у внешних поставщиков и подтверждённые поступления через закупающее юрлицо сети. В истории показаны фактический поставщик и накладная склада приёмки."
+          : "Товар объединён по всем доступным складам сети. Кнопка «Динамика» открывает цены и накладные с указанием складов. Разные единицы измерения и виды поступлений сравниваются отдельно."}
         {report?.recent_only &&
           report.recent_since &&
           ` В списке товары с последним поступлением с ${dateText(report.recent_since)}.`}
+        {kind === "receipts" && (
+          <>
+            {" "}
+            <button
+              type="button"
+              className="text-link"
+              onClick={() => {
+                changeFilters({ kind: "linked", product: null });
+                setSelected(null);
+              }}
+            >
+              Не нашли поступление? Проверьте связанные накладные
+            </button>
+          </>
+        )}
       </div>
       <section className="panel">
         <div className="price-household-filter">
@@ -423,10 +443,11 @@ function PriceWorkspace({
             label="Поступления"
             value={kind}
             onChange={(v) => {
-              changeFilters({ kind: v ?? "unlinked", product: null });
+              changeFilters({ kind: v ?? "receipts", product: null });
               setSelected(null);
             }}
             data={[
+              { value: "receipts", label: "Закупки у поставщиков" },
               { value: "unlinked", label: "Без связанной расходной" },
               { value: "linked", label: "Со связанной расходной" },
               { value: "all", label: "Все поступления" },
@@ -504,11 +525,13 @@ function PriceWorkspace({
           </button>
         </p>
       )}
-      <Feedback state={{
-        reload: state.reload,
-        loading: !report && (state.loading || state.data !== null),
-        error: report ? "" : state.error,
-      }}>
+      <Feedback
+        state={{
+          reload: state.reload,
+          loading: !report && (state.loading || state.data !== null),
+          error: report ? "" : state.error,
+        }}
+      >
         {report && (
           <>
             <div className="price-summary" aria-label="Итоги изменений">
@@ -530,25 +553,26 @@ function PriceWorkspace({
                 <div>
                   <h2>Закупочные цены · {rows.length}</h2>
                   <p>
-                    Последняя закупка каждого товара по сети и отклонение от
-                    средней предыдущих поступлений.
+                    Последнее поступление каждого товара по доступной сети и
+                    отклонение от средней предыдущих поступлений.
                   </p>
                   {report?.impact_period?.status === "ready" && (
-                    <p>
-                      Влияние за неделю — оценка по техкартам и продажам за{" "}
-                      {dateText(report.impact_period.start)}–
-                      {dateText(report.impact_period.end)}. «+» — рост затрат,
-                      «−» — экономия при прежнем темпе продаж. Нажмите сумму,
-                      чтобы увидеть расчёт по блюдам.
-                      {!!report.impact_period.excluded_department_ids?.length &&
-                        " В расчёте — заведения с включённой синхронизацией."}
-                      {report.impact_period.coverage?.complete &&
-                        report.impact_period.target_end &&
-                        report.impact_period.end <
+                      <p>
+                        Влияние за неделю — оценка по техкартам и продажам за{" "}
+                        {dateText(report.impact_period.start)}–
+                        {dateText(report.impact_period.end)}. «+» — рост затрат,
+                        «−» — экономия при прежнем темпе продаж. Нажмите сумму,
+                        чтобы увидеть расчёт по блюдам.
+                        {!!report.impact_period.excluded_department_ids
+                          ?.length &&
+                          " В расчёте — заведения с включённой синхронизацией."}
+                        {report.impact_period.coverage?.complete &&
                           report.impact_period.target_end &&
-                        " Более свежий период появится автоматически после проверки продаж."}
-                    </p>
-                  )}
+                          report.impact_period.end <
+                            report.impact_period.target_end &&
+                          " Более свежий период появится автоматически после проверки продаж."}
+                      </p>
+                    )}
                   {impactNotice && <p role="status">{impactNotice}</p>}
                   {report?.impact_period?.coverage &&
                     !report.impact_period.coverage.complete && (
@@ -858,8 +882,8 @@ function PriceWorkspace({
               {report.stats.unchanged}. Не удалось сравнить:{" "}
               {report.stats.invalid} (нет единицы или пригодного
               количества/суммы). История короче {report.history_size}{" "}
-              поступлений: {report.stats.short_history}. Счётчики относятся
-              ко всему выбранному виду поступлений.
+              поступлений: {report.stats.short_history}. Счётчики относятся ко
+              всему выбранному виду поступлений.
             </p>
           </>
         )}
@@ -876,8 +900,8 @@ function PriceWorkspace({
         <p>
           Цена единицы = сумма строк товара ÷ количество по накладной. Сумма
           берётся из iiko без вычитания НДС и без повторного вычитания скидки.
-          Цены сравниваются с точностью до четырёх знаков после запятой.
-          CSV сохраняет точность расчёта, включая изменения меньше копейки.
+          Цены сравниваются с точностью до четырёх знаков после запятой. CSV
+          сохраняет точность расчёта, включая изменения меньше копейки.
         </p>
         <p>
           Сравниваются один UUID товара и одна единица измерения по всей сети.
@@ -887,9 +911,9 @@ function PriceWorkspace({
         </p>
         <p>
           Черновики, удалённые документы и дополнительные расходы исключены.
-          Связанные и несвязанные с расходной накладной поступления всегда
-          сравниваются отдельно. Отсутствие связи само по себе не доказывает,
-          что поставщик внешний.
+          {kind === "receipts"
+            ? " Прямые закупки и подтверждённые поступления через закупающее юрлицо объединены в одну историю. Для каждого поступления показана накладная склада приёмки."
+            : " Связанные и несвязанные с расходной накладной поступления всегда сравниваются отдельно. Отсутствие связи само по себе не доказывает, что поставщик внешний."}
         </p>
         <p>
           Это закупочная цена по загруженным документам. Она не является учётной
@@ -915,6 +939,7 @@ function PriceWorkspace({
             key={identity(impact)}
             row={impact}
             scope={scope}
+            kind={kind}
             periodVersion={[
               report?.impact_period?.end,
               report?.impact_period?.prepared_at,
@@ -933,7 +958,12 @@ function PriceWorkspace({
         size="xl"
       >
         {report && selected && (
-          <PriceDetails key={identity(selected)} row={selected} scope={scope} />
+          <PriceDetails
+            key={identity(selected)}
+            row={selected}
+            scope={scope}
+            kind={kind}
+          />
         )}
       </PurchaseModal>
     </>
@@ -1005,17 +1035,23 @@ function PriceDetailSummary({ row }: { row: PriceChange }) {
 export function PriceDetails({
   row,
   scope,
+  kind,
 }: {
   row: PriceChange;
   scope: string;
+  kind?: string;
 }) {
   const params = new URLSearchParams(scope);
   params.set("product_id", row.product_id);
   params.delete("store_id");
   params.set("unit_id", row.unit_id);
   params.set("linked", String(row.linked));
+  if (kind === "receipts") params.set("kind", kind);
   const state = useData<PriceChange>(
     "/purchase-prices/history?" + params.toString(),
+    false,
+    undefined,
+    true,
   );
   const selected = state.data;
   const previousInvoices = useMemo(
@@ -1086,6 +1122,7 @@ export function PriceDetails({
                     <th>Дата</th>
                     <th scope="col">Поставщик</th>
                     <th scope="col">Склад приёмки</th>
+                    <th scope="col">Путь закупки</th>
                     <th className="numeric">Цена, ₽/{selected.unit}</th>
                     <th className="numeric">Количество, {selected.unit}</th>
                     <th className="numeric">Сумма, ₽</th>
@@ -1103,6 +1140,9 @@ export function PriceDetails({
                       </td>
                       <td className="price-history-names">
                         <InvoiceNames lines={invoice.lines} field="warehouse" />
+                      </td>
+                      <td>
+                        <InvoiceRoute invoice={invoice} />
                       </td>
                       <td className="numeric">{price(invoice.price)}</td>
                       <td className="numeric">{number(invoice.amount)}</td>
@@ -1146,6 +1186,7 @@ export function PriceDetails({
                     field="warehouse"
                     labelled
                   />
+                  <InvoiceRoute invoice={invoice} />
                   <InvoiceLink invoice={invoice} />
                 </li>
               ))}
@@ -1225,6 +1266,24 @@ function InvoiceNames({
   );
 }
 
+function InvoiceRoute({ invoice }: { invoice: InvoiceRow }) {
+  const routes = [
+    ...new Set(invoice.lines.map((line) => line.receipt_route).filter(Boolean)),
+  ];
+  if (!routes.length) return null;
+  return (
+    <span className="price-subtext">
+      {routes
+        .map((route) =>
+          route === "via_procurement"
+            ? "Через закупающее юрлицо сети"
+            : "Прямая закупка у поставщика",
+        )
+        .join("; ")}
+    </span>
+  );
+}
+
 function InvoiceLink({
   invoice,
   fullLabel = false,
@@ -1232,9 +1291,15 @@ function InvoiceLink({
   invoice: InvoiceRow;
   fullLabel?: boolean;
 }) {
+  const workspace = useWorkspace();
   const label = invoice.document_number
     ? (fullLabel ? "Накладная №" : "№") + invoice.document_number
     : "Накладная без номера";
+  if (
+    (workspace.meta.sections && !workspace.meta.sections.includes("invoices")) ||
+    workspace.meta.warehouse_capabilities?.unsupported_sections.includes("invoices")
+  )
+    return <span>{label}</span>;
   return (
     <Link
       className={fullLabel ? "text-link" : "text-link price-history-link"}
@@ -1258,6 +1323,7 @@ function exportHistory(row: PriceChange, invoices: InvoiceRow[]) {
       ["documents", "Накладная и UUID"],
       ["suppliers", "Поставщик"],
       ["stores", "Склады приёмки"],
+      ["receipt_route", "Путь закупки"],
       ["source_lines", "Исходные строки: номер, вхождение, количество, сумма"],
     ].map(([key, label]) => ({ key, label })),
     invoices.map((invoice) => ({
@@ -1270,6 +1336,17 @@ function exportHistory(row: PriceChange, invoices: InvoiceRow[]) {
       documents: `${invoice.document_number ?? "Без номера"} [${invoice.document_id}]`,
       suppliers: [...new Set(invoice.lines.map(supplierName))].join("; "),
       stores: [...new Set(invoice.lines.map(sourceWarehouse))].join("; "),
+      receipt_route: [
+        ...new Set(
+          invoice.lines.map((line) => line.receipt_route).filter(Boolean),
+        ),
+      ]
+        .map((route) =>
+          route === "via_procurement"
+            ? "Через закупающее юрлицо сети"
+            : "Прямая закупка у поставщика",
+        )
+        .join("; "),
       source_lines: invoice.lines
         .map(
           (line) =>
@@ -1364,10 +1441,7 @@ function PriceChart({ row }: { row: PriceChange }) {
                   r={current ? 6 : 4}
                   fill={current ? "#65d7b6" : "#65d7e5"}
                 >
-                  <title>
-                    {dateText(receipt.date)} · {price(receipt.price)} ₽/
-                    {row.unit}
-                  </title>
+                  <title>{`${dateText(receipt.date)} · ${price(receipt.price)} ₽/${row.unit}`}</title>
                 </circle>
                 {valueLabels.has(i) && (
                   <text x={x} y={cy - 13} textAnchor="middle">
@@ -1453,6 +1527,7 @@ function InvoiceSource({
         <div className="price-document-fields">
           <InvoiceNames lines={invoice.lines} field="supplier" labelled />
           <InvoiceNames lines={invoice.lines} field="warehouse" labelled />
+          <InvoiceRoute invoice={invoice} />
         </div>
         <InvoiceLink invoice={invoice} fullLabel />
       </div>

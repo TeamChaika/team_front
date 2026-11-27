@@ -11,12 +11,14 @@ import {
 } from "@tabler/icons-react";
 import { api } from "./api";
 import { useData } from "./useData";
+import { useWorkspace } from "./App";
 import "./purchase-assistant.css";
 
 export type AssistantSelection = {
   product_id: string;
   unit_id: string;
   linked: boolean;
+  kind?: string;
 };
 export type AssistantContext = {
   product: AssistantSelection | null;
@@ -63,6 +65,10 @@ export function PurchaseAssistant({
   sourceLoading: boolean;
   onSource: (source: AssistantSource) => void;
 }) {
+  const workspace = useWorkspace();
+  const canOpenInvoices =
+    (!workspace.meta.sections || workspace.meta.sections.includes("invoices")) &&
+    !workspace.meta.warehouse_capabilities?.unsupported_sections.includes("invoices");
   const [status, setStatus] = useState<Status | null>(null);
   const [chat, setChat] = useState<Chat | null>(null);
   const [question, setQuestion] = useState("");
@@ -296,11 +302,14 @@ export function PurchaseAssistant({
                   <div>
                     {turn.sources.map((source, index) =>
                       source.kind === "invoice" &&
-                      source.href?.startsWith("/invoices/") ? (
+                      source.href?.startsWith("/invoices/") &&
+                      canOpenInvoices ? (
                         <Link key={index} to={source.href} onClick={onNavigate}>
                           {source.label}
                           <IconChevronRight size={13} />
                         </Link>
+                      ) : source.kind === "invoice" ? (
+                        <span key={index}>{source.label}</span>
                       ) : (
                         <Button
                           key={index}

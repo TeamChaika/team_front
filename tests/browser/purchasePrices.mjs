@@ -7,7 +7,7 @@ const receipt = (date, price, supplier = "Тестовый поставщик") 
   date, price, amount: "1", sum: price,
   lines: [{
     document_id: "invoice-" + date, document_number: date, num: 1, num_occurrence: 1,
-    supplier, store: "Тестовый склад", department: null,
+    supplier, store: "Тестовый склад", department: null, receipt_route: "direct",
     amount: "1", sum: price, price, last_seen_at: date,
   }],
 });
@@ -35,18 +35,35 @@ export async function verifyPurchasePrices(context, meta) {
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
   let stage = "pending";
+  let preparing = true;
   try {
     await page.clock.install({ time: new Date("2026-10-09T12:00:00Z") });
     await page.route("**/api/me", (route) => route.fulfill({
-      json: { ...meta, warehouse_scope: { mode: "all", warehouse_ids: [] } },
+      json: {
+        ...meta,
+        user: { ...meta.user, role: "manager" },
+        departments: meta.departments.slice(0, 1),
+        sections: ["purchase-prices", "invoices", "products"],
+        warehouse_scope: { mode: "all", warehouse_ids: [] },
+      },
     }));
+    await page.route("**/api/saas-tenant/*/support/events", (route) => route.fulfill({ status: 204 }));
     await page.route("**/api/purchase-prices?*", (route) => {
       const params = new URL(route.request().url()).searchParams;
+      assert.equal(params.get("kind"), "receipts");
       const recent = params.get("recent_only") === "true";
       if (recent) assert.equal(params.get("recent_period"), "month");
       assert.equal(params.get("include_impact"), "true");
       for (const key of ["sort", "page", "product", "threshold", "direction", "department_id"]) {
         assert.equal(params.has(key), false, key);
+      }
+      if (preparing) {
+        preparing = false;
+        return route.fulfill({
+          status: 503,
+          headers: { "Retry-After": "15" },
+          json: { detail: "Обновляем закупочные цены. Повторите через несколько секунд." },
+        });
       }
       const reported = rows.filter((row) => !recent || row.current.date >= cutoff);
       return route.fulfill({ json: {
@@ -67,6 +84,7 @@ export async function verifyPurchasePrices(context, meta) {
       assert.ok(row);
       assert.equal(params.get("unit_id"), row.unit_id);
       assert.equal(params.get("linked"), "false");
+      assert.equal(params.get("kind"), "receipts");
       assert.equal(params.has("recent_only") || params.has("recent_period"), false);
       return route.fulfill({ json: row });
     });
@@ -81,6 +99,9 @@ export async function verifyPurchasePrices(context, meta) {
     const recent = page.getByRole("checkbox", { name: /Были поступления за последний месяц/ });
     const heading = (count) => page.getByRole("heading", { name: "Закупочные цены · " + count, exact: true });
     const firstItem = page.locator("table tbody tr").first();
+    await page.getByRole("alert").getByText("Обновляем закупочные цены. Повторите через несколько секунд.").waitFor();
+    await page.getByRole("button", { name: "Повторить", exact: true }).waitFor();
+    await page.clock.fastForward(15_100);
     await heading(53).waitFor();
     assert.equal(await recent.isChecked(), true);
     await firstItem.getByRole("link", { name: "Ингредиент 53", exact: true }).waitFor();
