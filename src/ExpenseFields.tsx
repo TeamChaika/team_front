@@ -1,6 +1,6 @@
 import { Select, Textarea, TextInput } from "@mantine/core";
 import type { ReactNode } from "react";
-import { categories, paymentMethods } from "./profitLossModel";
+import { paymentMethods } from "./profitLossModel";
 
 export type ExpenseDraft = {
   expense_date: string;
@@ -13,12 +13,14 @@ export type ExpenseDraft = {
 
 export default function ExpenseFields({
   draft,
+  categoryOptions,
   today,
   change,
   disabled = false,
   afterAmount,
 }: {
   draft: ExpenseDraft;
+  categoryOptions: { value: string; label: string }[];
   today: string;
   change: (name: keyof ExpenseDraft, value: string | null) => void;
   disabled?: boolean;
@@ -31,10 +33,8 @@ export default function ExpenseFields({
           label="Статья расхода"
           required
           placeholder="Выберите статью"
-          data={Object.entries(categories).map(([value, label]) => ({
-            value,
-            label,
-          }))}
+          data={categoryOptions}
+          searchable
           value={draft.category || null}
           onChange={(v) => change("category", v)}
           disabled={disabled}

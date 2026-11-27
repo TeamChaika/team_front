@@ -92,6 +92,7 @@ const Indicators = lazy(() =>
   import("./Indicators").then((module) => ({ default: module.Indicators })),
 );
 const ProfitLoss = lazy(() => import("./ProfitLoss"));
+const ExpenseCatalog = lazy(() => import("./ExpenseCatalog"));
 const DepositsPage = lazy(() =>
   import("./DepositsPage").then((module) => ({ default: module.DepositsPage })),
 );
@@ -608,15 +609,19 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
     Boolean(tenant),
     meta.can_manage_integrations,
   );
+  const canManageCatalog =
+    showFinance && (financeAccess === "accountant" || financeAccess === "owner");
+  const managementAvailable =
+    canManageCatalog ||
+    canManageIntegrations ||
+    tenant?.ownerSetupAvailable ||
+    (meta.can_manage && tenantSectionReady(featureReadiness, "management"));
   const availableSections = sections.filter((s) =>
     tenant?.setupOnly
       ? s.path === "/management" &&
         (tenant.ownerSetupAvailable || meta.can_manage || canManageIntegrations)
       : s.path === "/management"
-        ? canManageIntegrations ||
-          tenant?.ownerSetupAvailable ||
-          (meta.can_manage &&
-            tenantSectionReady(featureReadiness, "management"))
+        ? managementAvailable
         : allowed.includes(s.path.slice(1) || "overview"),
   );
   const currentSection =
@@ -631,10 +636,7 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
       ? (!tenant || tenant.fullDashboard === true) &&
         tenantSectionReady(featureReadiness, "profile")
       : currentSection === "management"
-        ? canManageIntegrations ||
-          tenant?.ownerSetupAvailable ||
-          (meta.can_manage &&
-            tenantSectionReady(featureReadiness, "management"))
+        ? managementAvailable
         : allowed.includes(currentSection);
   if (!currentAllowed && availableSections.length)
     return <Navigate to={availableSections[0].path} replace />;
@@ -1053,7 +1055,11 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
                         <Route
                           path="/management"
                           element={
+                            canManageCatalog && !meta.can_manage ? (
+                              <ExpenseCatalog standalone />
+                            ) : (
                             <ManagementPage
+                              expenseCatalogEnabled={canManageCatalog}
                               documentsEnabled={meta.documents_enabled}
                               purchaseDigestEnabled={
                                 !tenant && meta.can_manage === true && meta.purchase_digest_enabled === true
@@ -1080,6 +1086,7 @@ function WorkspaceApp({ tenant }: { tenant?: TenantDashboardOptions }) {
                                   .catch((e) => setError(e.message));
                               }}
                             />
+                            )
                           }
                         />
                         <Route

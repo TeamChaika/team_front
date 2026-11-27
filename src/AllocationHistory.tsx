@@ -1,7 +1,7 @@
 import { Alert, Button, Loader, Text } from "@mantine/core";
 import { dateText, money } from "./api";
 import { useData } from "./useData";
-import type { AllocationGroup } from "./profitLossModel";
+import { expenseCategoryName, type AllocationGroup } from "./profitLossModel";
 
 export const methodLabels = {
   equal: "Поровну",
@@ -11,7 +11,10 @@ export const methodLabels = {
   weights: "По весам или долям",
   revenue: "По выручке за полный месяц",
 } satisfies Record<AllocationGroup["method"], string>;
-type HistorySnapshot = Pick<AllocationGroup, "amount" | "method" | "parts">;
+type HistorySnapshot = Pick<
+  AllocationGroup,
+  "amount" | "method" | "parts" | "category" | "category_name"
+>;
 type HistoryItem = {
   revision: number;
   action: string;
@@ -56,6 +59,15 @@ export function AllocationHistory({
             {dateText(item.changed_at)} · {item.actor}
           </Text>
           <p>
+            {item.after.category && (
+              <>
+                {item.before &&
+                  item.before.category !== item.after.category && (
+                    <>{expenseCategoryName(item.before)} → </>
+                  )}
+                {expenseCategoryName(item.after)} ·{" "}
+              </>
+            )}
             {item.before && item.before.method !== item.after.method
               ? `${methodLabels[item.before.method]} → `
               : ""}

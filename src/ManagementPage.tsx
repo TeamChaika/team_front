@@ -26,6 +26,7 @@ import { PurchaseDigestSettings } from "./PurchaseDigestSettings";
 import { DocumentAccess } from "./DocumentAccess";
 import { CompanyIntegrations } from "./CompanyIntegrations";
 import { CommercialInvoiceAccess } from "./CommercialInvoiceAccess";
+import ExpenseCatalog from "./ExpenseCatalog";
 
 type Grant = { venue: string; can_create: boolean };
 type Account = {
@@ -625,6 +626,7 @@ export function ManagementPage({
   onChange,
   documentsEnabled,
   purchaseDigestEnabled = false,
+  expenseCatalogEnabled = false,
   setupOnly = false,
   integrationsEnabled = false,
   integrationsOnly = false,
@@ -632,13 +634,20 @@ export function ManagementPage({
   onChange: () => void;
   documentsEnabled?: boolean;
   purchaseDigestEnabled?: boolean;
+  expenseCatalogEnabled?: boolean;
   setupOnly?: boolean;
   integrationsEnabled?: boolean;
   integrationsOnly?: boolean;
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState<string | null>(null);
-  const digestTab = purchaseDigestEnabled && !setupOnly && searchParams.get("tab") === "purchase-digest";
+  const requestedTab = searchParams.get("tab");
+  const linkedTab =
+    !setupOnly &&
+    ((purchaseDigestEnabled && requestedTab === "purchase-digest") ||
+      (expenseCatalogEnabled && requestedTab === "expense-catalogs"))
+      ? requestedTab
+      : null;
   const [directory, setDirectory] = useState<Directory | null>(null),
     [configuration, setConfiguration] = useState<Configuration | null>(null),
     [error, setError] = useState(""),
@@ -736,17 +745,19 @@ export function ManagementPage({
         <Tabs
           key={setupOnly ? "setup" : "full"}
           value={
-            digestTab ? "purchase-digest" :
+            linkedTab ??
             (setupOnly && activeTab !== "venues" && activeTab !== "integrations" ? null : activeTab) ??
             (integrationsEnabled ? "integrations" : setupOnly ? "venues" : "accounts")
           }
           onChange={(tab) => {
             if (!tab) return;
-            setActiveTab(tab === "purchase-digest" ? null : tab);
-            if ((tab === "purchase-digest") !== digestTab) {
+            const link =
+              tab === "purchase-digest" || tab === "expense-catalogs" ? tab : null;
+            setActiveTab(link ? null : tab);
+            if (link !== linkedTab) {
               setSearchParams((current) => {
                 const next = new URLSearchParams(current);
-                if (tab === "purchase-digest") next.set("tab", tab);
+                if (link) next.set("tab", link);
                 else next.delete("tab");
                 return next;
               }, { replace: true });
@@ -783,7 +794,15 @@ export function ManagementPage({
             {purchaseDigestEnabled && !setupOnly && (
               <Tabs.Tab value="purchase-digest">Рассылка закупок</Tabs.Tab>
             )}
+            {expenseCatalogEnabled && !setupOnly && (
+              <Tabs.Tab value="expense-catalogs">Справочники расходов</Tabs.Tab>
+            )}
           </Tabs.List>
+          {expenseCatalogEnabled && !setupOnly && (
+            <Tabs.Panel value="expense-catalogs" pt="lg">
+              <ExpenseCatalog />
+            </Tabs.Panel>
+          )}
           {purchaseDigestEnabled && !setupOnly && (
             <Tabs.Panel value="purchase-digest" pt="lg">
               <PurchaseDigestSettings />
